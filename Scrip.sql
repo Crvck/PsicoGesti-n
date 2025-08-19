@@ -1,6 +1,6 @@
 USE [master]
 GO
-/****** Object:  Database [consultorio_pscologia]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Database [consultorio_pscologia]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 CREATE DATABASE [consultorio_pscologia]
  CONTAINMENT = NONE
  ON  PRIMARY 
@@ -84,7 +84,7 @@ ALTER DATABASE [consultorio_pscologia] SET QUERY_STORE (OPERATION_MODE = READ_WR
 GO
 USE [consultorio_pscologia]
 GO
-/****** Object:  Table [dbo].[administradores]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Table [dbo].[administradores]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -96,7 +96,6 @@ CREATE TABLE [dbo].[administradores](
 	[contrasena] [varchar](255) NOT NULL,
 	[fecha_registro] [datetime] NULL,
 	[observaciones] [text] NULL,
-	[user] [nvarchar](50) NULL,
 PRIMARY KEY CLUSTERED 
 (
 	[id_administrador] ASC
@@ -107,7 +106,7 @@ UNIQUE NONCLUSTERED
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[becarios]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Table [dbo].[becarios]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -140,7 +139,7 @@ UNIQUE NONCLUSTERED
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[consultas]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Table [dbo].[consultas]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -164,7 +163,7 @@ PRIMARY KEY CLUSTERED
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[consultorios]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Table [dbo].[consultorios]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -191,7 +190,36 @@ PRIMARY KEY CLUSTERED
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[lista_espera]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Table [dbo].[dashboard]    Script Date: 03/08/2025 07:41:13 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[dashboard](
+	[id_registro] [int] IDENTITY(1,1) NOT NULL,
+	[mes] [varchar](20) NULL,
+	[total_pacientes_activos] [int] NULL,
+	[total_pacientes_baja] [int] NULL,
+	[total_pacientes_cerrados] [int] NULL,
+	[total_pacientes_sin_contacto] [int] NULL,
+	[total_estudiantes_activos] [int] NULL,
+	[total_estudiantes_baja] [int] NULL,
+	[total_estudiantes_cerrados] [int] NULL,
+	[total_foraneos_activos] [int] NULL,
+	[total_atenciones_empleados] [int] NULL,
+	[total_atenciones_estudiantes] [int] NULL,
+	[total_atenciones_foraneos] [int] NULL,
+	[total_becarios_activos] [int] NULL,
+	[total_prestadores_foraneos_activos] [int] NULL,
+	[total_psicologos_activos] [int] NULL,
+	[id_administrador] [int] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_registro] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[lista_espera]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -212,7 +240,7 @@ PRIMARY KEY CLUSTERED
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[pacientes]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Table [dbo].[pacientes]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -235,7 +263,7 @@ PRIMARY KEY CLUSTERED
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[prestadores_foraneos]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Table [dbo].[prestadores_foraneos]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -260,7 +288,7 @@ PRIMARY KEY CLUSTERED
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
 GO
-/****** Object:  Table [dbo].[psicologos]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+/****** Object:  Table [dbo].[psicologos]    Script Date: 03/08/2025 07:41:13 p. m. ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -277,25 +305,6 @@ PRIMARY KEY CLUSTERED
 	[id_psicologo] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
-GO
-/****** Object:  Table [dbo].[usuarios]    Script Date: 17/08/2025 04:45:28 p. m. ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-CREATE TABLE [dbo].[usuarios](
-	[id_usuario] [int] IDENTITY(1,1) NOT NULL,
-	[usuario] [varchar](255) NOT NULL,
-	[correo] [varchar](255) NULL,
-	[contrasena] [varchar](255) NULL,
-	[rol] [varchar](50) NOT NULL,
-	[id_referencia] [int] NOT NULL,
-	[fecha_registro] [datetime] NULL,
-PRIMARY KEY CLUSTERED 
-(
-	[id_usuario] ASC
-)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
-) ON [PRIMARY]
 GO
 ALTER TABLE [dbo].[administradores] ADD  DEFAULT (getdate()) FOR [fecha_registro]
 GO
@@ -318,8 +327,6 @@ GO
 ALTER TABLE [dbo].[prestadores_foraneos] ADD  DEFAULT ((0)) FOR [horas_realizadas]
 GO
 ALTER TABLE [dbo].[prestadores_foraneos] ADD  DEFAULT ((0)) FOR [total_solicitudes]
-GO
-ALTER TABLE [dbo].[usuarios] ADD  DEFAULT (getdate()) FOR [fecha_registro]
 GO
 ALTER TABLE [dbo].[becarios]  WITH CHECK ADD FOREIGN KEY([id_administrador])
 REFERENCES [dbo].[administradores] ([id_administrador])
@@ -350,6 +357,9 @@ REFERENCES [dbo].[pacientes] ([id_paciente])
 GO
 ALTER TABLE [dbo].[consultorios]  WITH CHECK ADD FOREIGN KEY([id_prestador])
 REFERENCES [dbo].[prestadores_foraneos] ([id_prestador])
+GO
+ALTER TABLE [dbo].[dashboard]  WITH CHECK ADD FOREIGN KEY([id_administrador])
+REFERENCES [dbo].[administradores] ([id_administrador])
 GO
 ALTER TABLE [dbo].[lista_espera]  WITH CHECK ADD FOREIGN KEY([id_administrador])
 REFERENCES [dbo].[administradores] ([id_administrador])

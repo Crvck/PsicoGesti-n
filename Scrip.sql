@@ -1,0 +1,373 @@
+USE [master]
+GO
+/****** Object:  Database [consultorio_pscologia]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+CREATE DATABASE [consultorio_pscologia]
+ CONTAINMENT = NONE
+ ON  PRIMARY 
+( NAME = N'consultorio_pscologia', FILENAME = N'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\DATA\consultorio_pscologia.mdf' , SIZE = 8192KB , MAXSIZE = UNLIMITED, FILEGROWTH = 65536KB )
+ LOG ON 
+( NAME = N'consultorio_pscologia_log', FILENAME = N'C:\Program Files\Microsoft SQL Server\MSSQL16.MSSQLSERVER\MSSQL\DATA\consultorio_pscologia_log.ldf' , SIZE = 8192KB , MAXSIZE = 2048GB , FILEGROWTH = 65536KB )
+ WITH CATALOG_COLLATION = DATABASE_DEFAULT, LEDGER = OFF
+GO
+ALTER DATABASE [consultorio_pscologia] SET COMPATIBILITY_LEVEL = 160
+GO
+IF (1 = FULLTEXTSERVICEPROPERTY('IsFullTextInstalled'))
+begin
+EXEC [consultorio_pscologia].[dbo].[sp_fulltext_database] @action = 'enable'
+end
+GO
+ALTER DATABASE [consultorio_pscologia] SET ANSI_NULL_DEFAULT OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET ANSI_NULLS OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET ANSI_PADDING OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET ANSI_WARNINGS OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET ARITHABORT OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET AUTO_CLOSE OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET AUTO_SHRINK OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET AUTO_UPDATE_STATISTICS ON 
+GO
+ALTER DATABASE [consultorio_pscologia] SET CURSOR_CLOSE_ON_COMMIT OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET CURSOR_DEFAULT  GLOBAL 
+GO
+ALTER DATABASE [consultorio_pscologia] SET CONCAT_NULL_YIELDS_NULL OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET NUMERIC_ROUNDABORT OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET QUOTED_IDENTIFIER OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET RECURSIVE_TRIGGERS OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET  ENABLE_BROKER 
+GO
+ALTER DATABASE [consultorio_pscologia] SET AUTO_UPDATE_STATISTICS_ASYNC OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET DATE_CORRELATION_OPTIMIZATION OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET TRUSTWORTHY OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET ALLOW_SNAPSHOT_ISOLATION OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET PARAMETERIZATION SIMPLE 
+GO
+ALTER DATABASE [consultorio_pscologia] SET READ_COMMITTED_SNAPSHOT OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET HONOR_BROKER_PRIORITY OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET RECOVERY FULL 
+GO
+ALTER DATABASE [consultorio_pscologia] SET  MULTI_USER 
+GO
+ALTER DATABASE [consultorio_pscologia] SET PAGE_VERIFY CHECKSUM  
+GO
+ALTER DATABASE [consultorio_pscologia] SET DB_CHAINING OFF 
+GO
+ALTER DATABASE [consultorio_pscologia] SET FILESTREAM( NON_TRANSACTED_ACCESS = OFF ) 
+GO
+ALTER DATABASE [consultorio_pscologia] SET TARGET_RECOVERY_TIME = 60 SECONDS 
+GO
+ALTER DATABASE [consultorio_pscologia] SET DELAYED_DURABILITY = DISABLED 
+GO
+ALTER DATABASE [consultorio_pscologia] SET ACCELERATED_DATABASE_RECOVERY = OFF  
+GO
+EXEC sys.sp_db_vardecimal_storage_format N'consultorio_pscologia', N'ON'
+GO
+ALTER DATABASE [consultorio_pscologia] SET QUERY_STORE = ON
+GO
+ALTER DATABASE [consultorio_pscologia] SET QUERY_STORE (OPERATION_MODE = READ_WRITE, CLEANUP_POLICY = (STALE_QUERY_THRESHOLD_DAYS = 30), DATA_FLUSH_INTERVAL_SECONDS = 900, INTERVAL_LENGTH_MINUTES = 60, MAX_STORAGE_SIZE_MB = 1000, QUERY_CAPTURE_MODE = AUTO, SIZE_BASED_CLEANUP_MODE = AUTO, MAX_PLANS_PER_QUERY = 200, WAIT_STATS_CAPTURE_MODE = ON)
+GO
+USE [consultorio_pscologia]
+GO
+/****** Object:  Table [dbo].[administradores]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[administradores](
+	[id_administrador] [int] IDENTITY(1,1) NOT NULL,
+	[nombre] [varchar](255) NOT NULL,
+	[correo] [varchar](255) NOT NULL,
+	[contrasena] [varchar](255) NOT NULL,
+	[fecha_registro] [datetime] NULL,
+	[observaciones] [text] NULL,
+	[user] [nvarchar](50) NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_administrador] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+UNIQUE NONCLUSTERED 
+(
+	[correo] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[becarios]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[becarios](
+	[id_becario] [int] IDENTITY(1,1) NOT NULL,
+	[nombre] [varchar](255) NOT NULL,
+	[telefono] [varchar](20) NULL,
+	[matricula] [varchar](50) NULL,
+	[cuatrimestre] [varchar](20) NULL,
+	[tipo_servicio] [varchar](100) NULL,
+	[fecha_registro] [datetime] NULL,
+	[fecha_aceptacion] [datetime] NULL,
+	[fecha_estimada_termino] [datetime] NULL,
+	[fecha_liberacion] [datetime] NULL,
+	[mmpi2_rf] [bit] NULL,
+	[horas_objetivo] [int] NULL,
+	[horas_realizadas] [int] NULL,
+	[horas_faltantes]  AS ([horas_objetivo]-[horas_realizadas]),
+	[total_consultas] [int] NULL,
+	[id_administrador] [int] NULL,
+	[observaciones] [text] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_becario] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY],
+UNIQUE NONCLUSTERED 
+(
+	[matricula] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[consultas]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[consultas](
+	[id_consulta] [int] IDENTITY(1,1) NOT NULL,
+	[id_paciente] [int] NULL,
+	[id_becario] [int] NULL,
+	[id_psicologo] [int] NULL,
+	[id_prestador] [int] NULL,
+	[id_administrador] [int] NULL,
+	[modalidad] [varchar](50) NULL,
+	[dia] [varchar](20) NULL,
+	[hora] [decimal](4, 2) NULL,
+	[estatus] [varchar](20) NULL,
+	[fecha_creacion] [datetime] NULL,
+	[observaciones] [text] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_consulta] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[consultorios]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[consultorios](
+	[id_consultorio] [int] IDENTITY(1,1) NOT NULL,
+	[nombre_consultorio] [varchar](100) NULL,
+	[id_becario] [int] NULL,
+	[id_prestador] [int] NULL,
+	[id_administrador] [int] NULL,
+	[materia] [varchar](100) NULL,
+	[cuatrimestre] [varchar](20) NULL,
+	[fecha_inicio] [datetime] NULL,
+	[fecha_termino] [datetime] NULL,
+	[no_sesiones_totales] [int] NULL,
+	[carta_compromiso] [bit] NULL,
+	[id_paciente] [int] NULL,
+	[edad_paciente] [int] NULL,
+	[proceso_terapeutico] [bit] NULL,
+	[observaciones] [text] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_consultorio] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[lista_espera]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[lista_espera](
+	[id_espera] [int] IDENTITY(1,1) NOT NULL,
+	[id_paciente] [int] NULL,
+	[id_administrador] [int] NULL,
+	[numero_consulta] [int] NULL,
+	[dia] [varchar](20) NULL,
+	[motivo_consulta] [varchar](255) NULL,
+	[fecha_registro] [datetime] NULL,
+	[estatus] [varchar](20) NULL,
+	[observaciones] [text] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_espera] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[pacientes]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[pacientes](
+	[id_paciente] [int] IDENTITY(1,1) NOT NULL,
+	[nombre] [varchar](255) NOT NULL,
+	[edad] [int] NULL,
+	[sexo] [varchar](10) NULL,
+	[telefono] [varchar](20) NULL,
+	[correo] [varchar](255) NULL,
+	[motivo_consulta] [varchar](255) NULL,
+	[carrera] [varchar](100) NULL,
+	[es_estudiante] [bit] NULL,
+	[es_foraneo] [bit] NULL,
+	[observaciones] [text] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_paciente] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[prestadores_foraneos]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[prestadores_foraneos](
+	[id_prestador] [int] IDENTITY(1,1) NOT NULL,
+	[nombre] [varchar](255) NOT NULL,
+	[telefono] [varchar](20) NULL,
+	[fundacion] [varchar](255) NULL,
+	[fecha_registro] [datetime] NULL,
+	[fecha_estimada_termino] [datetime] NULL,
+	[fecha_liberacion] [datetime] NULL,
+	[horas_objetivo] [int] NULL,
+	[horas_realizadas] [int] NULL,
+	[horas_faltantes]  AS ([horas_objetivo]-[horas_realizadas]),
+	[total_solicitudes] [int] NULL,
+	[id_administrador] [int] NULL,
+	[observaciones] [text] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_prestador] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[psicologos]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[psicologos](
+	[id_psicologo] [int] IDENTITY(1,1) NOT NULL,
+	[nombre] [varchar](255) NOT NULL,
+	[telefono] [varchar](20) NULL,
+	[especialidad] [varchar](100) NULL,
+	[id_administrador] [int] NULL,
+	[observaciones] [text] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_psicologo] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+/****** Object:  Table [dbo].[usuarios]    Script Date: 17/08/2025 04:45:28 p. m. ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE TABLE [dbo].[usuarios](
+	[id_usuario] [int] IDENTITY(1,1) NOT NULL,
+	[usuario] [varchar](255) NOT NULL,
+	[correo] [varchar](255) NULL,
+	[contrasena] [varchar](255) NULL,
+	[rol] [varchar](50) NOT NULL,
+	[id_referencia] [int] NOT NULL,
+	[fecha_registro] [datetime] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[id_usuario] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+ALTER TABLE [dbo].[administradores] ADD  DEFAULT (getdate()) FOR [fecha_registro]
+GO
+ALTER TABLE [dbo].[becarios] ADD  DEFAULT (getdate()) FOR [fecha_registro]
+GO
+ALTER TABLE [dbo].[becarios] ADD  DEFAULT ((120)) FOR [horas_objetivo]
+GO
+ALTER TABLE [dbo].[becarios] ADD  DEFAULT ((0)) FOR [horas_realizadas]
+GO
+ALTER TABLE [dbo].[becarios] ADD  DEFAULT ((0)) FOR [total_consultas]
+GO
+ALTER TABLE [dbo].[consultas] ADD  DEFAULT (getdate()) FOR [fecha_creacion]
+GO
+ALTER TABLE [dbo].[lista_espera] ADD  DEFAULT (getdate()) FOR [fecha_registro]
+GO
+ALTER TABLE [dbo].[prestadores_foraneos] ADD  DEFAULT (getdate()) FOR [fecha_registro]
+GO
+ALTER TABLE [dbo].[prestadores_foraneos] ADD  DEFAULT ((120)) FOR [horas_objetivo]
+GO
+ALTER TABLE [dbo].[prestadores_foraneos] ADD  DEFAULT ((0)) FOR [horas_realizadas]
+GO
+ALTER TABLE [dbo].[prestadores_foraneos] ADD  DEFAULT ((0)) FOR [total_solicitudes]
+GO
+ALTER TABLE [dbo].[usuarios] ADD  DEFAULT (getdate()) FOR [fecha_registro]
+GO
+ALTER TABLE [dbo].[becarios]  WITH CHECK ADD FOREIGN KEY([id_administrador])
+REFERENCES [dbo].[administradores] ([id_administrador])
+GO
+ALTER TABLE [dbo].[consultas]  WITH CHECK ADD FOREIGN KEY([id_administrador])
+REFERENCES [dbo].[administradores] ([id_administrador])
+GO
+ALTER TABLE [dbo].[consultas]  WITH CHECK ADD FOREIGN KEY([id_becario])
+REFERENCES [dbo].[becarios] ([id_becario])
+GO
+ALTER TABLE [dbo].[consultas]  WITH CHECK ADD FOREIGN KEY([id_paciente])
+REFERENCES [dbo].[pacientes] ([id_paciente])
+GO
+ALTER TABLE [dbo].[consultas]  WITH CHECK ADD FOREIGN KEY([id_prestador])
+REFERENCES [dbo].[prestadores_foraneos] ([id_prestador])
+GO
+ALTER TABLE [dbo].[consultas]  WITH CHECK ADD FOREIGN KEY([id_psicologo])
+REFERENCES [dbo].[psicologos] ([id_psicologo])
+GO
+ALTER TABLE [dbo].[consultorios]  WITH CHECK ADD FOREIGN KEY([id_administrador])
+REFERENCES [dbo].[administradores] ([id_administrador])
+GO
+ALTER TABLE [dbo].[consultorios]  WITH CHECK ADD FOREIGN KEY([id_becario])
+REFERENCES [dbo].[becarios] ([id_becario])
+GO
+ALTER TABLE [dbo].[consultorios]  WITH CHECK ADD FOREIGN KEY([id_paciente])
+REFERENCES [dbo].[pacientes] ([id_paciente])
+GO
+ALTER TABLE [dbo].[consultorios]  WITH CHECK ADD FOREIGN KEY([id_prestador])
+REFERENCES [dbo].[prestadores_foraneos] ([id_prestador])
+GO
+ALTER TABLE [dbo].[lista_espera]  WITH CHECK ADD FOREIGN KEY([id_administrador])
+REFERENCES [dbo].[administradores] ([id_administrador])
+GO
+ALTER TABLE [dbo].[lista_espera]  WITH CHECK ADD FOREIGN KEY([id_paciente])
+REFERENCES [dbo].[pacientes] ([id_paciente])
+GO
+ALTER TABLE [dbo].[prestadores_foraneos]  WITH CHECK ADD FOREIGN KEY([id_administrador])
+REFERENCES [dbo].[administradores] ([id_administrador])
+GO
+ALTER TABLE [dbo].[psicologos]  WITH CHECK ADD FOREIGN KEY([id_administrador])
+REFERENCES [dbo].[administradores] ([id_administrador])
+GO
+ALTER TABLE [dbo].[consultas]  WITH CHECK ADD CHECK  (([estatus]='SIN CONTACTO' OR [estatus]='CERRADO' OR [estatus]='BAJA' OR [estatus]='ACTIVO'))
+GO
+ALTER TABLE [dbo].[lista_espera]  WITH CHECK ADD CHECK  (([estatus]='CANCELADA' OR [estatus]='ASIGNADA' OR [estatus]='EN ESPERA'))
+GO
+USE [master]
+GO
+ALTER DATABASE [consultorio_pscologia] SET  READ_WRITE 
+GO

@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 
 const BarraLateral: React.FC = () => {
   const navItems = [
-    { path: "/", label: "Inicio" },
+    { path: "/tablero", label: "Inicio" },
     { path: "/pacientes", label: "Pacientes" },
     { path: "/personal", label: "Gestión del Personal" },
     { path: "/calendario", label: "Calendario" },

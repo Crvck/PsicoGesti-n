@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.contenedor {
+  @apply row-span-2 col-start-10 row-start-1 contenedor-tablero;
+}

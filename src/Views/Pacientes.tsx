@@ -5,7 +5,7 @@ const Pacientes: React.FC = () => {
       <table className="w-full mt-4 bg-white rounded-lg shadow-md">
 
         <thead>
-          <tr className="bg-withe -700 text-black">
+          <tr className="bg-white -700 text-black">
             <th className="p-4">ID</th>
             <th className="p-4">Nombre</th>
             <th className="p-4">Correo</th>

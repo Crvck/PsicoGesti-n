@@ -1,0 +1,34 @@
+{
+  "name": "backendpsico",
+  "version": "1.0.0",
+  "main": "app/index.js",
+  "scripts": {
+    "dev": "nodemon --exec node app/index.js",
+    "type": "module"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supercharge/promise-pool": "^3.2.0",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mssql": "^11.0.1",
+    "mysql2": "^3.15.1",
+    "tedious": "^18.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "mon": "^0.0.8",
+    "node": "^22.18.0",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  },
+  "description": ""
+}

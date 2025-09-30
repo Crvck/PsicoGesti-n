@@ -1,0 +1,42 @@
+/*const { dbConnection, sql } = require("../config/db.js");
+const bcrypt = require("bcryptjs");
+
+// Controlador para hashear y actualizar contraseña de un usuario existente
+const hashAndUpdatePassword = async (req, res) => {
+  try {
+    const { correo, contrasena } = req.body;
+
+    if (!correo || !contrasena) {
+      return res.status(400).json({ message: "Correo y contraseña son requeridos" });
+    }
+
+    const hashedPassword = await bcrypt.hash(contrasena, 8);
+    console.log(`Hash generado para ${correo}:`, hashedPassword);
+
+    const pool = await dbConnection();
+    const result = await pool
+      .request()
+      .input("correo", sql.VarChar, correo.toLowerCase())
+      .input("contrasena", sql.VarChar, hashedPassword)
+      .query(`
+        UPDATE [consultorio_pscologia].[dbo].[usuarios]
+        SET contrasena = @contrasena
+        WHERE correo = @correo
+      `);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ message: `No se encontró un usuario con el correo ${correo}` });
+    }
+
+    console.log("Contraseña actualizada para:", correo);
+    res.status(200).json({
+      message: "Contraseña hasheada y actualizada exitosamente",
+      hash: hashedPassword,
+    });
+  } catch (err) {
+    console.error("Error al hashear y actualizar la contraseña:", err.message);
+    res.status(500).json({ message: "Error en el servidor al hashear la contraseña" });
+  }
+};
+
+module.exports = { hashAndUpdatePassword };*/

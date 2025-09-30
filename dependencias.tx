@@ -1,0 +1,2 @@
+npm i dotenv express bcrypt cookie-parser jsonwebtoken
+npm install -g nodemon (este es global mente )

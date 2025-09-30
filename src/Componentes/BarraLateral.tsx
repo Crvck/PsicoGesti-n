@@ -2,18 +2,19 @@ import { NavLink } from "react-router-dom";
 
 const BarraLateral: React.FC = () => {
   const navItems = [
-    { path: "/", label: "Inicio" },
+    { path: "/tablero", label: "Inicio" },
     { path: "/pacientes", label: "Pacientes" },
     { path: "/personal", label: "Gestión del Personal" },
     { path: "/calendario", label: "Calendario" },
     { path: "/lista-espera", label: "Lista de Espera" },
+    { path: "/Registros", label: "Registros" },
   ];
 
   return (
     <div className="h-screen bg-[#4EA6F5] p-4">
-      <aside className="w-64">
+      <aside className="w-50">
         <h1 className="text-2xl font-bold mb-6 text-white">
-          Consultorio Médico
+          CESUN Universidad 
         </h1>
         <nav>
           {navItems.map((item) => (

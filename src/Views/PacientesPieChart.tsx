@@ -51,7 +51,7 @@ const PacientesPieChart: React.FC = () => {
           </Pie>
           {/* 🟦 TOOLTIP: aparece al pasar el mouse */}
           <Tooltip />
-          {/* 🟧 LEYENDA: puedes cambiar la posición vertical o moverla a la derecha con `align="right"` */}
+          {/*  LEYENDA: puedes cambiar la posición vertical o moverla a la derecha con `align="right"` */}
           <Legend verticalAlign="bottom" height={36} />
         </PieChart>
       </ResponsiveContainer>

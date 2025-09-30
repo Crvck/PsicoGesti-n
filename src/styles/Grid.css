@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@contenedddor {
+  @apply row-span-2 col-start-10 row-start-1 contenedor-tablero;
+}
+@contenedor {
+  @apply bg-[#993333]/50 rounded-2xl shadow-md p-4 contenedor-tablero;
+}
+
+.card-personal h3 {
+  @apply text-lg font-semibold text-cesunAzul-900 mb-2;
+}

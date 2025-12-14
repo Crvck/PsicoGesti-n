@@ -1,0 +1,24 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "version": "1.0.0",
+    "title": "API Documentation",
+    "description": "Basic API documentation using Swagger"
+  },
+  "host": "localhost:3000",
+  "basePath": "/",
+  "schemes": ["http"],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root endpoint",
+        "description": "Returns a basic message to confirm the server is running.",
+        "responses": {
+          "200": {
+            "description": "Server is running"
+          }
+        }
+      }
+    }
+  }
+}

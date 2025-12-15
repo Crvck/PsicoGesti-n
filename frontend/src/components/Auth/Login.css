@@ -1,0 +1,71 @@
+.login-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--blud) 0%, var(--blub) 100%);
+}
+
+.login-card {
+  background: linear-gradient(180deg, var(--blud) 0%, rgba(28, 31, 36, 0.9) 100%);
+  border: 2px solid var(--blub);
+  border-radius: 15px;
+  padding: 40px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.login-title {
+  color: var(--grnb);
+  font-size: 2.5em;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.login-subtitle {
+  color: var(--white);
+  font-size: 1em;
+  opacity: 0.8;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.w-100 {
+  width: 100%;
+}
+
+.login-footer {
+  margin-top: 30px;
+  text-align: center;
+}
+
+.instructions {
+  display: flex;
+  justify-content: space-between;
+  color: var(--gray);
+  font-size: 0.9em;
+  margin-top: 20px;
+}
+
+.app-info {
+  margin-top: 30px;
+  text-align: center;
+  color: var(--gray);
+  font-size: 0.8em;
+  border-top: 1px solid var(--blub);
+  padding-top: 20px;
+}
+
+.app-info p {
+  margin: 5px 0;
+}

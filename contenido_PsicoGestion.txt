@@ -58,7 +58,8 @@ JWT_EXPIRES_IN=2h
 
 /backend\server.js:
 --------------------------------------------------------------------------------
-require('dotenv').config({ path: __dirname + '/.env' });
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
@@ -90,16 +91,18 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 
+
 sequelize.sync({ force: false })
     .then(() => {
-        console.log("Tablas sincronizadas (base de datos lista)");
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
         app.listen(PORT, () => {
           console.log(`Backend running on http://localhost:${PORT}`);
           console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
         });
     })
     .catch((error) => {
-        console.error("Error al sincronizar la base de datos:", error);
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
     });
 
 /backend\src\server.js:
@@ -116,7 +119,7 @@ app.use(cors({
 /backend\src\config\db.js:
 --------------------------------------------------------------------------------
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const { Sequelize } = require('sequelize');
 

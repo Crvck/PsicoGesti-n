@@ -1,4 +1,6 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+
 const { Sequelize } = require('sequelize');
 
 const sequelize = new Sequelize(
@@ -11,14 +13,12 @@ const sequelize = new Sequelize(
         dialect: 'mysql',
         logging: false,
         
-        // --- AQUÍ ESTÁ EL CAMBIO IMPORTANTE ---
         dialectOptions: {
             ssl: {
-                require: true, // Obliga a usar SSL
-                rejectUnauthorized: false // Importante para desarrollo en TiDB Cloud
+                require: true,
+                rejectUnauthorized: false
             }
         },
-        // --------------------------------------
 
         pool: {
             max: 5,
@@ -32,7 +32,7 @@ const sequelize = new Sequelize(
 async function testConnection() {
     try {
         await sequelize.authenticate();
-        console.log('✅ Conexión a base de datos con Sequelize establecida exitosamente.');
+        console.log('✅ Conexión a base de datos establecida exitosamente.');
     } catch (error) {
         console.error('❌ No se pudo conectar a la base de datos:', error);
     }

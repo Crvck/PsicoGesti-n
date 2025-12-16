@@ -2,10 +2,505 @@
 
 /.env:
 --------------------------------------------------------------------------------
+NODE_ENV=development
+PORT=3000
+
+# Database MySQL
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=psicogestion_db
+DB_USER=psicogestion_user
+DB_PASSWORD=SecurePass123!
+
+# JWT
+JWT_SECRET=cesun
+JWT_EXPIRES_IN=24h
+
+# Bcrypt
+BCRYPT_ROUNDS=12
+
+# App
+LOG_LEVEL=info
+
+/package.json:
+--------------------------------------------------------------------------------
+{
+  "name": "psico-gestion",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js",
+    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && nodemon server.js",
+    "dev:frontend": "cd frontend && npm run dev",
+    "start:backend": "cd backend && node server.js",
+    "start:frontend": "cd frontend && npm start",
+    "install:all": "npm install && cd frontend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "npm install"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.15.3",
+    "sequelize": "^6.37.7",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3",
+    "concurrently": "^8.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
+    "axios": "^1.6.0",
+    "react-icons": "^4.12.0",
+    "date-fns": "^2.30.0",
+    "react-scripts": "5.0.1"
+  }
+}
+
+/backend\server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+require('./src/models/userModel'); 
+
+const authRoutes = require('./src/routes/authRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+
+
+sequelize.sync({ force: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
+
+/backend\src\config\db.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+
+const { Sequelize } = require('sequelize');
+
+const sequelize = new Sequelize(
+    process.env.DB_NAME,
+    process.env.DB_USER,
+    process.env.DB_PASSWORD,
+    {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        dialect: 'mysql',
+        logging: false,
+        
+        dialectOptions: {
+            ssl: {
+                require: true,
+                rejectUnauthorized: false
+            }
+        },
+
+        pool: {
+            max: 5,
+            min: 0,
+            acquire: 30000,
+            idle: 10000
+        }
+    }
+);
+
+async function testConnection() {
+    try {
+        await sequelize.authenticate();
+        console.log('✅ Conexión a base de datos establecida exitosamente.');
+    } catch (error) {
+        console.error('❌ No se pudo conectar a la base de datos:', error);
+    }
+}
+
+testConnection();
+
+module.exports = sequelize;
+
+/backend\src\controllers\authController.js:
+--------------------------------------------------------------------------------
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+// Importamos el modelo de Sequelize
+const User = require('../models/userModel'); 
+
+class AuthController {
+    
+    static async login(req, res) {
+        try {
+            const { email, password } = req.body;
+
+            // 1. Validar entrada básica
+            if (!email || !password) {
+                return res.status(400).json({ message: 'Por favor ingrese email y contraseña' });
+            }
+
+            // 2. Buscar el usuario usando Sequelize
+            // En vez de SQL crudo, usamos el método findOne con una cláusula 'where'
+            const user = await User.findOne({ 
+                where: { email: email } 
+            });
+
+            // 3. Verificar si el usuario existe
+            if (!user) {
+                // 'user' será null si no se encuentra
+                return res.status(401).json({ message: 'Credenciales inválidas' });
+            }
+
+            // 4. Comparar la contraseña (user.password accede al campo del objeto Sequelize)
+            const isMatch = await bcrypt.compare(password, user.password);
+
+            if (!isMatch) {
+                return res.status(401).json({ message: 'Credenciales inválidas' });
+            }
+
+            // 5. Generar el JWT (usamos user.id y user.email del objeto Sequelize)
+            const payload = {
+                id: user.id,
+                email: user.email
+            };
+
+            const token = jwt.sign(
+                payload, 
+                process.env.JWT_SECRET, 
+                { expiresIn: process.env.JWT_EXPIRES_IN }
+            );
+
+            // 6. Responder (user.toJSON() limpia metadatos de Sequelize si es necesario)
+            res.json({
+                message: 'Login exitoso',
+                token: token,
+                user: { 
+                    id: user.id, 
+                    email: user.email,
+                    nombre: user.nombre, // Añade esto
+                    apellido: user.apellido, // Añade esto
+                    rol: user.rol, // Añade esto
+                    especialidad: user.especialidad, // Añade esto (si aplica)
+                    created_at: user.created_at // Cambia createdAt por created_at
+                }
+            });
+
+        } catch (error) {
+            console.error('Error en el login:', error);
+            res.status(500).json({ message: 'Error interno del servidor' });
+        }
+    }
+
+    static async getMe(req, res) {
+        try {
+            const userId = req.user.id;
+            
+            // Buscar usuario en la base de datos
+            const user = await User.findOne({ 
+                where: { id: userId },
+                attributes: ['id', 'email', 'nombre', 'apellido', 'rol', 'especialidad', 'created_at'] // Cambia 'createdAt' por 'created_at'
+            });
+            
+            if (!user) {
+                return res.status(404).json({ message: 'Usuario no encontrado' });
+            }
+            
+            res.json({
+                message: 'Usuario obtenido exitosamente',
+                user: user
+            });
+            
+        } catch (error) {
+            console.error('Error al obtener usuario:', error);
+            res.status(500).json({ message: 'Error interno del servidor' });
+        }
+    }
+}
+
+module.exports = AuthController
+
+/backend\src\controllers\m.js:
+--------------------------------------------------------------------------------
+
+
+/backend\src\doc\swagger.json:
+--------------------------------------------------------------------------------
+{
+  "swagger": "2.0",
+  "info": {
+    "version": "1.0.1",
+    "title": "API Documentation con Auth",
+    "description": "API documentation including Authentication endpoint"
+  },
+  "host": "localhost:3000",
+  "basePath": "/",
+  "schemes": [
+    "http"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root endpoint",
+        "description": "Returns a basic message to confirm the server is running.",
+        "responses": {
+          "200": {
+            "description": "Server is running"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "User Login",
+        "description": "Authenticate user with email and password to receive a JWT token.",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "description": "User credentials",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/LoginCredentials"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Login successful, token returned",
+            "schema": {
+              "$ref": "#/definitions/LoginResponse"
+            }
+          },
+          "400": {
+            "description": "Missing email or password"
+          },
+          "401": {
+            "description": "Invalid credentials"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "LoginCredentials": {
+      "type": "object",
+      "required": [
+        "email",
+        "password"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "example": "test@example.com"
+        },
+        "password": {
+          "type": "string",
+          "example": "123456"
+        }
+      }
+    },
+    "LoginResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "example": "Login exitoso"
+        },
+        "token": {
+          "type": "string",
+          "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        },
+        "user": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "example": 1 },
+            "email": { "type": "string", "example": "test@example.com" }
+          }
+        }
+      }
+    }
+  }
+}
+
+/backend\src\middlewares\authMiddleware.js:
+--------------------------------------------------------------------------------
+
+
+const jwt = require('jsonwebtoken');
+
+const verifyToken = (req, res, next) => {
+    // 1. Obtener el token del header "Authorization"
+    // Se espera el formato: "Bearer <token_aqui>"
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Obtener la segunda parte
+
+    if (!token) {
+        return res.status(403).json({ message: 'Acceso denegado. Token no proporcionado.' });
+    }
+
+    try {
+        // 2. Verificar el token usando la clave secreta
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // 3. Si es válido, guardamos los datos del usuario (payload) en la request
+        // para que las siguientes rutas puedan usarlo (ej. req.user.id)
+        req.user = decoded;
+        
+        // 4. Continuar con la siguiente función
+        next();
+    } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+             return res.status(401).json({ message: 'El token ha expirado.' });
+        }
+        return res.status(401).json({ message: 'Token inválido.' });
+    }
+};
+
+module.exports = verifyToken;
+
+/backend\src\models\userModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+const User = sequelize.define('User', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    email: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        unique: {
+            msg: 'El correo electrónico ya está registrado'
+        },
+        validate: {
+            isEmail: {
+                msg: 'Debe proporcionar un correo electrónico válido'
+            },
+            notEmpty: true
+        }
+    },
+    password: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        validate: {
+            notEmpty: true
+        }
+    },
+    nombre: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    apellido: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    telefono: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    rol: {
+        type: DataTypes.ENUM('coordinador', 'psicologo', 'becario'),
+        allowNull: false,
+        defaultValue: 'becario'
+    },
+    especialidad: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
+    fundacion_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    activo: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    }
+}, {
+    tableName: 'users',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true
+});
+
+module.exports = User;
+
+/backend\src\routes\authRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const AuthController = require('../controllers/authController');
+const verifyToken = require('../middlewares/authMiddleware');
+
+router.post('/login', AuthController.login);
+router.get('/me', verifyToken, AuthController.getMe);
+
+module.exports = router;
+
+/backend\src\services\index.js:
+--------------------------------------------------------------------------------
+// Services for business logic
+
+/frontend\.env:
+--------------------------------------------------------------------------------
 PORT=3001
 BROWSER=none
 
-/package.json:
+/frontend\package.json:
 --------------------------------------------------------------------------------
 {
   "name": "frontend-psico",
@@ -43,7 +538,7 @@ BROWSER=none
   }
 }
 
-/src\App.js:
+/frontend\src\App.js:
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -77,7 +572,7 @@ function App() {
 
 export default App;
 
-/src\index.js:
+/frontend\src\index.js:
 --------------------------------------------------------------------------------
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -92,7 +587,7 @@ root.render(
   </React.StrictMode>
 );
 
-/src\components\Auth\Login.js:
+/frontend\src\components\Auth\Login.js:
 --------------------------------------------------------------------------------
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -202,7 +697,7 @@ const Login = () => {
 
 export default Login;
 
-/src\components\Auth\PrivateRoute.js:
+/frontend\src\components\Auth\PrivateRoute.js:
 --------------------------------------------------------------------------------
 import React from 'react';
 import { Navigate } from 'react-router-dom';
@@ -231,7 +726,7 @@ const PrivateRoute = ({ children }) => {
 
 export default PrivateRoute;
 
-/src\components\Layout\MainLayout.js:
+/frontend\src\components\Layout\MainLayout.js:
 --------------------------------------------------------------------------------
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
@@ -324,7 +819,7 @@ const MainLayout = () => {
 
 export default MainLayout;
 
-/src\context\AuthContext.js:
+/frontend\src\context\AuthContext.js:
 --------------------------------------------------------------------------------
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
@@ -418,7 +913,7 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-/src\pages\CitasPage.js:
+/frontend\src\pages\CitasPage.js:
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiCalendar, FiClock, FiUser, FiPlus, FiEdit2 } from 'react-icons/fi';
@@ -675,7 +1170,7 @@ const CitasPage = () => {
 
 export default CitasPage;
 
-/src\pages\ConfiguracionPage.js:
+/frontend\src\pages\ConfiguracionPage.js:
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -1137,7 +1632,7 @@ const ConfiguracionPage = () => {
 
 export default ConfiguracionPage;
 
-/src\pages\DashboardPage.js:
+/frontend\src\pages\DashboardPage.js:
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -1386,7 +1881,7 @@ const DashboardPage = () => {
 
 export default DashboardPage;
 
-/src\pages\PacientesPage.js:
+/frontend\src\pages\PacientesPage.js:
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUserPlus, FiEdit, FiTrash2, FiFilter } from 'react-icons/fi';

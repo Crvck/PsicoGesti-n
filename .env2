@@ -12,9 +12,11 @@ DB_PASSWORD=KjtKgP3mGTMstAZV
 DB_NAME=consultorio_pscologia
 
 # Configuración de JWT
-JWT_SECRET=esta_es_una_clave_super_secreta_para_firmar_tokens
-JWT_EXPIRES_IN=2h
+JWT_SECRET=cesun
+JWT_EXPIRES_IN=24h
 
-JWT_SECRET=esta_es_una_clave_super_secreta_para_firmar_tokens
-# La duración puede ser '1h', '2d', '30m', etc.
-JWT_EXPIRES_IN=2h
+# Bcrypt
+BCRYPT_ROUNDS=12
+
+# App
+LOG_LEVEL=info

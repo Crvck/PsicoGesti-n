@@ -16,6 +16,7 @@ require('./src/models/citaModel');
 
 const authRoutes = require('./src/routes/authRoutes');
 const citaRoutes = require('./src/routes/citaRoutes'); // Añadir esta línea
+const roleRoutes = require('./src/routes/roleRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,6 +43,7 @@ app.use('/api/citas', citaRoutes);
 
 const userRoutes = require('./src/routes/userRoutes');
 app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
 
 // Sincronizar modelos
 sequelize.sync({ force: false, alter: false })

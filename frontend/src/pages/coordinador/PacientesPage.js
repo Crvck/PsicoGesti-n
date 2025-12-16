@@ -1,0 +1,632 @@
+import React, { useState, useEffect } from 'react';
+import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, FiPhone, FiMail, FiFileText } from 'react-icons/fi';
+import './coordinador.css';
+
+const CoordinadorPacientes = () => {
+  const [pacientes, setPacientes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterEstado, setFilterEstado] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState('nuevo');
+  const [formData, setFormData] = useState({
+    nombre: '',
+    apellido: '',
+    fecha_nacimiento: '',
+    genero: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    es_estudiante: false,
+    matricula: '',
+    institucion_educativa: '',
+    contacto_emergencia_nombre: '',
+    contacto_emergencia_telefono: '',
+    motivo_consulta: '',
+    antecedentes: '',
+    activo: true,
+    estado: 'activo'
+  });
+
+  useEffect(() => {
+    fetchPacientes();
+  }, []);
+
+  const fetchPacientes = async () => {
+    try {
+      // Simulación de datos
+      setTimeout(() => {
+        setPacientes([
+          {
+            id: 1,
+            nombre: 'Carlos',
+            apellido: 'Gómez',
+            fecha_nacimiento: '1998-05-15',
+            genero: 'masculino',
+            telefono: '555-1234',
+            email: 'carlos@gmail.com',
+            es_estudiante: true,
+            matricula: 'A123456',
+            institucion_educativa: 'Universidad Nacional',
+            motivo_consulta: 'Ansiedad académica',
+            antecedentes: 'No significativos',
+            activo: true,
+            estado: 'activo',
+            psicologo_asignado: 'Lic. Luis Fernández',
+            becario_asignado: 'Juan Pérez',
+            fecha_ingreso: '2023-10-15',
+            sesiones_completadas: 8
+          },
+          {
+            id: 2,
+            nombre: 'Mariana',
+            apellido: 'López',
+            fecha_nacimiento: '1995-08-22',
+            genero: 'femenino',
+            telefono: '555-5678',
+            email: 'mariana@hotmail.com',
+            es_estudiante: false,
+            motivo_consulta: 'Estrés laboral',
+            antecedentes: 'Antecedentes familiares de ansiedad',
+            activo: true,
+            estado: 'activo',
+            psicologo_asignado: 'Lic. Luis Fernández',
+            becario_asignado: 'Sofía Ramírez',
+            fecha_ingreso: '2023-09-20',
+            sesiones_completadas: 12
+          },
+          {
+            id: 3,
+            nombre: 'Roberto',
+            apellido: 'Sánchez',
+            fecha_nacimiento: '2000-02-10',
+            genero: 'masculino',
+            telefono: '555-9012',
+            email: 'roberto@yahoo.com',
+            es_estudiante: true,
+            matricula: 'B789012',
+            institucion_educativa: 'Instituto Tecnológico',
+            motivo_consulta: 'Problemas de adaptación',
+            antecedentes: 'No significativos',
+            activo: true,
+            estado: 'activo',
+            psicologo_asignado: 'Lic. Luis Fernández',
+            becario_asignado: null,
+            fecha_ingreso: '2023-11-05',
+            sesiones_completadas: 5
+          },
+          {
+            id: 4,
+            nombre: 'Ana',
+            apellido: 'Rodríguez',
+            fecha_nacimiento: '1988-03-30',
+            genero: 'femenino',
+            telefono: '555-3456',
+            email: 'ana@email.com',
+            motivo_consulta: 'Depresión',
+            antecedentes: 'Tratamiento previo en 2020',
+            activo: false,
+            estado: 'alta_terapeutica',
+            psicologo_asignado: 'Lic. Luis Fernández',
+            becario_asignado: 'Juan Pérez',
+            fecha_ingreso: '2023-06-10',
+            fecha_alta: '2024-01-05',
+            sesiones_completadas: 20
+          }
+        ]);
+        setLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error al obtener pacientes:', error);
+      setLoading(false);
+    }
+  };
+
+  const filteredPacientes = pacientes.filter(paciente => {
+    const matchesSearch = 
+      `${paciente.nombre} ${paciente.apellido}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      paciente.motivo_consulta.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesEstado = !filterEstado || paciente.estado === filterEstado;
+    
+    return matchesSearch && matchesEstado;
+  });
+
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData({
+      ...formData,
+      [name]: type === 'checkbox' ? checked : value
+    });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    if (modalType === 'nuevo') {
+      const nuevoPaciente = {
+        id: pacientes.length + 1,
+        ...formData,
+        fecha_ingreso: new Date().toISOString().split('T')[0],
+        psicologo_asignado: 'Por asignar',
+        becario_asignado: null,
+        sesiones_completadas: 0
+      };
+      setPacientes([...pacientes, nuevoPaciente]);
+      alert('Paciente creado exitosamente');
+    } else {
+      // Editar paciente
+      setPacientes(pacientes.map(p => 
+        p.id === formData.id ? { ...p, ...formData } : p
+      ));
+      alert('Paciente actualizado exitosamente');
+    }
+    
+    setShowModal(false);
+    resetForm();
+  };
+
+  const editarPaciente = (paciente) => {
+    setFormData(paciente);
+    setModalType('editar');
+    setShowModal(true);
+  };
+
+  const getEstadoLabel = (estado) => {
+    switch (estado) {
+      case 'activo':
+        return { text: 'Activo', color: 'success' };
+      case 'alta_terapeutica':
+        return { text: 'Alta Terapéutica', color: 'primary' };
+      case 'abandono':
+        return { text: 'Abandono', color: 'danger' };
+      case 'traslado':
+        return { text: 'Traslado', color: 'warning' };
+      default:
+        return { text: estado, color: 'info' };
+    }
+  };
+
+  const calcularEdad = (fechaNacimiento) => {
+    if (!fechaNacimiento) return 'N/A';
+    const hoy = new Date();
+    const nacimiento = new Date(fechaNacimiento);
+    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+    const mes = hoy.getMonth() - nacimiento.getMonth();
+    if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
+      edad--;
+    }
+    return edad;
+  };
+
+  const resetForm = () => {
+    setFormData({
+      nombre: '',
+      apellido: '',
+      fecha_nacimiento: '',
+      genero: '',
+      telefono: '',
+      email: '',
+      direccion: '',
+      es_estudiante: false,
+      matricula: '',
+      institucion_educativa: '',
+      contacto_emergencia_nombre: '',
+      contacto_emergencia_telefono: '',
+      motivo_consulta: '',
+      antecedentes: '',
+      activo: true,
+      estado: 'activo'
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <div className="loading-text">Cargando pacientes...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="configuracion-page">
+      <div className="page-header">
+        <div>
+          <h1>Gestión de Pacientes</h1>
+          <p>Administración de pacientes del sistema</p>
+        </div>
+        <button 
+          className="btn-primary"
+          onClick={() => {
+            resetForm();
+            setModalType('nuevo');
+            setShowModal(true);
+          }}
+        >
+          <FiUserPlus /> Nuevo Paciente
+        </button>
+      </div>
+
+      {/* Filtros y Búsqueda */}
+      <div className="filters-container mb-20">
+        <div className="search-box">
+          <FiSearch />
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Buscar paciente por nombre, email o motivo de consulta..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        
+        <div className="filter-buttons">
+          <select 
+            value={filterEstado} 
+            onChange={(e) => setFilterEstado(e.target.value)}
+            className="select-field"
+            style={{ width: '200px' }}
+          >
+            <option value="">Todos los estados</option>
+            <option value="activo">Activos</option>
+            <option value="alta_terapeutica">Altas Terapéuticas</option>
+            <option value="abandono">Abandonos</option>
+            <option value="traslado">Traslados</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Tabla de Pacientes */}
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Paciente</th>
+              <th>Contacto</th>
+              <th>Edad</th>
+              <th>Motivo</th>
+              <th>Asignaciones</th>
+              <th>Sesiones</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPacientes.map((paciente) => {
+              const estadoInfo = getEstadoLabel(paciente.estado);
+              const edad = calcularEdad(paciente.fecha_nacimiento);
+              
+              return (
+                <tr key={paciente.id}>
+                  <td>
+                    <div className="flex-row align-center gap-10">
+                      <div className="avatar">
+                        {paciente.nombre[0]}{paciente.apellido[0]}
+                      </div>
+                      <div>
+                        <div className="font-bold">{paciente.nombre} {paciente.apellido}</div>
+                        <div className="text-small">
+                          {paciente.es_estudiante ? 'Estudiante' : 'No estudiante'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div>{paciente.email}</div>
+                    <div className="text-small">{paciente.telefono}</div>
+                  </td>
+                  <td>{edad} años</td>
+                  <td>
+                    <div className="diagnostico-tag">
+                      {paciente.motivo_consulta}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="text-small">{paciente.psicologo_asignado}</div>
+                    <div className="text-small">
+                      {paciente.becario_asignado || 'Sin becario'}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="font-bold">{paciente.sesiones_completadas}</div>
+                    <div className="text-small">sesiones</div>
+                  </td>
+                  <td>
+                    <span className={`badge badge-${estadoInfo.color}`}>
+                      {estadoInfo.text}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="flex-row gap-5">
+                      <button 
+                        className="btn-text"
+                        onClick={() => editarPaciente(paciente)}
+                        title="Editar"
+                      >
+                        <FiEdit2 />
+                      </button>
+                      <button 
+                        className="btn-text"
+                        title="Ver expediente"
+                      >
+                        <FiFileText />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Resumen */}
+      <div className="grid-3 mt-20">
+        <div className="card">
+          <h4>Resumen de Pacientes</h4>
+          <div className="mt-10">
+            <p>Total: {pacientes.length}</p>
+            <p>Activos: {pacientes.filter(p => p.activo).length}</p>
+            <p>Estudiantes: {pacientes.filter(p => p.es_estudiante).length}</p>
+            <p>Con becario: {pacientes.filter(p => p.becario_asignado).length}</p>
+          </div>
+        </div>
+        
+        <div className="card">
+          <h4>Estadísticas</h4>
+          <div className="mt-10">
+            <p>Sesiones totales: {pacientes.reduce((sum, p) => sum + p.sesiones_completadas, 0)}</p>
+            <p>Promedio por paciente: {
+              Math.round(pacientes.reduce((sum, p) => sum + p.sesiones_completadas, 0) / pacientes.length)
+            }</p>
+            <p>Altas este mes: {pacientes.filter(p => p.estado === 'alta_terapeutica').length}</p>
+          </div>
+        </div>
+        
+        <div className="card">
+          <h4>Acciones</h4>
+          <div className="mt-10 flex-col gap-10">
+            <button className="btn-primary w-100">
+              Asignar Pacientes
+            </button>
+            <button className="btn-secondary w-100">
+              Exportar Listado
+            </button>
+            <button className="btn-warning w-100">
+              Revisar Altas
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal de Paciente */}
+      {showModal && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-large">
+            <div className="modal-header">
+              <h3>{modalType === 'nuevo' ? 'Nuevo Paciente' : 'Editar Paciente'}</h3>
+              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+            </div>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Nombre</label>
+                  <input
+                    type="text"
+                    name="nombre"
+                    value={formData.nombre}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    required
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Apellido</label>
+                  <input
+                    type="text"
+                    name="apellido"
+                    value={formData.apellido}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    required
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Fecha de nacimiento</label>
+                  <input
+                    type="date"
+                    name="fecha_nacimiento"
+                    value={formData.fecha_nacimiento}
+                    onChange={handleInputChange}
+                    className="input-field"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Género</label>
+                  <select
+                    name="genero"
+                    value={formData.genero}
+                    onChange={handleInputChange}
+                    className="select-field"
+                  >
+                    <option value="">Seleccionar...</option>
+                    <option value="masculino">Masculino</option>
+                    <option value="femenino">Femenino</option>
+                    <option value="otro">Otro</option>
+                    <option value="prefiero_no_decir">Prefiero no decir</option>
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label>Teléfono</label>
+                  <input
+                    type="tel"
+                    name="telefono"
+                    value={formData.telefono}
+                    onChange={handleInputChange}
+                    className="input-field"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="input-field"
+                  />
+                </div>
+                
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Dirección</label>
+                  <input
+                    type="text"
+                    name="direccion"
+                    value={formData.direccion}
+                    onChange={handleInputChange}
+                    className="input-field"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label className="flex-row align-center gap-10">
+                    <input
+                      type="checkbox"
+                      name="es_estudiante"
+                      checked={formData.es_estudiante}
+                      onChange={handleInputChange}
+                    />
+                    <span>Es estudiante</span>
+                  </label>
+                </div>
+                
+                {formData.es_estudiante && (
+                  <>
+                    <div className="form-group">
+                      <label>Matrícula</label>
+                      <input
+                        type="text"
+                        name="matricula"
+                        value={formData.matricula}
+                        onChange={handleInputChange}
+                        className="input-field"
+                      />
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Institución educativa</label>
+                      <input
+                        type="text"
+                        name="institucion_educativa"
+                        value={formData.institucion_educativa}
+                        onChange={handleInputChange}
+                        className="input-field"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                <div className="form-group">
+                  <label>Contacto de emergencia</label>
+                  <input
+                    type="text"
+                    name="contacto_emergencia_nombre"
+                    value={formData.contacto_emergencia_nombre}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    placeholder="Nombre"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Teléfono emergencia</label>
+                  <input
+                    type="tel"
+                    name="contacto_emergencia_telefono"
+                    value={formData.contacto_emergencia_telefono}
+                    onChange={handleInputChange}
+                    className="input-field"
+                    placeholder="Teléfono"
+                  />
+                </div>
+                
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Motivo de consulta</label>
+                  <textarea
+                    name="motivo_consulta"
+                    value={formData.motivo_consulta}
+                    onChange={handleInputChange}
+                    className="textarea-field"
+                    rows="3"
+                    required
+                  />
+                </div>
+                
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Antecedentes</label>
+                  <textarea
+                    name="antecedentes"
+                    value={formData.antecedentes}
+                    onChange={handleInputChange}
+                    className="textarea-field"
+                    rows="3"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Estado</label>
+                  <select
+                    name="estado"
+                    value={formData.estado}
+                    onChange={handleInputChange}
+                    className="select-field"
+                  >
+                    <option value="activo">Activo</option>
+                    <option value="alta_terapeutica">Alta Terapéutica</option>
+                    <option value="abandono">Abandono</option>
+                    <option value="traslado">Traslado</option>
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label className="flex-row align-center gap-10">
+                    <input
+                      type="checkbox"
+                      name="activo"
+                      checked={formData.activo}
+                      onChange={handleInputChange}
+                    />
+                    <span>Paciente activo</span>
+                  </label>
+                </div>
+              </div>
+              
+              <div className="modal-footer">
+                <button type="submit" className="btn-primary">
+                  {modalType === 'nuevo' ? 'Crear Paciente' : 'Guardar Cambios'}
+                </button>
+                <button 
+                  type="button" 
+                  className="btn-danger"
+                  onClick={() => setShowModal(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default CoordinadorPacientes;

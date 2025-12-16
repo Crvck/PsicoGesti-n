@@ -50,6 +50,23 @@ export const AuthProvider = ({ children }) => {
       setToken(token);
       setUser(user);
       
+      // Redirigir según el rol después del login exitoso
+      setTimeout(() => {
+        switch (user.rol) {
+          case 'becario':
+            window.location.href = '/becario/dashboard';
+            break;
+          case 'psicologo':
+            window.location.href = '/psicologo/dashboard';
+            break;
+          case 'coordinador':
+            window.location.href = '/coordinador/dashboard';
+            break;
+          default:
+            window.location.href = '/dashboard';
+        }
+      }, 100);
+      
       return { success: true };
     } catch (error) {
       console.error('Login error:', error);

@@ -1,13 +1,9 @@
 -- =============================================
 -- BASE DE DATOS: PsicoGestion
 -- =============================================
-
 CREATE DATABASE IF NOT EXISTS psicogestion_db;
 USE psicogestion_db;
 
--- =============================================
--- TABLA DE FUNDACIONES/INSTITUCIONES
--- =============================================
 CREATE TABLE fundaciones (
     id INT PRIMARY KEY AUTO_INCREMENT,
     nombre VARCHAR(200) NOT NULL,
@@ -18,9 +14,6 @@ CREATE TABLE fundaciones (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- =============================================
--- TABLA DE USUARIOS (Becarios/Psicólogos/Coordinadores)
--- =============================================
 CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -39,9 +32,6 @@ CREATE TABLE users (
 
 
 
--- =============================================
--- TABLA DE PACIENTES
--- =============================================
 CREATE TABLE pacientes (
     id INT PRIMARY KEY AUTO_INCREMENT,
     nombre VARCHAR(100) NOT NULL,
@@ -64,9 +54,6 @@ CREATE TABLE pacientes (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- =============================================
--- TABLA DE ASIGNACIONES (Psicólogo-Becario-Paciente)
--- =============================================
 CREATE TABLE asignaciones (
     id INT PRIMARY KEY AUTO_INCREMENT,
     psicologo_id INT NOT NULL,
@@ -82,9 +69,6 @@ CREATE TABLE asignaciones (
     UNIQUE KEY asignacion_activa (paciente_id, psicologo_id, fecha_fin)
 );
 
--- =============================================
--- TABLA DE CITAS
--- =============================================
 CREATE TABLE citas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     paciente_id INT NOT NULL,
@@ -107,9 +91,6 @@ CREATE TABLE citas (
     INDEX idx_estado (estado)
 );
 
--- =============================================
--- TABLA DE SESIONES/EXPEDIENTE CLÍNICO
--- =============================================
 CREATE TABLE sesiones (
     id INT PRIMARY KEY AUTO_INCREMENT,
     cita_id INT NOT NULL,
@@ -132,9 +113,6 @@ CREATE TABLE sesiones (
     INDEX idx_paciente_fecha (paciente_id, fecha)
 );
 
--- =============================================
--- TABLA DE NOTIFICACIONES
--- =============================================
 CREATE TABLE notificaciones (
     id INT PRIMARY KEY AUTO_INCREMENT,
     usuario_id INT NOT NULL,
@@ -149,9 +127,6 @@ CREATE TABLE notificaciones (
     INDEX idx_usuario_leida (usuario_id, leida)
 );
 
--- =============================================
--- TABLA DE ALTAS
--- =============================================
 CREATE TABLE altas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     paciente_id INT NOT NULL,
@@ -165,9 +140,6 @@ CREATE TABLE altas (
     FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- =============================================
--- TABLA DE REPORTES/ESTADÍSTICAS
--- =============================================
 CREATE TABLE reportes (
     id INT PRIMARY KEY AUTO_INCREMENT,
     usuario_id INT,
@@ -181,9 +153,6 @@ CREATE TABLE reportes (
     FOREIGN KEY (generado_por) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- =============================================
--- TABLA DE OBSERVACIONES DIARIAS (BECARIOS)
--- =============================================
 CREATE TABLE observaciones_becarios (
     id INT PRIMARY KEY AUTO_INCREMENT,
     becario_id INT NOT NULL,
@@ -197,9 +166,6 @@ CREATE TABLE observaciones_becarios (
     UNIQUE KEY idx_becario_fecha (becario_id, fecha)
 );
 
--- =============================================
--- TABLA DE DISPONIBILIDAD (PSICÓLOGOS/BECARIOS)
--- =============================================
 CREATE TABLE disponibilidad (
     id INT PRIMARY KEY AUTO_INCREMENT,
     usuario_id INT NOT NULL,
@@ -221,51 +187,98 @@ CREATE TABLE IF NOT EXISTS logs_sistema (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- =============================================
--- INSERCIÓN DE DATOS DE EJEMPLO
--- =============================================
+CREATE TABLE IF NOT EXISTS permisos (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    descripcion TEXT,
+    categoria VARCHAR(50)
+);
 
--- Insertar algunas fundaciones
+CREATE TABLE IF NOT EXISTS usuario_permisos (
+    usuario_id INT NOT NULL,
+    permiso_id INT NOT NULL,
+    concedido BOOLEAN DEFAULT TRUE,
+    PRIMARY KEY (usuario_id, permiso_id),
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (permiso_id) REFERENCES permisos(id) ON DELETE CASCADE
+);
+
+INSERT INTO permisos (nombre, descripcion, categoria) VALUES
+-- Coordinación
+('ver_panel_coordinacion', 'Ver panel de coordinación', 'coordinacion'),
+('gestionar_usuarios', 'Gestionar usuarios (alta/baja/edición)', 'coordinacion'),
+('gestionar_pacientes', 'Gestionar pacientes', 'coordinacion'),
+('gestionar_asignaciones', 'Asignar pacientes a psicólogos/becarios', 'coordinacion'),
+('ver_agenda_global', 'Ver agenda global completa', 'coordinacion'),
+('generar_reportes', 'Generar reportes estadísticos', 'coordinacion'),
+('gestionar_altas', 'Gestionar altas de pacientes', 'coordinacion'),
+
+-- Psicólogos
+('ver_panel_psicologo', 'Ver panel principal de psicólogo', 'psicologo'),
+('ver_mis_pacientes', 'Ver pacientes asignados', 'psicologo'),
+('ver_expedientes', 'Ver expedientes de pacientes', 'psicologo'),
+('registrar_sesiones', 'Registrar contenido de sesiones', 'psicologo'),
+('gestionar_mis_citas', 'Gestionar mis propias citas', 'psicologo'),
+('supervisar_becarios', 'Supervisar becarios asignados', 'psicologo'),
+
+-- Becarios
+('ver_panel_becario', 'Ver panel principal de becario', 'becario'),
+('ver_citas_dia', 'Ver citas del día', 'becario'),
+('gestionar_citas_asignadas', 'Gestionar citas asignadas', 'becario'),
+('ver_pacientes_asignados', 'Ver pacientes asignados', 'becario'),
+('registrar_observaciones', 'Registrar observaciones de sesiones', 'becario'),
+('ver_notificaciones', 'Ver notificaciones del sistema', 'becario');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id)
+SELECT u.id, p.id 
+FROM users u, permisos p 
+WHERE u.rol = 'coordinador';
+
+-- Psicólogo: permisos de psicólogo + algunos de coordinación
+INSERT INTO usuario_permisos (usuario_id, permiso_id)
+SELECT u.id, p.id 
+FROM users u, permisos p 
+WHERE u.rol = 'psicologo' 
+AND p.categoria IN ('psicologo');
+
+-- Becario: solo permisos de becario
+INSERT INTO usuario_permisos (usuario_id, permiso_id)
+SELECT u.id, p.id 
+FROM users u, permisos p 
+WHERE u.rol = 'becario' 
+AND p.categoria IN ('becario');
+
 INSERT INTO fundaciones (nombre, telefono, contacto_nombre) VALUES
 ('Fundación Salud Mental Comunitaria', '555-1234', 'Dra. María González'),
 ('Asociación de Psicología Aplicada', '555-5678', 'Lic. Carlos Rodríguez');
 
--- Insertar usuarios de ejemplo (coordinador, psicólogo, becario)
--- Las contraseñas están hasheadas con bcrypt: 'cesun'
 INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialidad, fundacion_id) VALUES
 ('coordinador@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ana', 'Martínez', '555-1111', 'coordinador', 'Coordinación Clínica', 1),
 ('psicologo1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Luis', 'Fernández', '555-2222', 'psicologo', 'Terapia Cognitivo-Conductual', 1),
 ('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
-('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2);
+('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
+('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
 
--- Insertar pacientes de ejemplo
 INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email, es_estudiante, matricula, institucion_educativa, motivo_consulta) VALUES
 ('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com', TRUE, 'A123456', 'Universidad Nacional', 'Ansiedad académica'),
 ('Mariana', 'López', '1995-08-22', 'femenino', '555-0022', 'mariana@hotmail.com', FALSE, NULL, NULL, 'Estrés laboral'),
 ('Roberto', 'Sánchez', '2000-02-10', 'masculino', '555-0033', 'roberto@yahoo.com', TRUE, 'B789012', 'Instituto Tecnológico', 'Problemas de adaptación');
 
--- Insertar asignaciones
 INSERT INTO asignaciones (psicologo_id, becario_id, paciente_id, fecha_asignacion) VALUES
 (2, 3, 1, CURDATE()),
 (2, 4, 2, CURDATE()),
 (2, NULL, 3, CURDATE());
 
--- Insertar citas de ejemplo
 INSERT INTO citas (paciente_id, psicologo_id, becario_id, fecha, hora, estado, tipo_consulta) VALUES
 (1, 2, 3, DATE_ADD(CURDATE(), INTERVAL 1 DAY), '10:00:00', 'programada', 'presencial'),
 (2, 2, 4, DATE_ADD(CURDATE(), INTERVAL 2 DAY), '11:00:00', 'confirmada', 'virtual'),
 (3, 2, NULL, DATE_ADD(CURDATE(), INTERVAL 3 DAY), '09:00:00', 'programada', 'presencial');
 
--- Insertar notificaciones de ejemplo
 INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje) VALUES
 (3, 'cita_nueva', 'Nueva cita asignada', 'Tienes una nueva cita con Carlos Gómez para mañana a las 10:00 AM'),
 (4, 'cita_modificada', 'Cita modificada', 'La cita con Mariana López ha sido cambiada a modalidad virtual');
 
--- =============================================
--- VISTAS ÚTILES PARA EL SISTEMA
--- =============================================
-
--- Vista para citas del día (para becarios)
 CREATE OR REPLACE VIEW vista_citas_hoy AS
 SELECT 
     c.id,
@@ -281,7 +294,6 @@ WHERE c.fecha = CURDATE()
 AND c.estado IN ('programada', 'confirmada')
 ORDER BY c.hora;
 
--- Vista para pacientes asignados a cada becario/psicólogo
 CREATE OR REPLACE VIEW vista_pacientes_asignados AS
 SELECT 
     a.id,
@@ -298,7 +310,6 @@ JOIN users u ON a.psicologo_id = u.id
 LEFT JOIN users ub ON a.becario_id = ub.id
 WHERE p.activo = TRUE;
 
--- Vista para resumen de coordinación
 CREATE OR REPLACE VIEW vista_resumen_coordinacion AS
 SELECT 
     (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) AS becarios_activos,
@@ -308,7 +319,6 @@ SELECT
     (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') AS citas_completadas_hoy,
     (SELECT COUNT(*) FROM altas WHERE MONTH(fecha_alta) = MONTH(CURDATE())) AS altas_mes_actual;
 
--- Vista para historial de sesiones por paciente
 CREATE OR REPLACE VIEW vista_historial_sesiones AS
 SELECT 
     s.id,
@@ -324,11 +334,6 @@ JOIN pacientes p ON s.paciente_id = p.id
 JOIN users u ON s.psicologo_id = u.id
 ORDER BY s.fecha DESC;
 
--- =============================================
--- PROCEDIMIENTOS ALMACENADOS ÚTILES
--- =============================================
-
--- Procedimiento para obtener citas por fecha y becario
 DELIMITER $$
 CREATE PROCEDURE sp_obtener_citas_por_fecha_becario(
     IN p_fecha DATE,
@@ -347,7 +352,6 @@ BEGIN
 END$$
 DELIMITER ;
 
--- Procedimiento para generar reporte mensual
 DELIMITER $$
 CREATE PROCEDURE sp_generar_reporte_mensual(
     IN p_mes INT,
@@ -371,11 +375,6 @@ BEGIN
 END$$
 DELIMITER ;
 
--- =============================================
--- TRIGGERS PARA AUTOMATIZACIÓN
--- =============================================
-
--- Trigger para actualizar estado del paciente cuando se da de alta
 DELIMITER $$
 CREATE TRIGGER tr_after_insert_alta
 AFTER INSERT ON altas
@@ -387,7 +386,6 @@ BEGIN
         updated_at = NOW()
     WHERE id = NEW.paciente_id;
     
-    -- Cancelar citas futuras del paciente
     UPDATE citas 
     SET estado = 'cancelada',
         updated_at = NOW()
@@ -397,14 +395,12 @@ BEGIN
 END$$
 DELIMITER ;
 
--- Trigger para notificar cambios en citas
 DELIMITER $$
 CREATE TRIGGER tr_after_update_cita
 AFTER UPDATE ON citas
 FOR EACH ROW
 BEGIN
     IF OLD.fecha != NEW.fecha OR OLD.hora != NEW.hora OR OLD.tipo_consulta != NEW.tipo_consulta THEN
-        -- Notificar al paciente (si tiene email)
         IF (SELECT email FROM pacientes WHERE id = NEW.paciente_id) IS NOT NULL THEN
             INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje)
             SELECT 
@@ -420,21 +416,12 @@ BEGIN
 END$$
 DELIMITER ;
 
--- =============================================
--- ÍNDICES ADICIONALES PARA OPTIMIZACIÓN
--- =============================================
-
 CREATE INDEX idx_pacientes_activo ON pacientes(activo);
 CREATE INDEX idx_citas_psicologo_fecha ON citas(psicologo_id, fecha, estado);
 CREATE INDEX idx_sesiones_paciente ON sesiones(paciente_id);
 CREATE INDEX idx_asignaciones_psicologo ON asignaciones(psicologo_id, fecha_fin);
 CREATE INDEX idx_users_rol_activo ON users(rol, activo);
 
--- =============================================
--- PERMISOS DE USUARIO (OPCIONAL)
--- =============================================
-
--- Crear usuario para la aplicación (ajusta la contraseña)
 CREATE USER IF NOT EXISTS 'psicogestion_user'@'localhost' IDENTIFIED BY 'SecurePass123!';
 GRANT SELECT, INSERT, UPDATE, DELETE ON psicogestion_db.* TO 'psicogestion_user'@'localhost';
 FLUSH PRIVILEGES;

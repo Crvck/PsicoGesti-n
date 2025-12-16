@@ -82,7 +82,7 @@ if __name__ == "__main__":
     ARCHIVOS_MANUAL = ['.py', '.json', '.yaml', '.yml','.env', '.js', '.jsx']
     
     # Configuración para modo AUTOMÁTICO
-    ARCHIVOS_A_OMITIR = ["instruments.json", "coder.py", "package-lock.json"]
+    ARCHIVOS_A_OMITIR = ["instruments.json", "coder.py", "package-lock.json",".sql"]
     EXTENSIONES_A_OMITIR = ['.log', '.pyc', '.tmp', '.bak']
     DIRECTORIOS_A_OMITIR = ['__pycache__', 'logs', '.git', 'venv', 'env', '.idea', '.vscode', 'node_modules', 'images', 'scripts']
     

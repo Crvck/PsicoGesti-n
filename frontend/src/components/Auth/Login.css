@@ -1,15 +1,75 @@
-.login-container {
+:root {
+  /* Colores base - Manteniendo nombres originales */
+  --grnb: #29ce9b;   /* Verde azulado oscuro */
+  --blub: #2c3138;   /* Azul claro */
+  --blud: #1B1E23;   /* Azul oscuro */
+  --white: #ffffff;
+  --gray-light: #f8f9fa;
+  --gray: #6c757d;
+  --gray-dark: #343a40;
+  
+  /* Colores adicionales */
+  --blu: #1F85BA;      /* GRNB - Azul */
+  --bludd: #1B6DA7;
+  --blub-dark: #131923; /* BLUD - Azul más oscuro */
+  --blul: #1b2937;     /* BLUL - Azul oscuro */
+  --grnd: #37B69C;     /* GRND - Verde */
+  --grnl: #30ff96;     /* GRNL - Verde claro */
+  --rr: #fa3144;       /* RR - Rojo */
+  --yy: #ffa631;       /* YY - Amarillo */
+  --rl: #ff5363;       /* RL - Rojo claro */
+  --yl: #ffdd55;       /* YL - Amarillo claro */
+  --wt: #ffffff;       /* WT - Blanco */
+}
+
+.login-page {
+  position: relative;
   width: 100vw;
   height: 100vh;
+  overflow: hidden;
+}
+
+.background-video {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.background-video::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg, 
+    rgba(28, 31, 36, 0.8) 0%, 
+    rgba(28, 31, 36, 0.6) 100%
+  );
+}
+
+.login-container {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--blud) 0%, var(--blub) 100%);
+  position: relative;
+  z-index: 1;
 }
 
 .login-card {
-  background: linear-gradient(180deg, var(--blud) 0%, rgba(28, 31, 36, 0.9) 100%);
-  border: 2px solid var(--blub);
+  background: linear-gradient(180deg, 
+    var(--blud) 0%, 
+    var(--blub) 100%);
+  border: 2px solid var(--blu);
   border-radius: 15px;
   padding: 40px;
   width: 100%;
@@ -23,25 +83,88 @@
   margin-bottom: 30px;
 }
 
-.login-title {
-  color: var(--grnb);
-  font-size: 2.5em;
-  margin-bottom: 10px;
-  font-weight: bold;
+.logo-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.login-logo {
+  max-width: 250px;
+  height: auto;
+  object-fit: contain;
 }
 
 .login-subtitle {
-  color: var(--white);
-  font-size: 1em;
-  opacity: 0.8;
+  color: var(--blu);
+  font-size: 1.1em;
+  margin-top: 10px;
+  font-weight: 300;
+  letter-spacing: 1px;
 }
 
 .form-group {
   margin-bottom: 20px;
 }
 
+.input-field {
+  width: 100%;
+  padding: 12px 15px;
+  background: var(--blub);
+  border: 1px solid var(--blud);
+  border-radius: 8px;
+  color: var(--white);
+  font-size: 1em;
+  transition: all 0.3s ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--blu);
+}
+
+.input-field::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
 .w-100 {
   width: 100%;
+}
+
+.btn-primary-login {
+  background: var(--blu);
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+}
+
+.btn-primary-login:hover:not(:disabled) {
+  transform: translateY(-2px);
+  color: var(--blu);
+  background: var(--white);
+}
+
+.btn-primary-login:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background: rgba(231, 76, 60, 0.1);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  color: #ff6b6b;
+  padding: 12px;
+  border-radius: 8px;
+  margin: 15px 0;
+  text-align: center;
+  font-size: 0.9em;
 }
 
 .login-footer {
@@ -49,23 +172,112 @@
   text-align: center;
 }
 
-.instructions {
-  display: flex;
-  justify-content: space-between;
-  color: var(--gray);
-  font-size: 0.9em;
-  margin-top: 20px;
-}
 
 .app-info {
   margin-top: 30px;
   text-align: center;
-  color: var(--gray);
+  color: var(--white);
   font-size: 0.8em;
-  border-top: 1px solid var(--blub);
+  border-top: 1px solid var(--blu);
   padding-top: 20px;
 }
 
 .app-info p {
   margin: 5px 0;
+  opacity: 0.7;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 30px 20px;
+    margin: 20px;
+  }
+  
+  .login-logo {
+    max-width: 200px;
+  }
+  
+  .instructions {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+/* Deshabilitar el ícono nativo del navegador */
+input[type="password"]::-webkit-textfield-decoration-container,
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  right: 0 !important;
+}
+
+/* Para Firefox */
+input[type="password"]::-moz-textfield-decoration-container {
+  display: none !important;
+}
+
+/* Para Microsoft Edge y otros navegadores */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
+}
+
+/* Asegurar que nuestro ícono esté encima */
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10; /* Asegurar que esté por encima */
+}
+
+.password-toggle svg {
+  color: var(--white); /* Color azul */
+  width: 22px;
+  height: 22px;
+  transition: all 0.3s ease;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+}
+
+.password-toggle:hover svg {
+  color: var(--blu); /* Blanco al hacer hover */
+  transform: scale(1.1);
+}
+
+/* Asegurar espacio suficiente para el ícono */
+#password-field {
+  padding-right: 45px !important;
+  /* Forzar que no muestre el ícono nativo */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Estilos específicos para el input de contraseña */
+.password-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.password-input-container input {
+  width: 100%;
+  /* Eliminar cualquier estilo nativo */
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button,
+  &::-webkit-search-cancel-button,
+  &::-webkit-clear-button {
+    display: none;
+    -webkit-appearance: none;
+  }
 }

@@ -9,7 +9,8 @@
   --gray-dark: #343a40;
   
   /* Colores adicionales */
-  --blu: #4094e8;      /* GRNB - Azul */
+  --blu: #1F85BA;      /* GRNB - Azul */
+  --bludd: #1B6DA7;
   --blub-dark: #131923; /* BLUD - Azul más oscuro */
   --blul: #1b2937;     /* BLUL - Azul oscuro */
   --grnd: #37B69C;     /* GRND - Verde */
@@ -1994,7 +1995,7 @@ input:checked + .slider:before {
 
 .user-especialidad {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--white);
   margin-left: 5px;
 }
 

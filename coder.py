@@ -4,18 +4,7 @@ import json
 def generar_archivo_contenido(directorio_base, archivo_salida, modo_manual=False, 
                              archivos_manual=None, omitir=None, omitir_extensiones=None, 
                              omitir_directorios=None):
-    """
-    Genera un archivo con el contenido de los archivos en el directorio especificado.
     
-    Args:
-        directorio_base: Directorio raíz para buscar archivos
-        archivo_salida: Nombre del archivo de salida
-        modo_manual: Si es True, solo incluye los tipos de archivo especificados manualmente
-        archivos_manual: Lista de extensiones a incluir en modo manual (ej: ['.py', '.json'])
-        omitir: Lista de nombres de archivos específicos a omitir
-        omitir_extensiones: Lista de extensiones a omitir
-        omitir_directorios: Lista de directorios a omitir
-    """
     if omitir is None:
         omitir = []
     if omitir_extensiones is None:
@@ -23,34 +12,53 @@ def generar_archivo_contenido(directorio_base, archivo_salida, modo_manual=False
     if omitir_directorios is None:
         omitir_directorios = []
     if archivos_manual is None:
-        archivos_manual = ['.py', '.json']  # Valores por defecto en modo manual
+        archivos_manual = ['.py', '.json']
     
-    with open(archivo_salida, 'w', encoding='utf-8') as out_file:
+    archivo_rutas = archivo_salida.replace('_contenido.txt', '_rutas.txt')
+    
+    rutas_encontradas = []
+    
+    with open(archivo_salida, 'w', encoding='utf-8') as out_file, \
+         open(archivo_rutas, 'w', encoding='utf-8') as rutas_file:
+        
+        rutas_file.write("MAPAS DE CARPETAS Y ARCHIVOS\n")
+        rutas_file.write("=" * 80 + "\n\n")
+        
         for root, dirs, files in os.walk(directorio_base):
-            # Filtrar directorios no deseados
             dirs[:] = [d for d in dirs if d not in omitir_directorios]
+            
+            ruta_relativa = os.path.relpath(root, directorio_base)
+            ruta_mostrar = ruta_relativa if ruta_relativa != '.' else ''
+            ruta_completa = os.path.join(directorio_base, ruta_relativa)
+            
+            if ruta_mostrar:
+                rutas_file.write(f"{ruta_completa}/\n")
+            else:
+                rutas_file.write(f"{directorio_base}/\n")
+            
+            rutas_encontradas.append(ruta_completa)
+            
+            archivos_incluidos = []
             
             for file in files:
                 file_path = os.path.join(root, file)
                 rel_path = os.path.relpath(file_path, directorio_base)
+                ruta_archivo_completa = os.path.join(directorio_base, rel_path)
                 
-                # Determinar si el archivo debe ser incluido según el modo
                 incluir_archivo = False
                 
                 if modo_manual:
-                    # Modo manual: Solo incluir los tipos de archivo especificados
                     if any(file.endswith(ext) for ext in archivos_manual):
-                        # Verificar que no esté en la lista de omitidos
                         if file not in omitir and not any(file.endswith(ext) for ext in omitir_extensiones):
                             incluir_archivo = True
                 else:
-                    # Modo automático: Incluir todos excepto los omitidos
-                    # Por defecto incluye .py y .json, pero puedes modificar esto
                     if file.endswith(('.py', '.json')):
                         if file not in omitir and not any(file.endswith(ext) for ext in omitir_extensiones):
                             incluir_archivo = True
                 
                 if incluir_archivo:
+                    archivos_incluidos.append(file)
+                    
                     try:
                         with open(file_path, 'r', encoding='utf-8') as in_file:
                             contenido = in_file.read()
@@ -59,29 +67,28 @@ def generar_archivo_contenido(directorio_base, archivo_salida, modo_manual=False
                         out_file.write(contenido)
                     except Exception as e:
                         out_file.write(f"\n\nError al leer {rel_path}: {str(e)}\n")
+                
+                if file not in omitir and not any(file.endswith(ext) for ext in omitir_extensiones):
+                    rutas_file.write(f"  {ruta_archivo_completa}\n")
+            
+            if not archivos_incluidos:
+                rutas_file.write("  (sin archivos incluidos)\n")
+            
+            rutas_file.write("\n")
 
 if __name__ == "__main__":
-    # Ejecutar en modo interactivo o directo
-    modo_interactivo = False  # Cambiar a True para usar el menú interactivo
+    MODO_MANUAL = True
     
-    if modo_interactivo:
-        modo_interactivo()
+    if MODO_MANUAL:
+        DIRECTORIO_BASE = os.path.dirname(os.path.abspath(__file__))
     else:
-        # Configuración directa (como antes)
-        MODO_MANUAL = True  # Cambiar según necesidad
-        
-        if MODO_MANUAL:
-            DIRECTORIO_BASE = os.path.dirname(os.path.abspath(__file__))
-        else:
-            DIRECTORIO_BASE = os.path.dirname(os.path.abspath(__file__))
+        DIRECTORIO_BASE = os.path.dirname(os.path.abspath(__file__))
+
+    NOMBRE = "psicogestion"
+    ARCHIVO_SALIDA = f"{NOMBRE}_contenido.txt"
     
-    ARCHIVO_SALIDA = "contenidoCOMPLETO_PsicoGestion.txt"
-    
-    # Configuración para modo MANUAL
-    # En modo manual, solo se incluirán los tipos de archivo especificados aquí
     ARCHIVOS_MANUAL = ['.py', '.json', '.yaml', '.yml','.env', '.js', '.jsx']
     
-    # Configuración para modo AUTOMÁTICO
     ARCHIVOS_A_OMITIR = ["instruments.json", "coder.py", "package-lock.json",".sql"]
     EXTENSIONES_A_OMITIR = ['.log', '.pyc', '.tmp', '.bak']
     DIRECTORIOS_A_OMITIR = ['__pycache__', 'logs', '.git', 'venv', 'env', '.idea', '.vscode', 'node_modules', 'images', 'scripts']
@@ -103,3 +110,6 @@ if __name__ == "__main__":
     )
     
     print("¡Proceso completado!")
+    print(f"Archivos generados:")
+    print(f"1. {ARCHIVO_SALIDA} - Contenido de los archivos")
+    print(f"2. {NOMBRE}_rutas.txt - Mapa de carpetas y archivos")

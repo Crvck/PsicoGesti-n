@@ -1,0 +1,164 @@
+MAPAS DE CARPETAS Y ARCHIVOS
+================================================================================
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\.env
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\.envlocal
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\.gitignore
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\base de datos.lnk
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\contenidoBACKEND_PsicoGestion.txt
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\contenidoFRONTEND_PsicoGestion.txt
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\package.json
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\psicogestion_contenido.txt
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\psicogestion_rutas.txt
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\README.md
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\package.json
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\server.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src/
+  (sin archivos incluidos)
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\config/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\config\db.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\agendaController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\altaController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\asignacionController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\authController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\citaController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\dashboardController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\disponibilidadController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\estadisticaController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\expedienteController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\fundacionController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\notificacionController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\observacionController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\reporteController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\roleController.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers\sesionController.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\db/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\db\db.sql
+  (sin archivos incluidos)
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\doc/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\doc\swagger.json
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\middlewares/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\middlewares\authMiddleware.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\middlewares\logMiddleware.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\middlewares\permisoMiddleware.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\middlewares\roleMiddleware.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\middlewares\validacionMiddleware.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\altaModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\asignacionModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\citaModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\disponibilidadModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\expedienteModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\fundacionModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\logSistemaModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\notificacionModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\observacionBecarioModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\pacienteModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\permisoModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\reporteModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\sesionModel.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\models\userModel.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\agendaRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\altaRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\asignacionRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\authRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\citaRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\dashboardRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\disponibilidadRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\estadisticaRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\expedienteRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\fundacionRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\notificacionRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\observacionRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\reporteRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\roleRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\sesionRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\userRoutes.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\api.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\backupService.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\calendarioService.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\databaseService.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\emailService.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\estadisticaService.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\index.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\reporteService.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\.env
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\package.json
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\public/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\public\index.html
+  (sin archivos incluidos)
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\App.css
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\App.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\global.css
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\index.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components/
+  (sin archivos incluidos)
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\Login.css
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\Login.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\PrivateRoute.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\RoleRouter.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Layout/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Layout\BecarioLayout.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Layout\CoordinadorLayout.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Layout\MainLayout.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Layout\PsicologoLayout.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\context/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\context\AuthContext.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\CitasPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\ConfiguracionPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\DashboardPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\PacientesPage.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\becario/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\becario\CitasPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\becario\DashboardPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\becario\NotificacionesPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\becario\ObservacionesPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\becario\PacientesPage.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\AgendaPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\AltasPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\AsignacionesPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\ConfiguracionPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\coordinador.css
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\DashboardPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\PacientesPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\ReportesPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\coordinador\UsuariosPage.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\CitasPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\DashboardPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\ExpedientesPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\PacientesPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\SesionesPage.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\SupervisionPage.js
+

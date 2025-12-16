@@ -78,6 +78,8 @@ const CitasPage = () => {
         url += `&becario_id=${filterBecario}`;
       }
       
+      console.log('🔍 Fetching citas from:', url);
+      
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -87,7 +89,23 @@ const CitasPage = () => {
       
       if (response.ok) {
         const data = await response.json();
-        setCitas(data.data || []);
+        
+        // NORMALIZA LOS DATOS
+        const citasNormalizadas = (data.data || []).map(cita => {
+          return {
+            ...cita,
+            // Formatea la hora para quitar los segundos
+            hora: cita.hora ? cita.hora.substring(0, 5) : '',
+            // Usa duracion_minutos como duracion
+            duracion: cita.duracion_minutos || cita.duracion || 50,
+            // Usa motivo como notas
+            notas: cita.motivo || cita.notas || '',
+            // Asegura que paciente_nombre exista
+            paciente_nombre: cita.paciente_nombre || `Paciente ${cita.id}`
+          };
+        });
+        
+        setCitas(citasNormalizadas);
       } else {
         console.error('Error al obtener citas');
       }
@@ -176,9 +194,31 @@ const CitasPage = () => {
     return hours;
   };
 
+
   const citasDelDia = citas.filter(cita => {
+    console.log('🔍 Cita individual:', {
+      id: cita.id,
+      cita_fecha: cita.fecha,
+      cita_fecha_raw: cita.fecha,
+      selected_date_formatted: formatDateForAPI(selectedDate),
+      cita_date_object: new Date(cita.fecha),
+      cita_date_formatted: formatDateForAPI(new Date(cita.fecha))
+    });
+    
+    const isSameDay1 = cita.fecha === formatDateForAPI(selectedDate);
+    
     const citaDate = new Date(cita.fecha);
-    return citaDate.toDateString() === selectedDate.toDateString();
+    const selectedDateObj = new Date(selectedDate);
+    const isSameDay2 = formatDateForAPI(citaDate) === formatDateForAPI(selectedDateObj);
+    
+    // Método 3: Comparar año, mes y día
+    const isSameDay3 = 
+      citaDate.getFullYear() === selectedDateObj.getFullYear() &&
+      citaDate.getMonth() === selectedDateObj.getMonth() &&
+      citaDate.getDate() === selectedDateObj.getDate();
+    
+    
+    return isSameDay1 || isSameDay2 || isSameDay3;
   });
 
   const handleConfirmCita = async (citaId) => {

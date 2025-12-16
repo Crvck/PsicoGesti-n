@@ -1010,7 +1010,7 @@ class DatabaseService {
                 JOIN pacientes p ON c.paciente_id = p.id
                 LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
                 LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-                WHERE c.fecha = :fecha
+                WHERE DATE(c.fecha) = :fecha
             `;
             
             const params = { fecha };
@@ -1071,7 +1071,7 @@ class DatabaseService {
                     ) VALUES (
                         :nombre, :apellido, :email, :telefono, 'activo', TRUE, NOW()
                     )
-                `, {
+                    `, {
                     replacements: {
                         nombre: datosCita.paciente.nombre.trim(),
                         apellido: datosCita.paciente.apellido.trim(),
@@ -1079,9 +1079,15 @@ class DatabaseService {
                         telefono: datosCita.paciente.telefono || null
                     },
                     transaction
-                });
-                
-                paciente = { id: resultadoPaciente.insertId };
+                    });
+
+                    const [[pacienteInsertado]] = await sequelize.query(
+                    'SELECT LAST_INSERT_ID() AS id',
+                    { transaction }
+                    );
+
+                    paciente = { id: pacienteInsertado.id };
+
                 console.log('✅ Nuevo paciente creado con ID:', paciente.id);
             }
             
@@ -1120,40 +1126,50 @@ class DatabaseService {
             }
             
             // 4. Crear la cita
-            const [resultadoCita] = await sequelize.query(`
+            await sequelize.query(`
                 INSERT INTO citas (
-                    paciente_id, 
+                    paciente_id,
+                    psicologo_id,
                     becario_id,
-                    fecha, 
-                    hora, 
-                    tipo_consulta, 
-                    estado, 
-                    duracion, 
-                    notas, 
+                    fecha,
+                    hora,
+                    duracion_minutos,
+                    tipo_consulta,
+                    estado,
+                    motivo,
                     created_at
                 ) VALUES (
-                    :paciente_id, 
+                    :paciente_id,
+                    :psicologo_id,
                     :becario_id,
-                    :fecha, 
-                    :hora, 
-                    :tipo_consulta, 
-                    'programada', 
-                    :duracion, 
-                    :notas, 
+                    :fecha,
+                    :hora,
+                    :duracion_minutos,
+                    :tipo_consulta,
+                    :estado,
+                    :motivo,
                     NOW()
                 )
             `, {
                 replacements: {
                     paciente_id: paciente.id,
+                    psicologo_id: datosCita.usuarioId,
                     becario_id: datosCita.becario_id || null,
                     fecha: datosCita.fecha,
-                    hora: datosCita.hora + ':00',
+                    hora: datosCita.hora,
+                    duracion_minutos: datosCita.duracion || 50,
                     tipo_consulta: datosCita.tipo_consulta,
-                    duracion: datosCita.duracion,
-                    notas: datosCita.notas || null
+                    estado: 'programada',
+                    motivo: datosCita.notas || null
                 },
                 transaction
             });
+
+            const [[citaInsertada]] = await sequelize.query(
+                'SELECT LAST_INSERT_ID() AS id',
+                { transaction }
+            );
+
             
             // 5. Obtener la cita creada con información del paciente
             const [citaCreada] = await sequelize.query(`
@@ -1167,7 +1183,7 @@ class DatabaseService {
                 LEFT JOIN users u_bec ON c.becario_id = u_bec.id
                 WHERE c.id = :cita_id
             `, {
-                replacements: { cita_id: resultadoCita.insertId },
+                replacements: { cita_id: citaInsertada.id },
                 transaction
             });
             

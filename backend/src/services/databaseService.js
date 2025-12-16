@@ -1,10 +1,8 @@
 const sequelize = require('../config/db');
+const { QueryTypes } = require('sequelize');
 
 class DatabaseService {
     
-    /**
-     * Reemplaza: sp_obtener_citas_por_fecha_becario
-     */
     static async obtenerCitasPorFechaBecario(fecha, becarioId = null) {
         try {
             let query = `
@@ -14,7 +12,10 @@ class DatabaseService {
                     p.telefono AS paciente_telefono,
                     p.email AS paciente_email,
                     u_psi.nombre AS psicologo_nombre,
-                    u_bec.nombre AS becario_nombre
+                    u_bec.nombre AS becario_nombre,
+                    c.duracion_minutos AS duracion,  -- Cambia duracion_minutos a duracion
+                    c.motivo AS notas,               -- Cambia motivo a notas
+                    TIME_FORMAT(c.hora, '%H:%i') AS hora_formatted  -- Formatea la hora
                 FROM citas c
                 JOIN pacientes p ON c.paciente_id = p.id
                 LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
@@ -31,12 +32,20 @@ class DatabaseService {
             
             query += ` ORDER BY c.hora`;
             
-            const [results] = await sequelize.query(query, {
+            const results = await sequelize.query(query, {
                 replacements: params,
-                type: sequelize.QueryTypes.SELECT // Esto también está mal
+                type: QueryTypes.SELECT
             });
             
-            return results;
+            // Mapea los resultados para usar los nombres correctos
+            return results.map(row => {
+                return {
+                    ...row,
+                    hora: row.hora_formatted,  // Usa la hora formateada
+                    duracion: row.duracion || 50,
+                    notas: row.notas || ''
+                };
+            });
             
         } catch (error) {
             console.error('Error en obtenerCitasPorFechaBecario:', error);

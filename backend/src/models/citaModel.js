@@ -39,7 +39,12 @@ const Cita = sequelize.define('Cita', {
     },
     hora: {
         type: DataTypes.TIME,
-        allowNull: false
+        allowNull: false,
+        get() {
+            // Obtener la hora sin segundos
+            const rawValue = this.getDataValue('hora');
+            return rawValue ? rawValue.substring(0, 5) : null;
+        }
     },
     tipo_consulta: {
         type: DataTypes.ENUM('presencial', 'virtual'),
@@ -64,6 +69,13 @@ const Cita = sequelize.define('Cita', {
         allowNull: false,
         defaultValue: 50,
         comment: 'Duración en minutos'
+    },
+    // Mantén compatibilidad con duracion_minutos
+    duracion_minutos: {
+        type: DataTypes.VIRTUAL,
+        get() {
+            return this.getDataValue('duracion');
+        }
     }
 }, {
     tableName: 'citas',

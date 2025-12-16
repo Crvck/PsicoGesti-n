@@ -26,6 +26,8 @@ const Login = () => {
 
     const result = await login(credentials.email, credentials.password);
     
+    console.log('Resultado del login:', result);
+
     if (result.success) {
       navigate('/dashboard');
     } else {

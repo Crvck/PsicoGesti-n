@@ -1,0 +1,19 @@
+NODE_ENV=development
+PORT=3000
+
+# Database MySQL
+DB_HOST=gateway01.ap-northeast-1.prod.aws.tidbcloud.com
+DB_PORT=4000
+DB_NAME=consultorio_pscologia
+DB_USER=448G6eSzYSdghuC.root
+DB_PASSWORD=KjtKgP3mGTMstAZV
+
+# JWT
+JWT_SECRET=cesun
+JWT_EXPIRES_IN=24h
+
+# Bcrypt
+BCRYPT_ROUNDS=12
+
+# App
+LOG_LEVEL=info

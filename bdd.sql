@@ -212,6 +212,15 @@ CREATE TABLE disponibilidad (
     UNIQUE KEY idx_usuario_dia (usuario_id, dia_semana)
 );
 
+CREATE TABLE IF NOT EXISTS logs_sistema (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tipo VARCHAR(50) NOT NULL,
+    usuario_id INT,
+    descripcion TEXT,
+    paciente_id INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- =============================================
 -- INSERCIÓN DE DATOS DE EJEMPLO
 -- =============================================
@@ -430,36 +439,7 @@ CREATE USER IF NOT EXISTS 'psicogestion_user'@'localhost' IDENTIFIED BY 'SecureP
 GRANT SELECT, INSERT, UPDATE, DELETE ON psicogestion_db.* TO 'psicogestion_user'@'localhost';
 FLUSH PRIVILEGES;
 
--- =============================================
--- COMENTARIOS FINALES
--- =============================================
+GRANT ALTER ON psicogestion_db.* 
+TO 'psicogestion_user'@'localhost';
 
-/*
-ESTRUCTURA DE LA BASE DE DATOS:
-1. users - Todos los usuarios del sistema
-2. fundaciones - Instituciones a las que pertenecen los becarios
-3. pacientes - Información de pacientes
-4. asignaciones - Relación entre psicólogos, becarios y pacientes
-5. citas - Agenda de citas
-6. sesiones - Expediente clínico y notas de sesiones
-7. notificaciones - Sistema de notificaciones
-8. altas - Registro de altas de pacientes
-9. reportes - Reportes y estadísticas
-10. observaciones_becarios - Bitácora de becarios
-11. disponibilidad - Horarios de psicólogos/becarios
-
-VISTAS DISPONIBLES:
-- vista_citas_hoy
-- vista_pacientes_asignados
-- vista_resumen_coordinacion
-- vista_historial_sesiones
-
-PROCEDIMIENTOS:
-- sp_obtener_citas_por_fecha_becario
-- sp_generar_reporte_mensual
-
-NOTAS:
-1. La contraseña de los usuarios debe ser hasheada con bcrypt antes de insertar
-2. Para pruebas, puedes usar la contraseña 'cesun' hasheada
-3. Ajusta los dominios de email y estructuras según tus necesidades
-*/
+FLUSH PRIVILEGES;

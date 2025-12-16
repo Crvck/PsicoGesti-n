@@ -24,7 +24,7 @@ BROWSER=none
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "dev": "react-scripts start"
+    "dev": "react-scripts start --no-lazy"
   },
   "devDependencies": {
     "react-scripts": "5.0.1"
@@ -122,6 +122,8 @@ const Login = () => {
 
     const result = await login(credentials.email, credentials.password);
     
+    console.log('Resultado del login:', result);
+
     if (result.success) {
       navigate('/dashboard');
     } else {
@@ -336,7 +338,7 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('psico_token'));
+  const [token, setToken] = useState(localStorage.getItem('token'));
 
   useEffect(() => {
     if (token) {
@@ -371,7 +373,7 @@ export const AuthProvider = ({ children }) => {
       
       const { token, user } = response.data;
       
-      localStorage.setItem('psico_token', token);
+      localStorage.setItem('token', token);
       localStorage.setItem('psico_user', JSON.stringify(user));
       
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -389,7 +391,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('psico_token');
+    localStorage.removeItem('token');
     localStorage.removeItem('psico_user');
     delete axios.defaults.headers.common['Authorization'];
     setToken(null);
@@ -421,73 +423,335 @@ export const AuthProvider = ({ children }) => {
 /src\pages\CitasPage.js:
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
-import { FiCalendar, FiClock, FiUser, FiPlus, FiEdit2 } from 'react-icons/fi';
+import { 
+  FiCalendar, 
+  FiClock, 
+  FiUser, 
+  FiPlus, 
+  FiEdit2, 
+  FiChevronLeft, 
+  FiChevronRight,
+  FiPhone,
+  FiMail,
+  FiRefreshCw,
+  FiX
+} from 'react-icons/fi';
+import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isToday } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 const CitasPage = () => {
   const [citas, setCitas] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [view, setView] = useState('week'); // 'day', 'week', 'month'
+  const [view, setView] = useState('day');
   const [loading, setLoading] = useState(true);
+  const [filterBecario, setFilterBecario] = useState('');
+  const [becarios, setBecarios] = useState([]);
+  const [selectedCita, setSelectedCita] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [showNuevaCitaModal, setShowNuevaCitaModal] = useState(false);
+  const [nuevaCitaData, setNuevaCitaData] = useState({
+    paciente_nombre: '',
+    paciente_apellido: '',
+    paciente_telefono: '',
+    paciente_email: '',
+    fecha: '',
+    hora: '',
+    tipo_consulta: 'presencial',
+    duracion: 50,
+    notas: '',
+    psicologo_id: '',
+    becario_id: ''
+  });
+  const [error, setError] = useState('');
+
+  const getToken = () => {
+    return localStorage.getItem('token');
+  };
+
+  const formatDateForAPI = (date) => {
+    return format(date, 'yyyy-MM-dd');
+  };
+
+  const fetchBecarios = async () => {
+    try {
+      const token = getToken();
+      const response = await fetch('http://localhost:3000/api/users/becarios', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBecarios(data);
+      }
+    } catch (error) {
+      console.error('Error al obtener becarios:', error);
+    }
+  };
+
+  const fetchCitas = async () => {
+    try {
+      setLoading(true);
+      const token = getToken();
+      const fecha = formatDateForAPI(selectedDate);
+      
+      let url = `http://localhost:3000/api/citas/citas-por-fecha?fecha=${fecha}`;
+      
+      if (filterBecario) {
+        url += `&becario_id=${filterBecario}`;
+      }
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCitas(data.data || []);
+      } else {
+        console.error('Error al obtener citas');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCitasSemana = async () => {
+    try {
+      setLoading(true);
+      const token = getToken();
+      
+      const startDate = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const endDate = endOfWeek(selectedDate, { weekStartsOn: 1 });
+      
+      const promises = eachDayOfInterval({ start: startDate, end: endDate }).map(async (date) => {
+        const fecha = formatDateForAPI(date);
+        const response = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${fecha}${filterBecario ? `&becario_id=${filterBecario}` : ''}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          return { fecha, citas: data.data || [] };
+        }
+        return { fecha, citas: [] };
+      });
+      
+      const results = await Promise.all(promises);
+      setCitas(results.flatMap(r => r.citas));
+      
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Simular carga de citas
-    setTimeout(() => {
-      setCitas([
-        {
-          id: 1,
-          paciente: 'Juan Pérez',
-          fecha: '2024-01-15',
-          hora: '10:00',
-          duracion: 60,
-          tipo: 'Consulta inicial',
-          estado: 'confirmada',
-          notas: 'Primera consulta'
-        },
-        {
-          id: 2,
-          paciente: 'María García',
-          fecha: '2024-01-15',
-          hora: '11:30',
-          duracion: 45,
-          tipo: 'Seguimiento',
-          estado: 'confirmada',
-          notas: 'Sesión 5'
-        },
-        {
-          id: 3,
-          paciente: 'Carlos López',
-          fecha: '2024-01-15',
-          hora: '14:00',
-          duracion: 60,
-          tipo: 'Terapia',
-          estado: 'pendiente',
-          notas: 'Evaluación mensual'
-        },
-        {
-          id: 4,
-          paciente: 'Ana Martínez',
-          fecha: '2024-01-16',
-          hora: '09:00',
-          duracion: 90,
-          tipo: 'Sesión especial',
-          estado: 'confirmada',
-          notas: 'Sesión familiar'
-        }
-      ]);
-      setLoading(false);
-    }, 1000);
-  }, []);
+    fetchBecarios();
+    if (view === 'day') {
+      fetchCitas();
+    } else if (view === 'week') {
+      fetchCitasSemana();
+    }
+  }, [selectedDate, view, filterBecario]);
 
-  // Generar horas del día
-  const hours = Array.from({ length: 12 }, (_, i) => {
-    const hour = 9 + i;
-    return `${hour}:00`;
+  const goToPreviousDay = () => {
+    setSelectedDate(prev => subDays(prev, 1));
+  };
+
+  const goToNextDay = () => {
+    setSelectedDate(prev => addDays(prev, 1));
+  };
+
+  const goToToday = () => {
+    setSelectedDate(new Date());
+  };
+
+  const goToPreviousWeek = () => {
+    setSelectedDate(prev => subDays(prev, 7));
+  };
+
+  const goToNextWeek = () => {
+    setSelectedDate(prev => addDays(prev, 7));
+  };
+
+  const formatDateSpanish = (date) => {
+    return format(date, "EEEE d 'de' MMMM, yyyy", { locale: es });
+  };
+
+  const generateHours = () => {
+    const hours = [];
+    for (let i = 9; i <= 20; i++) {
+      hours.push(`${i}:00`);
+      if (i !== 20) {
+        hours.push(`${i}:30`);
+      }
+    }
+    return hours;
+  };
+
+  const citasDelDia = citas.filter(cita => {
+    const citaDate = new Date(cita.fecha);
+    return citaDate.toDateString() === selectedDate.toDateString();
   });
 
-  // Filtrar citas por fecha seleccionada
-  const citasDelDia = citas.filter(cita => 
-    cita.fecha === selectedDate.toISOString().split('T')[0]
-  );
+  const handleConfirmCita = async (citaId) => {
+    try {
+      const token = getToken();
+      const response = await fetch(`http://localhost:3000/api/citas/cita/${citaId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ estado: 'confirmada' })
+      });
+      
+      if (response.ok) {
+        fetchCitas();
+      }
+    } catch (error) {
+      console.error('Error al confirmar cita:', error);
+    }
+  };
+
+  const handleCancelCita = async (citaId) => {
+    try {
+      const token = getToken();
+      const response = await fetch(`http://localhost:3000/api/citas/cita/${citaId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          estado: 'cancelada',
+          motivo_cancelacion: 'Cancelada por usuario' 
+        })
+      });
+      
+      if (response.ok) {
+        fetchCitas();
+      }
+    } catch (error) {
+      console.error('Error al cancelar cita:', error);
+    }
+  };
+
+  const showCitaDetails = (cita) => {
+    setSelectedCita(cita);
+    setShowModal(true);
+  };
+
+  const handleNuevaCitaChange = (e) => {
+    const { name, value } = e.target;
+    setNuevaCitaData({
+      ...nuevaCitaData,
+      [name]: value
+    });
+  };
+
+  const handleNuevaCitaSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (!nuevaCitaData.paciente_nombre || !nuevaCitaData.paciente_apellido || !nuevaCitaData.fecha || !nuevaCitaData.hora) {
+      setError('Por favor complete los campos requeridos: Nombre, Apellido, Fecha y Hora');
+      return;
+    }
+
+    try {
+      const token = getToken();
+      
+      const citaData = {
+        paciente: {
+          nombre: nuevaCitaData.paciente_nombre.trim(),
+          apellido: nuevaCitaData.paciente_apellido.trim(),
+          telefono: nuevaCitaData.paciente_telefono || '',
+          email: nuevaCitaData.paciente_email || ''
+        },
+        fecha: nuevaCitaData.fecha,
+        hora: nuevaCitaData.hora,
+        tipo_consulta: nuevaCitaData.tipo_consulta,
+        duracion: parseInt(nuevaCitaData.duracion),
+        notas: nuevaCitaData.notas || '',
+        becario_id: nuevaCitaData.becario_id || null
+      };
+
+      console.log('📤 Enviando datos de cita:', citaData);
+
+      const response = await fetch('http://localhost:3000/api/citas/nueva', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(citaData)
+      });
+
+      const responseText = await response.text();
+      console.log('📥 Respuesta del servidor:', responseText);
+
+      if (!response.ok) {
+        try {
+          const errorData = JSON.parse(responseText);
+          throw new Error(errorData.message || 'Error al crear la cita');
+        } catch (parseError) {
+          throw new Error(responseText || 'Error al crear la cita');
+        }
+      }
+
+      const data = JSON.parse(responseText);
+      
+      if (data.success) {
+        setShowNuevaCitaModal(false);
+        setNuevaCitaData({
+          paciente_nombre: '',
+          paciente_apellido: '',
+          paciente_telefono: '',
+          paciente_email: '',
+          fecha: formatDateForAPI(selectedDate),
+          hora: '',
+          tipo_consulta: 'presencial',
+          duracion: 50,
+          notas: '',
+          becario_id: ''
+        });
+        
+        // Mostrar mensaje de éxito
+        alert('✅ Cita creada exitosamente');
+        
+        // Recargar las citas
+        if (view === 'day') {
+          fetchCitas();
+        } else {
+          fetchCitasSemana();
+        }
+      } else {
+        setError(data.message || 'Error al crear la cita');
+      }
+      
+    } catch (error) {
+      console.error('Error al crear cita:', error);
+      setError(error.message || 'Error al crear la cita');
+    }
+  };
+
+  const weekDays = view === 'week' ? 
+    eachDayOfInterval({ 
+      start: startOfWeek(selectedDate, { weekStartsOn: 1 }), 
+      end: endOfWeek(selectedDate, { weekStartsOn: 1 }) 
+    }) : [];
 
   if (loading) {
     return (
@@ -506,16 +770,29 @@ const CitasPage = () => {
           <p>Gestión de agenda del consultorio</p>
         </div>
         <div className="flex-row gap-10">
-          <button className="btn-secondary">
-            <FiCalendar /> {selectedDate.toLocaleDateString()}
+          <div className="filter-select">
+            <select 
+              value={filterBecario} 
+              onChange={(e) => setFilterBecario(e.target.value)}
+              className="form-select"
+            >
+              <option value="">Todos los becarios</option>
+              {becarios.map(becario => (
+                <option key={becario.id} value={becario.id}>
+                  {becario.nombre} {becario.apellido}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn-secondary" onClick={fetchCitas}>
+            <FiRefreshCw /> Actualizar
           </button>
-          <button className="btn-primary">
+          <button className="btn-primary" onClick={() => setShowNuevaCitaModal(true)}>
             <FiPlus /> Nueva Cita
           </button>
         </div>
       </div>
 
-      {/* Controles del calendario */}
       <div className="calendar-controls">
         <div className="view-selector">
           <button 
@@ -530,98 +807,170 @@ const CitasPage = () => {
           >
             Semana
           </button>
-          <button 
-            className={`btn-text ${view === 'month' ? 'active' : ''}`}
-            onClick={() => setView('month')}
-          >
-            Mes
-          </button>
         </div>
 
         <div className="date-navigation">
-          <button className="btn-text">
-            &lt; Anterior
+          <button 
+            className="btn-text"
+            onClick={view === 'day' ? goToPreviousDay : goToPreviousWeek}
+          >
+            <FiChevronLeft /> {view === 'day' ? 'Ayer' : 'Sem. anterior'}
           </button>
+          
           <div className="current-date">
-            <h3>Lunes 15 de Enero, 2024</h3>
+            <h3>
+              {view === 'day' 
+                ? formatDateSpanish(selectedDate)
+                : `Semana del ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM')} al ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM, yyyy')}`
+              }
+            </h3>
           </div>
-          <button className="btn-text">
-            Siguiente &gt;
+          
+          <button 
+            className="btn-text"
+            onClick={view === 'day' ? goToNextDay : goToNextWeek}
+          >
+            {view === 'day' ? 'Mañana' : 'Próx. semana'} <FiChevronRight />
           </button>
         </div>
 
         <div className="quick-actions">
-          <button className="btn-secondary">
+          <button className="btn-secondary" onClick={goToToday}>
             Hoy
           </button>
         </div>
       </div>
 
-      {/* Vista día */}
-      <div className="calendar-day-view">
-        <div className="time-column">
-          {hours.map((hour) => (
-            <div key={hour} className="time-slot">
-              <span className="time-label">{hour}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="events-column">
-          {hours.map((hour) => {
-            const hourCitas = citasDelDia.filter(cita => 
-              cita.hora.startsWith(hour.split(':')[0])
-            );
-
-            return (
-              <div key={hour} className="hour-slot">
-                {hourCitas.map((cita) => (
-                  <div 
-                    key={cita.id}
-                    className={`event-item ${
-                      cita.estado === 'confirmada' ? 'event-confirmed' :
-                      cita.estado === 'pendiente' ? 'event-pending' :
-                      'event-cancelled'
-                    }`}
-                    style={{ height: `${(cita.duracion / 60) * 100}%` }}
-                  >
-                    <div className="event-header">
-                      <div className="event-time">
-                        <FiClock /> {cita.hora}
-                      </div>
-                      <div className="event-actions">
-                        <button className="btn-text">
-                          <FiEdit2 />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="event-content">
-                      <div className="event-patient">
-                        <FiUser /> {cita.paciente}
-                      </div>
-                      <div className="event-type">{cita.tipo}</div>
-                      <div className="event-notes">{cita.notas}</div>
-                    </div>
-                    <div className="event-footer">
-                      <span className={`badge ${
-                        cita.estado === 'confirmada' ? 'badge-success' :
-                        cita.estado === 'pendiente' ? 'badge-warning' :
-                        'badge-danger'
-                      }`}>
-                        {cita.estado}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+      {view === 'day' ? (
+        <div className="calendar-day-view">
+          <div className="time-column">
+            {generateHours().map((hour) => (
+              <div key={hour} className="time-slot">
+                <span className="time-label">{hour}</span>
               </div>
-            );
-          })}
-        </div>
-      </div>
+            ))}
+          </div>
 
-      {/* Lista de citas del día */}
+          <div className="events-column">
+            {generateHours().map((hour) => {
+              const hourCitas = citasDelDia.filter(cita => 
+                cita.hora.startsWith(hour.split(':')[0])
+              );
+
+              return (
+                <div key={hour} className="hour-slot">
+                  {hourCitas.map((cita) => (
+                    <div 
+                      key={cita.id}
+                      className={`event-item ${
+                        cita.estado === 'confirmada' ? 'event-confirmed' :
+                        cita.estado === 'completada' ? 'event-completed' :
+                        cita.estado === 'programada' ? 'event-pending' :
+                        'event-cancelled'
+                      }`}
+                      style={{ height: `${(cita.duracion / 30) * 50}px` }}
+                      onClick={() => showCitaDetails(cita)}
+                    >
+                      <div className="event-header">
+                        <div className="event-time">
+                          <FiClock /> {cita.hora}
+                        </div>
+                        <div className="event-actions">
+                          <button className="btn-text" onClick={(e) => {
+                            e.stopPropagation();
+                            showCitaDetails(cita);
+                          }}>
+                            <FiEdit2 />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="event-content">
+                        <div className="event-patient">
+                          <FiUser /> {cita.paciente_nombre || 'Sin nombre'}
+                        </div>
+                        <div className="event-type">{cita.tipo_consulta}</div>
+                        {cita.notas && (
+                          <div className="event-notes">{cita.notas}</div>
+                        )}
+                      </div>
+                      <div className="event-footer">
+                        <span className={`badge ${
+                          cita.estado === 'confirmada' ? 'badge-success' :
+                          cita.estado === 'completada' ? 'badge-primary' :
+                          cita.estado === 'programada' ? 'badge-warning' :
+                          'badge-danger'
+                        }`}>
+                          {cita.estado}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="calendar-week-view">
+          <div className="week-header">
+            <div className="time-header"></div>
+            {weekDays.map((day) => (
+              <div key={day.toISOString()} className="day-header">
+                <div className={`day-name ${isToday(day) ? 'today' : ''}`}>
+                  {format(day, 'EEE', { locale: es })}
+                </div>
+                <div className="day-number">
+                  {format(day, 'd')}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div className="week-body">
+            <div className="time-column">
+              {generateHours().map(hour => (
+                <div key={hour} className="time-slot">{hour}</div>
+              ))}
+            </div>
+            
+            {weekDays.map((day) => (
+              <div key={day.toISOString()} className="day-column">
+                {generateHours().map(hour => {
+                  const dayCitas = citas.filter(cita => {
+                    const citaDate = new Date(cita.fecha);
+                    return citaDate.toDateString() === day.toDateString() &&
+                           cita.hora.startsWith(hour.split(':')[0]);
+                  });
+                  
+                  return (
+                    <div key={hour} className="hour-cell">
+                      {dayCitas.map(cita => (
+                        <div 
+                          key={cita.id}
+                          className={`week-event ${
+                            cita.estado === 'confirmada' ? 'event-confirmed' :
+                            'event-pending'
+                          }`}
+                          onClick={() => showCitaDetails(cita)}
+                          title={`${cita.hora} - ${cita.paciente_nombre}`}
+                        >
+                          <div className="week-event-time">{cita.hora}</div>
+                          <div className="week-event-patient">{cita.paciente_nombre}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="day-citas-list">
-        <h3>Citas para hoy ({citasDelDia.length})</h3>
+        <h3>
+          Citas para {formatDateSpanish(selectedDate)} ({citasDelDia.length})
+        </h3>
         
         {citasDelDia.length > 0 ? (
           <div className="citas-cards">
@@ -629,11 +978,12 @@ const CitasPage = () => {
               <div key={cita.id} className="cita-card">
                 <div className="cita-card-header">
                   <div className="cita-time">
-                    <FiClock /> {cita.hora}
+                    <FiClock /> {cita.hora} ({cita.duracion || 50} min)
                   </div>
                   <div className={`cita-status badge ${
                     cita.estado === 'confirmada' ? 'badge-success' :
-                    cita.estado === 'pendiente' ? 'badge-warning' :
+                    cita.estado === 'completada' ? 'badge-primary' :
+                    cita.estado === 'programada' ? 'badge-warning' :
                     'badge-danger'
                   }`}>
                     {cita.estado}
@@ -642,21 +992,65 @@ const CitasPage = () => {
                 
                 <div className="cita-card-body">
                   <div className="cita-paciente">
-                    <FiUser /> {cita.paciente}
+                    <FiUser /> {cita.paciente_nombre || 'Paciente'}
                   </div>
+                  
                   <div className="cita-info">
-                    <div className="cita-tipo">{cita.tipo}</div>
-                    <div className="cita-duracion">Duración: {cita.duracion} min</div>
+                    <div className="cita-tipo">
+                      {cita.tipo_consulta === 'presencial' ? '📋 Presencial' : '💻 Virtual'}
+                    </div>
+                    
+                    {cita.paciente_telefono && (
+                      <div className="cita-contacto">
+                        <FiPhone /> {cita.paciente_telefono}
+                      </div>
+                    )}
+                    
+                    {cita.psicologo_nombre && (
+                      <div className="cita-psicologo">
+                        👨‍⚕️ {cita.psicologo_nombre}
+                      </div>
+                    )}
+                    
+                    {cita.becario_nombre && (
+                      <div className="cita-becario">
+                        👨‍🎓 {cita.becario_nombre}
+                      </div>
+                    )}
                   </div>
+                  
                   {cita.notas && (
-                    <div className="cita-notas">{cita.notas}</div>
+                    <div className="cita-notas">
+                      <strong>Notas:</strong> {cita.notas}
+                    </div>
                   )}
                 </div>
                 
                 <div className="cita-card-footer">
-                  <button className="btn-text">Editar</button>
-                  <button className="btn-text">Confirmar</button>
-                  <button className="btn-text text-danger">Cancelar</button>
+                  <button 
+                    className="btn-text"
+                    onClick={() => showCitaDetails(cita)}
+                  >
+                    Detalles
+                  </button>
+                  
+                  {cita.estado === 'programada' && (
+                    <button 
+                      className="btn-text text-success"
+                      onClick={() => handleConfirmCita(cita.id)}
+                    >
+                      Confirmar
+                    </button>
+                  )}
+                  
+                  {(cita.estado === 'programada' || cita.estado === 'confirmada') && (
+                    <button 
+                      className="btn-text text-danger"
+                      onClick={() => handleCancelCita(cita.id)}
+                    >
+                      Cancelar
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -664,11 +1058,266 @@ const CitasPage = () => {
         ) : (
           <div className="no-citas">
             <div className="no-citas-icon">📅</div>
-            <div>No hay citas programadas para hoy</div>
-            <button className="btn-text">Agendar nueva cita</button>
+            <div>No hay citas programadas para este día</div>
+            <button className="btn-text" onClick={() => setShowNuevaCitaModal(true)}>Agendar nueva cita</button>
           </div>
         )}
       </div>
+
+      {showModal && selectedCita && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2>Detalles de la Cita</h2>
+              <button className="btn-text" onClick={() => setShowModal(false)}>×</button>
+            </div>
+            
+            <div className="modal-body">
+              <div className="detail-row">
+                <strong>Paciente:</strong>
+                <span>{selectedCita.paciente_nombre}</span>
+              </div>
+              
+              <div className="detail-row">
+                <strong>Fecha y hora:</strong>
+                <span>{selectedCita.fecha} {selectedCita.hora}</span>
+              </div>
+              
+              <div className="detail-row">
+                <strong>Duración:</strong>
+                <span>{selectedCita.duracion || 50} minutos</span>
+              </div>
+              
+              <div className="detail-row">
+                <strong>Tipo:</strong>
+                <span>{selectedCita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual'}</span>
+              </div>
+              
+              <div className="detail-row">
+                <strong>Estado:</strong>
+                <span className={`badge ${
+                  selectedCita.estado === 'confirmada' ? 'badge-success' :
+                  selectedCita.estado === 'completada' ? 'badge-primary' :
+                  selectedCita.estado === 'programada' ? 'badge-warning' :
+                  'badge-danger'
+                }`}>
+                  {selectedCita.estado}
+                </span>
+              </div>
+              
+              {selectedCita.psicologo_nombre && (
+                <div className="detail-row">
+                  <strong>Psicólogo:</strong>
+                  <span>{selectedCita.psicologo_nombre}</span>
+                </div>
+              )}
+              
+              {selectedCita.becario_nombre && (
+                <div className="detail-row">
+                  <strong>Becario:</strong>
+                  <span>{selectedCita.becario_nombre}</span>
+                </div>
+              )}
+              
+              {selectedCita.paciente_telefono && (
+                <div className="detail-row">
+                  <strong>Teléfono:</strong>
+                  <span>{selectedCita.paciente_telefono}</span>
+                </div>
+              )}
+              
+              {selectedCita.notas && (
+                <div className="detail-row notes">
+                  <strong>Notas:</strong>
+                  <p>{selectedCita.notas}</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowModal(false)}>
+                Cerrar
+              </button>
+              <button className="btn-primary">
+                <FiEdit2 /> Editar Cita
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNuevaCitaModal && (
+      <div className="modal-overlay">
+        <div className="modal-container">
+          <div className="modal-header">
+            <h2 className="modal-title">Agendar Nueva Cita</h2>
+            <button 
+              className="modal-close"
+              onClick={() => {
+                setShowNuevaCitaModal(false);
+                setError('');
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          {error && (
+            <div className="error-message">
+              {error}
+            </div>
+          )}
+          
+          <form onSubmit={handleNuevaCitaSubmit}>
+            <div className="form-grid">
+              <div className="form-group">
+                <input 
+                  type="text" 
+                  name="paciente_nombre" 
+                  placeholder="Nombre del paciente"
+                  value={nuevaCitaData.paciente_nombre}
+                  onChange={handleNuevaCitaChange}
+                  className="input-field"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <input 
+                  type="text" 
+                  name="paciente_apellido" 
+                  placeholder="Apellido del paciente"
+                  value={nuevaCitaData.paciente_apellido}
+                  onChange={handleNuevaCitaChange}
+                  className="input-field"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <input 
+                  type="tel" 
+                  name="paciente_telefono" 
+                  placeholder="Teléfono"
+                  value={nuevaCitaData.paciente_telefono}
+                  onChange={handleNuevaCitaChange}
+                  className="input-field"
+                />
+              </div>
+              
+              <div className="form-group">
+                <input 
+                  type="email" 
+                  name="paciente_email" 
+                  placeholder="Email"
+                  value={nuevaCitaData.paciente_email}
+                  onChange={handleNuevaCitaChange}
+                  className="input-field"
+                />
+              </div>
+              
+              <div className="form-group">
+                <input 
+                  type="date" 
+                  name="fecha" 
+                  value={nuevaCitaData.fecha || formatDateForAPI(selectedDate)}
+                  onChange={handleNuevaCitaChange}
+                  className="input-field"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <select
+                  name="hora"
+                  value={nuevaCitaData.hora}
+                  onChange={handleNuevaCitaChange}
+                  className="select-field"
+                  required
+                >
+                  <option value="">Seleccione hora</option>
+                  {generateHours().map(hour => (
+                    <option key={hour} value={hour}>{hour}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <select
+                  name="tipo_consulta"
+                  value={nuevaCitaData.tipo_consulta}
+                  onChange={handleNuevaCitaChange}
+                  className="select-field"
+                >
+                  <option value="presencial">Presencial</option>
+                  <option value="virtual">Virtual</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <select
+                  name="duracion"
+                  value={nuevaCitaData.duracion}
+                  onChange={handleNuevaCitaChange}
+                  className="select-field"
+                >
+                  <option value="30">30 minutos</option>
+                  <option value="50">50 minutos</option>
+                  <option value="60">60 minutos</option>
+                  <option value="90">90 minutos</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <select
+                  name="becario_id"
+                  value={nuevaCitaData.becario_id}
+                  onChange={handleNuevaCitaChange}
+                  className="select-field"
+                >
+                  <option value="">Sin becario asignado</option>
+                  {becarios.map(becario => (
+                    <option key={becario.id} value={becario.id}>
+                      {becario.nombre} {becario.apellido}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                <textarea 
+                  name="notas" 
+                  placeholder="Notas adicionales"
+                  value={nuevaCitaData.notas}
+                  onChange={handleNuevaCitaChange}
+                  className="textarea-field"
+                  rows="3"
+                />
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button 
+                type="submit"
+                className="btn-primary"
+              >
+                <FiPlus /> Agendar Cita
+              </button>
+              <button 
+                type="button"
+                onClick={() => {
+                  setShowNuevaCitaModal(false);
+                  setError('');
+                }}
+                className="btn-danger"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
     </div>
   );
 };

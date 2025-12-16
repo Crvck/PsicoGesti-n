@@ -1,5 +1,33 @@
 
 
+/package.json:
+--------------------------------------------------------------------------------
+{
+  "name": "psico-gestion-backend",
+  "version": "1.0.0",
+  "description": "Backend API para sistema de gestión psicológica",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.15.3",
+    "sequelize": "^6.37.7",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}
+
 /server.js:
 --------------------------------------------------------------------------------
 const path = require('path');
@@ -11,12 +39,20 @@ const swaggerDocument = require('./src/doc/swagger.json');
 const cors = require('cors');
 
 const sequelize = require('./src/config/db');
-require('./src/models/userModel'); 
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
 
 const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes'); // Añadir esta línea
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+
 
 app.use(cors({
   origin: 'http://localhost:3001',
@@ -34,15 +70,24 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
 
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
 
-sequelize.sync({ force: false })
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
     .then(() => {
         console.log("✅ Tablas sincronizadas (base de datos lista)");
         app.listen(PORT, () => {
           console.log(`Backend running on http://localhost:${PORT}`);
           console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
           console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
         });
     })
     .catch((error) => {
@@ -193,9 +238,241 @@ class AuthController {
 
 module.exports = AuthController
 
-/src\controllers\m.js:
+/src\controllers\citaController.js:
 --------------------------------------------------------------------------------
+const DatabaseService = require('../services/databaseService');
 
+class CitaController {
+    
+    static async obtenerCitasPorFecha(req, res) {
+        try {
+            console.log('obtenerCitasPorFecha llamado');
+            console.log('Query params:', req.query);
+            
+            const { fecha, becario_id } = req.query;
+            
+            // Validar parámetro requerido
+            if (!fecha) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El parámetro "fecha" es requerido (formato: YYYY-MM-DD)'
+                });
+            }
+            
+            const becarioId = becario_id ? parseInt(becario_id) : null;
+            
+            console.log(`Buscando citas para fecha: ${fecha}, becarioId: ${becarioId}`);
+            
+            const citas = await DatabaseService.obtenerCitasPorFechaBecario(fecha, becarioId);
+            
+            console.log(`Citas encontradas: ${Array.isArray(citas) ? citas.length : 0}`);
+            
+            // Asegurarnos de que citas siempre sea un array
+            const citasArray = Array.isArray(citas) ? citas : [];
+            
+            res.json({
+                success: true,
+                data: citasArray,
+                count: citasArray.length
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerCitasPorFecha:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener citas',
+                error: error.message
+            });
+        }
+    }
+
+    static async crearNuevaCita(req, res) {
+        try {
+            const { paciente, fecha, hora, tipo_consulta, duracion, notas, becario_id } = req.body;
+            const usuarioId = req.user.id;
+            
+            console.log('📝 Datos recibidos para nueva cita:', {
+                paciente,
+                fecha,
+                hora,
+                tipo_consulta,
+                duracion,
+                notas,
+                becario_id,
+                usuarioId
+            });
+            
+            // Validar campos requeridos
+            if (!paciente || !paciente.nombre || !paciente.apellido || !fecha || !hora) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Faltan campos requeridos: paciente (nombre, apellido), fecha y hora'
+                });
+            }
+            
+            // Crear la cita usando DatabaseService
+            const nuevaCita = await DatabaseService.crearNuevaCita({
+                paciente,
+                fecha,
+                hora,
+                tipo_consulta: tipo_consulta || 'presencial',
+                duracion: duracion || 50,
+                notas,
+                becario_id,
+                usuarioId
+            });
+            
+            res.json({
+                success: true,
+                message: 'Cita creada exitosamente',
+                data: nuevaCita
+            });
+            
+        } catch (error) {
+            console.error('❌ Error en crearNuevaCita:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al crear la cita',
+                error: error.message
+            });
+        }
+    }
+    
+    static async generarReporteMensual(req, res) {
+        try {
+            const { mes, anio, psicologo_id } = req.query;
+            const psicologoId = psicologo_id ? parseInt(psicologo_id) : null;
+            
+            const reporte = await DatabaseService.generarReporteMensual(
+                parseInt(mes),
+                parseInt(anio),
+                psicologoId
+            );
+            
+            res.json({
+                success: true,
+                data: reporte,
+                count: reporte.length,
+                mes: mes,
+                anio: anio
+            });
+            
+        } catch (error) {
+            console.error('Error en generarReporteMensual:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al generar reporte',
+                error: error.message
+            });
+        }
+    }
+    
+    static async darAltaPaciente(req, res) {
+        try {
+            const { paciente_id, tipo_alta, notas } = req.body;
+            const usuarioId = req.user.id;
+            
+            if (!paciente_id || !tipo_alta) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Faltan campos requeridos: paciente_id y tipo_alta'
+                });
+            }
+            
+            await DatabaseService.darAltaPaciente(
+                paciente_id,
+                tipo_alta,
+                usuarioId,
+                notas
+            );
+            
+            res.json({
+                success: true,
+                message: 'Paciente dado de alta exitosamente'
+            });
+            
+        } catch (error) {
+            console.error('Error en darAltaPaciente:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al dar de alta paciente',
+                error: error.message
+            });
+        }
+    }
+    
+    static async actualizarCita(req, res) {
+        try {
+            const { id } = req.params;
+            const updates = req.body;
+            const usuarioId = req.user.id;
+            
+            // Validar campos que se pueden actualizar
+            const camposPermitidos = ['fecha', 'hora', 'tipo_consulta', 'estado', 'notas', 'motivo_cancelacion', 'psicologo_id', 'becario_id'];
+            const updatesFiltrados = {};
+            
+            for (const campo of camposPermitidos) {
+                if (updates[campo] !== undefined) {
+                    updatesFiltrados[campo] = updates[campo];
+                }
+            }
+            
+            if (Object.keys(updatesFiltrados).length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'No se proporcionaron campos válidos para actualizar'
+                });
+            }
+            
+            await DatabaseService.actualizarCita(
+                parseInt(id),
+                updatesFiltrados,
+                usuarioId
+            );
+            
+            res.json({
+                success: true,
+                message: 'Cita actualizada exitosamente'
+            });
+            
+        } catch (error) {
+            console.error('Error en actualizarCita:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al actualizar cita',
+                error: error.message
+            });
+        }
+    }
+    
+    static async obtenerEstadisticas(req, res) {
+        try {
+            const { fecha_inicio, fecha_fin, psicologo_id } = req.query;
+            const psicologoId = psicologo_id ? parseInt(psicologo_id) : null;
+            
+            const estadisticas = await DatabaseService.obtenerEstadisticas(
+                fecha_inicio,
+                fecha_fin,
+                psicologoId
+            );
+            
+            res.json({
+                success: true,
+                data: estadisticas
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerEstadisticas:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener estadísticas',
+                error: error.message
+            });
+        }
+    }
+}
+
+module.exports = CitaController;
 
 /src\doc\swagger.json:
 --------------------------------------------------------------------------------
@@ -344,6 +621,182 @@ const verifyToken = (req, res, next) => {
 
 module.exports = verifyToken;
 
+/src\models\citaModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const Paciente = require('./pacienteModel');
+const User = require('./userModel');
+
+const Cita = sequelize.define('Cita', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    paciente_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: Paciente,
+            key: 'id'
+        }
+    },
+    psicologo_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    becario_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    fecha: {
+        type: DataTypes.DATEONLY,
+        allowNull: false
+    },
+    hora: {
+        type: DataTypes.TIME,
+        allowNull: false
+    },
+    tipo_consulta: {
+        type: DataTypes.ENUM('presencial', 'virtual'),
+        allowNull: false,
+        defaultValue: 'presencial'
+    },
+    estado: {
+        type: DataTypes.ENUM('programada', 'confirmada', 'completada', 'cancelada'),
+        allowNull: false,
+        defaultValue: 'programada'
+    },
+    notas: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    motivo_cancelacion: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    duracion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 50,
+        comment: 'Duración en minutos'
+    }
+}, {
+    tableName: 'citas',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['fecha', 'estado']
+        },
+        {
+            fields: ['psicologo_id', 'fecha']
+        },
+        {
+            fields: ['becario_id']
+        },
+        {
+            fields: ['paciente_id']
+        }
+    ]
+});
+
+// Relaciones
+Cita.belongsTo(Paciente, { foreignKey: 'paciente_id' });
+Cita.belongsTo(User, { as: 'Psicologo', foreignKey: 'psicologo_id' });
+Cita.belongsTo(User, { as: 'Becario', foreignKey: 'becario_id' });
+
+module.exports = Cita;
+
+/src\models\pacienteModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+const Paciente = sequelize.define('Paciente', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    nombre: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    apellido: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    email: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        validate: {
+            isEmail: true
+        }
+    },
+    telefono: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    fecha_nacimiento: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
+    genero: {
+        type: DataTypes.ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
+        allowNull: true
+    },
+    direccion: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    estado: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+        defaultValue: 'activo'
+    },
+    activo: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    },
+    notas: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    fundacion_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    }
+}, {
+    tableName: 'pacientes',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['activo']
+        },
+        {
+            fields: ['apellido', 'nombre']
+        }
+    ]
+});
+
+module.exports = Paciente;
+
 /src\models\userModel.js:
 --------------------------------------------------------------------------------
 const { DataTypes } = require('sequelize');
@@ -426,6 +879,585 @@ router.post('/login', AuthController.login);
 router.get('/me', verifyToken, AuthController.getMe);
 
 module.exports = router;
+
+/src\routes\citaRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const CitaController = require('../controllers/citaController');
+const verifyToken = require('../middlewares/authMiddleware');
+
+// Todas las rutas requieren autenticación
+router.use(verifyToken);
+
+// Rutas de consulta
+router.get('/citas-por-fecha', CitaController.obtenerCitasPorFecha);
+router.get('/reporte-mensual', CitaController.generarReporteMensual);
+router.get('/estadisticas', CitaController.obtenerEstadisticas);
+
+// Rutas de modificación
+router.post('/alta-paciente', CitaController.darAltaPaciente);
+router.put('/cita/:id', CitaController.actualizarCita);
+router.post('/nueva', CitaController.crearNuevaCita);
+
+module.exports = router;
+
+/src\routes\userRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const verifyToken = require('../middlewares/authMiddleware');
+const User = require('../models/userModel');
+
+// Obtener todos los becarios
+router.get('/becarios', verifyToken, async (req, res) => {
+  try {
+    const becarios = await User.findAll({
+      where: { rol: 'becario', activo: true },
+      attributes: ['id', 'nombre', 'apellido', 'email'],
+      order: [['apellido', 'ASC'], ['nombre', 'ASC']]
+    });
+    
+    res.json(becarios);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener becarios' });
+  }
+});
+
+module.exports = router;
+
+/src\services\api.js:
+--------------------------------------------------------------------------------
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  static async get(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async post(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async put(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async delete(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async handleResponse(response) {
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
+  }
+}
+
+export default ApiService;
+
+/src\services\databaseService.js:
+--------------------------------------------------------------------------------
+const sequelize = require('../config/db');
+
+class DatabaseService {
+    
+    /**
+     * Reemplaza: sp_obtener_citas_por_fecha_becario
+     */
+    static async obtenerCitasPorFechaBecario(fecha, becarioId = null) {
+        try {
+            let query = `
+                SELECT 
+                    c.*,
+                    CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+                    p.telefono AS paciente_telefono,
+                    p.email AS paciente_email,
+                    u_psi.nombre AS psicologo_nombre,
+                    u_bec.nombre AS becario_nombre
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                WHERE c.fecha = :fecha
+            `;
+            
+            const params = { fecha };
+            
+            if (becarioId !== null && becarioId !== undefined) {
+                query += ` AND c.becario_id = :becarioId`;
+                params.becarioId = becarioId;
+            }
+            
+            query += ` ORDER BY c.hora`;
+            
+            const [results] = await sequelize.query(query, {
+                replacements: params,
+                type: sequelize.QueryTypes.SELECT // Esto también está mal
+            });
+            
+            return results;
+            
+        } catch (error) {
+            console.error('Error en obtenerCitasPorFechaBecario:', error);
+            throw error;
+        }
+    }
+    // En /src/services/databaseService.js
+    static async crearNuevaCita(datosCita) {
+        const transaction = await sequelize.transaction();
+        
+        try {
+            console.log('🔧 Creando nueva cita con datos:', datosCita);
+            
+            // 1. Buscar o crear el paciente
+            let paciente;
+            
+            // Primero intentar buscar por nombre y apellido
+            const [pacienteExistente] = await sequelize.query(`
+                SELECT id FROM pacientes 
+                WHERE LOWER(nombre) = LOWER(:nombre) 
+                AND LOWER(apellido) = LOWER(:apellido)
+                LIMIT 1
+            `, {
+                replacements: {
+                    nombre: datosCita.paciente.nombre.trim(),
+                    apellido: datosCita.paciente.apellido.trim()
+                },
+                transaction
+            });
+            
+            if (pacienteExistente && pacienteExistente.length > 0) {
+                // Usar paciente existente
+                paciente = pacienteExistente[0];
+                console.log('✅ Usando paciente existente:', paciente);
+            } else {
+                // Crear nuevo paciente
+                console.log('📋 Creando nuevo paciente');
+                const [resultadoPaciente] = await sequelize.query(`
+                    INSERT INTO pacientes (
+                        nombre, apellido, email, telefono, estado, activo, created_at
+                    ) VALUES (
+                        :nombre, :apellido, :email, :telefono, 'activo', TRUE, NOW()
+                    )
+                `, {
+                    replacements: {
+                        nombre: datosCita.paciente.nombre.trim(),
+                        apellido: datosCita.paciente.apellido.trim(),
+                        email: datosCita.paciente.email || null,
+                        telefono: datosCita.paciente.telefono || null
+                    },
+                    transaction
+                });
+                
+                paciente = { id: resultadoPaciente.insertId };
+                console.log('✅ Nuevo paciente creado con ID:', paciente.id);
+            }
+            
+            // 2. Verificar que el becario existe si se especificó
+            if (datosCita.becario_id) {
+                const [becario] = await sequelize.query(`
+                    SELECT id FROM users WHERE id = :becario_id AND rol = 'becario'
+                `, {
+                    replacements: { becario_id: datosCita.becario_id },
+                    transaction
+                });
+                
+                if (!becario || becario.length === 0) {
+                    throw new Error('El becario especificado no existe');
+                }
+            }
+            
+            // 3. Verificar que no haya conflicto de horario
+            const [citasConflicto] = await sequelize.query(`
+                SELECT id FROM citas 
+                WHERE fecha = :fecha 
+                AND hora = :hora 
+                AND estado IN ('programada', 'confirmada')
+                AND becario_id = :becario_id
+            `, {
+                replacements: {
+                    fecha: datosCita.fecha,
+                    hora: datosCita.hora + ':00', // Asegurar formato HH:MM:SS
+                    becario_id: datosCita.becario_id || null
+                },
+                transaction
+            });
+            
+            if (citasConflicto && citasConflicto.length > 0) {
+                throw new Error('Ya existe una cita programada para este horario con este becario');
+            }
+            
+            // 4. Crear la cita
+            const [resultadoCita] = await sequelize.query(`
+                INSERT INTO citas (
+                    paciente_id, 
+                    becario_id,
+                    fecha, 
+                    hora, 
+                    tipo_consulta, 
+                    estado, 
+                    duracion, 
+                    notas, 
+                    created_at
+                ) VALUES (
+                    :paciente_id, 
+                    :becario_id,
+                    :fecha, 
+                    :hora, 
+                    :tipo_consulta, 
+                    'programada', 
+                    :duracion, 
+                    :notas, 
+                    NOW()
+                )
+            `, {
+                replacements: {
+                    paciente_id: paciente.id,
+                    becario_id: datosCita.becario_id || null,
+                    fecha: datosCita.fecha,
+                    hora: datosCita.hora + ':00',
+                    tipo_consulta: datosCita.tipo_consulta,
+                    duracion: datosCita.duracion,
+                    notas: datosCita.notas || null
+                },
+                transaction
+            });
+            
+            // 5. Obtener la cita creada con información del paciente
+            const [citaCreada] = await sequelize.query(`
+                SELECT 
+                    c.*,
+                    CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+                    p.telefono AS paciente_telefono,
+                    u_bec.nombre AS becario_nombre
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                WHERE c.id = :cita_id
+            `, {
+                replacements: { cita_id: resultadoCita.insertId },
+                transaction
+            });
+            
+            // 6. Registrar en logs
+            await sequelize.query(`
+                INSERT INTO logs_sistema (
+                    tipo, usuario_id, descripcion, paciente_id, created_at
+                ) VALUES (
+                    'nueva_cita', :usuarioId, :descripcion, :pacienteId, NOW()
+                )
+            `, {
+                replacements: { 
+                    usuarioId: datosCita.usuarioId,
+                    pacienteId: paciente.id,
+                    descripcion: `Nueva cita creada para ${datosCita.fecha} ${datosCita.hora}` 
+                },
+                transaction
+            });
+            
+            await transaction.commit();
+            console.log('✅ Cita creada exitosamente');
+            
+            return citaCreada[0];
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('❌ Error en crearNuevaCita:', error);
+            throw error;
+        }
+    }
+    
+
+    /**
+     * Reemplaza: sp_generar_reporte_mensual
+     */
+    static async generarReporteMensual(mes, anio, psicologoId = null) {
+        try {
+            let query = `
+                SELECT 
+                    p.id,
+                    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+                    COUNT(c.id) AS total_sesiones,
+                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS sesiones_completadas,
+                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) AS sesiones_canceladas,
+                    SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) AS sesiones_programadas,
+                    MIN(c.fecha) AS primera_sesion_mes,
+                    MAX(c.fecha) AS ultima_sesion_mes
+                FROM pacientes p
+                LEFT JOIN citas c ON p.id = c.paciente_id 
+                    AND MONTH(c.fecha) = :mes 
+                    AND YEAR(c.fecha) = :anio
+            `;
+            
+            const params = { mes, anio };
+            
+            if (psicologoId !== null && psicologoId !== undefined) {
+                query += ` AND c.psicologo_id = :psicologoId`;
+                params.psicologoId = psicologoId;
+            }
+            
+            query += `
+                WHERE p.activo = TRUE
+                GROUP BY p.id, p.nombre, p.apellido
+                ORDER BY p.apellido, p.nombre
+            `;
+            
+            const [results] = await sequelize.query(query, {
+                replacements: params,
+                type: sequelize.QueryTypes.SELECT
+            });
+            
+            return results;
+            
+        } catch (error) {
+            console.error('Error en generarReporteMensual:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Reemplaza: tr_after_insert_alta
+     * Realiza transacción atómica para dar de alta paciente
+     */
+    static async darAltaPaciente(pacienteId, tipoAlta, usuarioId, notas = null) {
+        const transaction = await sequelize.transaction();
+        
+        try {
+            // 1. Insertar en altas
+            await sequelize.query(`
+                INSERT INTO altas (paciente_id, tipo_alta, usuario_id, notas, created_at)
+                VALUES (:pacienteId, :tipoAlta, :usuarioId, :notas, NOW())
+            `, {
+                replacements: { pacienteId, tipoAlta, usuarioId, notas },
+                transaction
+            });
+            
+            // 2. Actualizar paciente
+            await sequelize.query(`
+                UPDATE pacientes 
+                SET estado = :tipoAlta,
+                    activo = FALSE,
+                    updated_at = NOW()
+                WHERE id = :pacienteId
+            `, {
+                replacements: { tipoAlta, pacienteId },
+                transaction
+            });
+            
+            // 3. Cancelar citas futuras
+            await sequelize.query(`
+                UPDATE citas 
+                SET estado = 'cancelada',
+                    motivo_cancelacion = 'Paciente dado de alta',
+                    updated_at = NOW()
+                WHERE paciente_id = :pacienteId 
+                AND fecha >= CURDATE()
+                AND estado IN ('programada', 'confirmada')
+            `, {
+                replacements: { pacienteId },
+                transaction
+            });
+            
+            // 4. Registrar en logs
+            await sequelize.query(`
+                INSERT INTO logs_sistema (
+                    tipo, usuario_id, descripcion, paciente_id, created_at
+                ) VALUES (
+                    'alta_paciente', :usuarioId, :descripcion, :pacienteId, NOW()
+                )
+            `, {
+                replacements: { 
+                    usuarioId, 
+                    pacienteId,
+                    descripcion: `Alta tipo: ${tipoAlta}` 
+                },
+                transaction
+            });
+            
+            // Commit de la transacción
+            await transaction.commit();
+            
+            return true;
+            
+        } catch (error) {
+            // Rollback en caso de error
+            await transaction.rollback();
+            console.error('Error en darAltaPaciente:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Reemplaza: tr_after_update_cita
+     * Actualiza cita y maneja notificaciones
+     */
+    static async actualizarCita(citaId, updates, usuarioId) {
+        const transaction = await sequelize.transaction();
+        
+        try {
+            // 1. Obtener datos actuales
+            const [citaActual] = await sequelize.query(`
+                SELECT * FROM citas WHERE id = :citaId
+            `, {
+                replacements: { citaId },
+                type: sequelize.QueryTypes.SELECT,
+                transaction
+            });
+            
+            if (!citaActual) {
+                throw new Error('Cita no encontrada');
+            }
+            
+            // 2. Construir query de actualización
+            const setClauses = [];
+            const params = { citaId };
+            
+            for (const [key, value] of Object.entries(updates)) {
+                setClauses.push(`${key} = :${key}`);
+                params[key] = value;
+            }
+            
+            const updateQuery = `
+                UPDATE citas 
+                SET ${setClauses.join(', ')}, updated_at = NOW()
+                WHERE id = :citaId
+            `;
+            
+            // 3. Actualizar cita
+            await sequelize.query(updateQuery, {
+                replacements: params,
+                transaction
+            });
+            
+            // 4. Verificar cambios importantes para notificaciones
+            const cambiosImportantes = 
+                (updates.fecha && updates.fecha !== citaActual.fecha) ||
+                (updates.hora && updates.hora !== citaActual.hora) ||
+                (updates.tipo_consulta && updates.tipo_consulta !== citaActual.tipo_consulta);
+            
+            // 5. Crear notificaciones si hay cambios importantes
+            if (cambiosImportantes) {
+                // Obtener paciente email si existe
+                const [paciente] = await sequelize.query(`
+                    SELECT email FROM pacientes WHERE id = :pacienteId
+                `, {
+                    replacements: { pacienteId: citaActual.paciente_id },
+                    type: sequelize.QueryTypes.SELECT,
+                    transaction
+                });
+                
+                if (paciente && paciente.email) {
+                    // Crear notificación para el paciente (si tuvieras tabla notificaciones)
+                    // await sequelize.query(...)
+                }
+                
+                // Notificar al psicólogo y becario si están asignados
+                const usuariosNotificar = [];
+                if (citaActual.psicologo_id) usuariosNotificar.push(citaActual.psicologo_id);
+                if (citaActual.becario_id) usuariosNotificar.push(citaActual.becario_id);
+                
+                for (const userId of usuariosNotificar) {
+                    await sequelize.query(`
+                        INSERT INTO notificaciones (
+                            usuario_id, tipo, titulo, mensaje, leido, created_at
+                        ) VALUES (
+                            :userId, 'cita_modificada', 'Cita modificada',
+                            CONCAT('La cita del paciente ha sido modificada. Nueva fecha: ', 
+                                   :nuevaFecha, ' ', :nuevaHora),
+                            FALSE, NOW()
+                        )
+                    `, {
+                        replacements: {
+                            userId,
+                            nuevaFecha: updates.fecha || citaActual.fecha,
+                            nuevaHora: updates.hora || citaActual.hora
+                        },
+                        transaction
+                    });
+                }
+            }
+            
+            await transaction.commit();
+            return true;
+            
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Error en actualizarCita:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Obtener estadísticas generales
+     */
+    static async obtenerEstadisticas(fechaInicio, fechaFin, psicologoId = null) {
+        try {
+            let query = `
+                SELECT 
+                    COUNT(*) AS total_citas,
+                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) AS completadas,
+                    SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) AS canceladas,
+                    SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) AS programadas,
+                    COUNT(DISTINCT paciente_id) AS pacientes_unicos,
+                    COUNT(DISTINCT psicologo_id) AS psicologos_activos
+                FROM citas
+                WHERE fecha BETWEEN :fechaInicio AND :fechaFin
+            `;
+            
+            const params = { fechaInicio, fechaFin };
+            
+            if (psicologoId !== null && psicologoId !== undefined) {
+                query += ` AND psicologo_id = :psicologoId`;
+                params.psicologoId = psicologoId;
+            }
+            
+            const [result] = await sequelize.query(query, {
+                replacements: params,
+                type: sequelize.QueryTypes.SELECT
+            });
+            
+            return result;
+            
+        } catch (error) {
+            console.error('Error en obtenerEstadisticas:', error);
+            throw error;
+        }
+    }
+}
+
+module.exports = DatabaseService;
 
 /src\services\index.js:
 --------------------------------------------------------------------------------

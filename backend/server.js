@@ -7,12 +7,20 @@ const swaggerDocument = require('./src/doc/swagger.json');
 const cors = require('cors');
 
 const sequelize = require('./src/config/db');
-require('./src/models/userModel'); 
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
 
 const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes'); // Añadir esta línea
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+
 
 app.use(cors({
   origin: 'http://localhost:3001',
@@ -30,15 +38,24 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
 
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
 
-sequelize.sync({ force: false })
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
     .then(() => {
         console.log("✅ Tablas sincronizadas (base de datos lista)");
         app.listen(PORT, () => {
           console.log(`Backend running on http://localhost:${PORT}`);
           console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
           console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
         });
     })
     .catch((error) => {

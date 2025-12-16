@@ -8,7 +8,7 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('psico_token'));
+  const [token, setToken] = useState(localStorage.getItem('token'));
 
   useEffect(() => {
     if (token) {
@@ -43,7 +43,7 @@ export const AuthProvider = ({ children }) => {
       
       const { token, user } = response.data;
       
-      localStorage.setItem('psico_token', token);
+      localStorage.setItem('token', token);
       localStorage.setItem('psico_user', JSON.stringify(user));
       
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('psico_token');
+    localStorage.removeItem('token');
     localStorage.removeItem('psico_user');
     delete axios.defaults.headers.common['Authorization'];
     setToken(null);

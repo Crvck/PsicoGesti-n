@@ -1,0 +1,381 @@
+
+
+/server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+require('./src/models/userModel'); 
+
+const authRoutes = require('./src/routes/authRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+
+
+sequelize.sync({ force: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
+
+/src\server.js:
+--------------------------------------------------------------------------------
+const cors = require('cors');
+
+// Enable CORS for React
+app.use(cors({
+  origin: 'http://localhost:3000', // Replace with your React app's URL
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+/src\config\db.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+
+const { Sequelize } = require('sequelize');
+
+const sequelize = new Sequelize(
+    process.env.DB_NAME,
+    process.env.DB_USER,
+    process.env.DB_PASSWORD,
+    {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        dialect: 'mysql',
+        logging: false,
+        
+        dialectOptions: {
+            ssl: {
+                require: true,
+                rejectUnauthorized: false
+            }
+        },
+
+        pool: {
+            max: 5,
+            min: 0,
+            acquire: 30000,
+            idle: 10000
+        }
+    }
+);
+
+async function testConnection() {
+    try {
+        await sequelize.authenticate();
+        console.log('✅ Conexión a base de datos establecida exitosamente.');
+    } catch (error) {
+        console.error('❌ No se pudo conectar a la base de datos:', error);
+    }
+}
+
+testConnection();
+
+module.exports = sequelize;
+
+/src\controllers\authController.js:
+--------------------------------------------------------------------------------
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+// Importamos el modelo de Sequelize
+const User = require('../models/userModel'); 
+
+class AuthController {
+    
+    static async login(req, res) {
+        try {
+            const { email, password } = req.body;
+
+            // 1. Validar entrada básica
+            if (!email || !password) {
+                return res.status(400).json({ message: 'Por favor ingrese email y contraseña' });
+            }
+
+            // 2. Buscar el usuario usando Sequelize
+            // En vez de SQL crudo, usamos el método findOne con una cláusula 'where'
+            const user = await User.findOne({ 
+                where: { email: email } 
+            });
+
+            // 3. Verificar si el usuario existe
+            if (!user) {
+                // 'user' será null si no se encuentra
+                return res.status(401).json({ message: 'Credenciales inválidas' });
+            }
+
+            // 4. Comparar la contraseña (user.password accede al campo del objeto Sequelize)
+            const isMatch = await bcrypt.compare(password, user.password);
+
+            if (!isMatch) {
+                return res.status(401).json({ message: 'Credenciales inválidas' });
+            }
+
+            // 5. Generar el JWT (usamos user.id y user.email del objeto Sequelize)
+            const payload = {
+                id: user.id,
+                email: user.email
+            };
+
+            const token = jwt.sign(
+                payload, 
+                process.env.JWT_SECRET, 
+                { expiresIn: process.env.JWT_EXPIRES_IN }
+            );
+
+            // 6. Responder (user.toJSON() limpia metadatos de Sequelize si es necesario)
+            res.json({
+                message: 'Login exitoso',
+                token: token,
+                user: { id: user.id, email: user.email }
+            });
+
+        } catch (error) {
+            console.error('Error en el login:', error);
+            res.status(500).json({ message: 'Error interno del servidor' });
+        }
+    }
+}
+
+module.exports = AuthController;
+
+/src\controllers\m.js:
+--------------------------------------------------------------------------------
+
+
+/src\doc\swagger.json:
+--------------------------------------------------------------------------------
+{
+  "swagger": "2.0",
+  "info": {
+    "version": "1.0.1",
+    "title": "API Documentation con Auth",
+    "description": "API documentation including Authentication endpoint"
+  },
+  "host": "localhost:3000",
+  "basePath": "/",
+  "schemes": [
+    "http"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Root endpoint",
+        "description": "Returns a basic message to confirm the server is running.",
+        "responses": {
+          "200": {
+            "description": "Server is running"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "User Login",
+        "description": "Authenticate user with email and password to receive a JWT token.",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "description": "User credentials",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/LoginCredentials"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Login successful, token returned",
+            "schema": {
+              "$ref": "#/definitions/LoginResponse"
+            }
+          },
+          "400": {
+            "description": "Missing email or password"
+          },
+          "401": {
+            "description": "Invalid credentials"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "LoginCredentials": {
+      "type": "object",
+      "required": [
+        "email",
+        "password"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "example": "test@example.com"
+        },
+        "password": {
+          "type": "string",
+          "example": "123456"
+        }
+      }
+    },
+    "LoginResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "example": "Login exitoso"
+        },
+        "token": {
+          "type": "string",
+          "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        },
+        "user": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "example": 1 },
+            "email": { "type": "string", "example": "test@example.com" }
+          }
+        }
+      }
+    }
+  }
+}
+
+/src\middlewares\authMiddleware.js:
+--------------------------------------------------------------------------------
+
+
+const jwt = require('jsonwebtoken');
+
+const verifyToken = (req, res, next) => {
+    // 1. Obtener el token del header "Authorization"
+    // Se espera el formato: "Bearer <token_aqui>"
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Obtener la segunda parte
+
+    if (!token) {
+        return res.status(403).json({ message: 'Acceso denegado. Token no proporcionado.' });
+    }
+
+    try {
+        // 2. Verificar el token usando la clave secreta
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // 3. Si es válido, guardamos los datos del usuario (payload) en la request
+        // para que las siguientes rutas puedan usarlo (ej. req.user.id)
+        req.user = decoded;
+        
+        // 4. Continuar con la siguiente función
+        next();
+    } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+             return res.status(401).json({ message: 'El token ha expirado.' });
+        }
+        return res.status(401).json({ message: 'Token inválido.' });
+    }
+};
+
+module.exports = verifyToken;
+
+/src\models\userModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db'); // Importamos la conexión
+
+// Definimos el modelo 'User'
+const User = sequelize.define('User', {
+    // Sequelize añade automáticamente una columna 'id' auto-incremental
+    // Si quieres definirla manualmente:
+    /* id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    }, 
+    */
+    email: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        unique: {
+            msg: 'El correo electrónico ya está registrado'
+        },
+        validate: {
+            isEmail: {
+                msg: 'Debe proporcionar un correo electrónico válido'
+            },
+            notEmpty: true
+        }
+    },
+    password: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        validate: {
+            notEmpty: true
+        }
+    }
+    // Sequelize añade automáticamente 'createdAt' y 'updatedAt'
+}, {
+    tableName: 'users', // Nombre real de la tabla en la BD
+    timestamps: true // Asegura que se creen createdAt y updatedAt
+});
+
+module.exports = User;
+
+/src\routes\authRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const AuthController = require('../controllers/authController');
+
+// Definir ruta POST para /login
+router.post('/login', AuthController.login);
+
+module.exports = router;
+
+/src\services\index.js:
+--------------------------------------------------------------------------------
+// Services for business logic

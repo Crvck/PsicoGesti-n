@@ -75,7 +75,7 @@ if __name__ == "__main__":
         else:
             DIRECTORIO_BASE = os.path.dirname(os.path.abspath(__file__))
     
-    ARCHIVO_SALIDA = "contenido_PsicoGestion.txt"
+    ARCHIVO_SALIDA = "contenidoBACKEND_PsicoGestion.txt"
     
     # Configuración para modo MANUAL
     # En modo manual, solo se incluirán los tipos de archivo especificados aquí

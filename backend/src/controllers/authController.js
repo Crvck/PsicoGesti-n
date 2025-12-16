@@ -49,7 +49,15 @@ class AuthController {
             res.json({
                 message: 'Login exitoso',
                 token: token,
-                user: { id: user.id, email: user.email }
+                user: { 
+                    id: user.id, 
+                    email: user.email,
+                    nombre: user.nombre, // Añade esto
+                    apellido: user.apellido, // Añade esto
+                    rol: user.rol, // Añade esto
+                    especialidad: user.especialidad, // Añade esto (si aplica)
+                    created_at: user.created_at // Cambia createdAt por created_at
+                }
             });
 
         } catch (error) {
@@ -57,6 +65,31 @@ class AuthController {
             res.status(500).json({ message: 'Error interno del servidor' });
         }
     }
+
+    static async getMe(req, res) {
+        try {
+            const userId = req.user.id;
+            
+            // Buscar usuario en la base de datos
+            const user = await User.findOne({ 
+                where: { id: userId },
+                attributes: ['id', 'email', 'nombre', 'apellido', 'rol', 'especialidad', 'created_at'] // Cambia 'createdAt' por 'created_at'
+            });
+            
+            if (!user) {
+                return res.status(404).json({ message: 'Usuario no encontrado' });
+            }
+            
+            res.json({
+                message: 'Usuario obtenido exitosamente',
+                user: user
+            });
+            
+        } catch (error) {
+            console.error('Error al obtener usuario:', error);
+            res.status(500).json({ message: 'Error interno del servidor' });
+        }
+    }
 }
 
-module.exports = AuthController;
+module.exports = AuthController

@@ -25,7 +25,10 @@ export const AuthProvider = ({ children }) => {
       setUser(response.data.user);
     } catch (error) {
       console.error('Error fetching user data:', error);
-      logout();
+      // Si el error es 401 (token inválido/vencido), hacer logout
+      if (error.response?.status === 401) {
+        logout();
+      }
     } finally {
       setLoading(false);
     }

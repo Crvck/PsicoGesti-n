@@ -49,17 +49,6 @@ sequelize.sync({ force: false })
         console.error("❌ Error al sincronizar la base de datos:", error.message);
     });
 
-/src\server.js:
---------------------------------------------------------------------------------
-const cors = require('cors');
-
-// Enable CORS for React
-app.use(cors({
-  origin: 'http://localhost:3000', // Replace with your React app's URL
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-
 /src\config\db.js:
 --------------------------------------------------------------------------------
 const path = require('path');
@@ -159,7 +148,11 @@ class AuthController {
             res.json({
                 message: 'Login exitoso',
                 token: token,
-                user: { id: user.id, email: user.email }
+                user: { 
+                    id: user.id, 
+                    email: user.email,
+                    createdAt: user.createdAt
+                }
             });
 
         } catch (error) {
@@ -167,9 +160,35 @@ class AuthController {
             res.status(500).json({ message: 'Error interno del servidor' });
         }
     }
+
+    static async getMe(req, res) {
+        try {
+            // El middleware verifyToken ya verificó el token y añadió req.user
+            const userId = req.user.id;
+            
+            // Buscar usuario en la base de datos
+            const user = await User.findOne({ 
+                where: { id: userId },
+                attributes: ['id', 'email', 'createdAt'] // Seleccionar campos que quieres devolver
+            });
+            
+            if (!user) {
+                return res.status(404).json({ message: 'Usuario no encontrado' });
+            }
+            
+            res.json({
+                message: 'Usuario obtenido exitosamente',
+                user: user
+            });
+            
+        } catch (error) {
+            console.error('Error al obtener usuario:', error);
+            res.status(500).json({ message: 'Error interno del servidor' });
+        }
+    }
 }
 
-module.exports = AuthController;
+module.exports = AuthController
 
 /src\controllers\m.js:
 --------------------------------------------------------------------------------
@@ -370,9 +389,10 @@ module.exports = User;
 const express = require('express');
 const router = express.Router();
 const AuthController = require('../controllers/authController');
+const verifyToken = require('../middlewares/authMiddleware');
 
-// Definir ruta POST para /login
 router.post('/login', AuthController.login);
+router.get('/me', verifyToken, AuthController.getMe);
 
 module.exports = router;
 

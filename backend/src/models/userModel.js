@@ -1,16 +1,12 @@
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db'); // Importamos la conexión
+const sequelize = require('../config/db');
 
-// Definimos el modelo 'User'
 const User = sequelize.define('User', {
-    // Sequelize añade automáticamente una columna 'id' auto-incremental
-    // Si quieres definirla manualmente:
-    /* id: {
+    id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true
-    }, 
-    */
+    },
     email: {
         type: DataTypes.STRING(255),
         allowNull: false,
@@ -30,11 +26,43 @@ const User = sequelize.define('User', {
         validate: {
             notEmpty: true
         }
+    },
+    nombre: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    apellido: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    telefono: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    rol: {
+        type: DataTypes.ENUM('coordinador', 'psicologo', 'becario'),
+        allowNull: false,
+        defaultValue: 'becario'
+    },
+    especialidad: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
+    fundacion_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    activo: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
     }
-    // Sequelize añade automáticamente 'createdAt' y 'updatedAt'
 }, {
-    tableName: 'users', // Nombre real de la tabla en la BD
-    timestamps: true // Asegura que se creen createdAt y updatedAt
+    tableName: 'users',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true
 });
 
 module.exports = User;

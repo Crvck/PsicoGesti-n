@@ -62,7 +62,7 @@ body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background: linear-gradient(135deg, var(--blub) 0%, var(--blud) 100%);
   color: var(--white);
-  overflow: hidden;
+
 }
 
 /* ===== ESTRUCTURA PRINCIPAL ===== */
@@ -74,6 +74,7 @@ body {
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  height: 100vh;
 }
 
 .dashboard-logo {
@@ -90,7 +91,7 @@ body {
   padding: 15px;
   border-radius: 10px;
   position: relative;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .grid-content {
@@ -111,13 +112,17 @@ body {
 .header {
   height: 35px;
   background: var(--blu);
-  
+  position: fixed;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
   position: relative;
   z-index: 10;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
 }
 
 .top-header {
@@ -128,7 +133,9 @@ body {
   color: var(--whiteSET);
   justify-content: space-between;
   padding: 0 20px;
-  z-index: 10;
+  z-index: 1000;
+
+  
 }
 
 .window-controls {
@@ -1038,7 +1045,9 @@ body {
 .content-wrapper {
   display: flex;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
+  min-height: 0;
+  height: calc(100vh - 80px);
 }
 
 .sidebar {
@@ -1092,6 +1101,10 @@ body {
 }
 
 .status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   height: 30px;
   background: var(--blud);
   border-top: 1px solid var(--blub);
@@ -1101,6 +1114,7 @@ body {
   justify-content: space-between;
   font-size: 12px;
   color: var(--grayl);
+  z-index: 1000;
 }
 
 .user-info {

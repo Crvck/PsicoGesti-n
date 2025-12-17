@@ -67,17 +67,17 @@
 /* Botón de confirmar por tipo */
 .confirm-button-info {
   background: var(--blu);
-  color: var(--blub);
+  color: var(--white);
 }
 
 .confirm-button-warning {
   background: var(--yy);
-  color: var(--blub);
+  color: var(--white);
 }
 
 .confirm-button-danger {
   background: var(--rr);
-  color: var(--blub);
+  color: var(--white);
 }
 
 /* Botón de cancelar por tipo */
@@ -101,32 +101,29 @@
 
 /* Hover effects */
 .confirm-button-info:hover {
-  background: var(--blub);
   transform: translateY(-2px);
 }
 
 .confirm-button-warning:hover {
-  background: #f39c12;
   transform: translateY(-2px);
 }
 
 .confirm-button-danger:hover {
-  background: #e74c3c;
   transform: translateY(-2px);
 }
 
 .confirm-button-info-cancel:hover {
-  background: rgba(64, 148, 232, 0.2);
+  background: var(--blu);
   transform: translateY(-2px);
 }
 
 .confirm-button-warning-cancel:hover {
-  background: rgba(241, 196, 15, 0.2);
+  background: var(--yy);
   transform: translateY(-2px);
 }
 
 .confirm-button-danger-cancel:hover {
-  background: rgba(231, 76, 60, 0.2);
+  background: var(--rr);
   transform: translateY(-2px);
 }
 

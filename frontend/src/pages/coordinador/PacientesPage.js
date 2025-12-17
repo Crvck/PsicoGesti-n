@@ -176,7 +176,9 @@ const CoordinadorPacientes = () => {
   };
 
   const deletePaciente = async (id) => {
-    if (!confirm('¿Seguro que desea eliminar (inactivar) este paciente?')) return;
+    const confirmado = await confirmations.danger('¿Seguro que desea eliminar (inactivar) este paciente?');
+    if (!confirmado) return;
+    
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:3000/api/pacientes/${id}`, {

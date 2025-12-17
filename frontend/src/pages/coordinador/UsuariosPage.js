@@ -146,7 +146,9 @@ const CoordinadorUsuarios = () => {
   };
 
   const deleteUsuario = async (id) => {
-    if (!confirm('¿Seguro que desea eliminar (inactivar) este usuario?')) return;
+    const confirmado = await confirmations.danger('¿Seguro que desea eliminar este usuario?');
+    if (!confirmado) return;
+    
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:3000/api/users/${id}`, {
@@ -163,9 +165,8 @@ const CoordinadorUsuarios = () => {
         return;
       }
 
-      // remover de la lista local
       setUsuarios(prev => prev.filter(u => u.id !== id));
-      notifications.success('Usuario eliminado (inactivado) correctamente');
+      notifications.success('Usuario eliminado correctamente');
     } catch (error) {
       console.error('Error eliminando usuario:', error);
       notifications.error('Error eliminando usuario');

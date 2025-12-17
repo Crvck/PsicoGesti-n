@@ -17,7 +17,8 @@ const CoordinadorUsuarios = () => {
     rol: 'becario',
     especialidad: '',
     fundacion_id: '',
-    activo: true
+    activo: true,
+    password: 'P@ssw0rd123' // contraseña temporal por defecto
   });
 
   useEffect(() => {
@@ -26,69 +27,27 @@ const CoordinadorUsuarios = () => {
 
   const fetchUsuarios = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setUsuarios([
-          {
-            id: 1,
-            nombre: 'Ana',
-            apellido: 'Martínez',
-            email: 'coordinador@psicogestion.com',
-            telefono: '555-1111',
-            rol: 'coordinador',
-            especialidad: 'Coordinación Clínica',
-            activo: true,
-            fecha_registro: '2023-01-15'
-          },
-          {
-            id: 2,
-            nombre: 'Luis',
-            apellido: 'Fernández',
-            email: 'psicologo1@psicogestion.com',
-            telefono: '555-2222',
-            rol: 'psicologo',
-            especialidad: 'Terapia Cognitivo-Conductual',
-            activo: true,
-            fecha_registro: '2023-02-20'
-          },
-          {
-            id: 3,
-            nombre: 'Laura',
-            apellido: 'Gutiérrez',
-            email: 'psicologo2@psicogestion.com',
-            telefono: '555-5555',
-            rol: 'psicologo',
-            especialidad: 'Terapia Familiar',
-            activo: true,
-            fecha_registro: '2023-03-10'
-          },
-          {
-            id: 4,
-            nombre: 'Juan',
-            apellido: 'Pérez',
-            email: 'becario1@psicogestion.com',
-            telefono: '555-3333',
-            rol: 'becario',
-            especialidad: 'Practicante de Psicología',
-            activo: true,
-            fecha_registro: '2023-09-01'
-          },
-          {
-            id: 5,
-            nombre: 'Sofía',
-            apellido: 'Ramírez',
-            email: 'becario2@psicogestion.com',
-            telefono: '555-4444',
-            rol: 'becario',
-            especialidad: 'Practicante de Psicología',
-            activo: false,
-            fecha_registro: '2023-10-15'
-          }
-        ]);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/users', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        // Si no es coordinador o token inválido, podemos mostrar un mensaje y seguir
+        console.error('Error fetching users:', res.status);
         setLoading(false);
-      }, 1000);
+        return;
+      }
+
+      const data = await res.json();
+      setUsuarios(data);
     } catch (error) {
       console.error('Error al obtener usuarios:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -105,45 +64,149 @@ const CoordinadorUsuarios = () => {
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value
+    // Si cambia el rol y estamos creando un nuevo usuario, establecer contraseña temporal por defecto
+    setFormData(prev => {
+      const next = {
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      };
+
+      if (name === 'rol' && modalType === 'nuevo') {
+        // Mantener la contraseña temporal por defecto
+        next.password = 'P@ssw0rd123';
+      }
+
+      return next;
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (modalType === 'nuevo') {
-      const nuevoUsuario = {
-        id: usuarios.length + 1,
-        ...formData,
-        fecha_registro: new Date().toISOString().split('T')[0]
-      };
-      setUsuarios([...usuarios, nuevoUsuario]);
-      alert('Usuario creado exitosamente');
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:3000/api/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || 'Error creando usuario');
+          return;
+        }
+
+        const created = await res.json();
+        // Añadir a la lista local (asegura compatibilidad de campos)
+        setUsuarios(prev => [...prev, created]);
+        alert('Usuario creado exitosamente');
+      } catch (error) {
+        console.error('Error creando usuario:', error);
+        alert('Error creando usuario');
+      }
     } else {
-      // Editar usuario
-      setUsuarios(usuarios.map(u => 
-        u.id === formData.id ? { ...u, ...formData } : u
-      ));
-      alert('Usuario actualizado exitosamente');
+      // Editar usuario: enviar al backend
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`http://localhost:3000/api/users/${formData.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || 'Error actualizando usuario');
+          return;
+        }
+
+        const updated = await res.json();
+        setUsuarios(prev => prev.map(u => u.id === updated.id ? updated : u));
+        alert('Usuario actualizado exitosamente');
+      } catch (error) {
+        console.error('Error actualizando usuario:', error);
+        alert('Error actualizando usuario');
+      }
     }
     
     setShowModal(false);
     resetForm();
   };
 
+  const deleteUsuario = async (id) => {
+    if (!confirm('¿Seguro que desea eliminar (inactivar) este usuario?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/users/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error eliminando usuario');
+        return;
+      }
+
+      // remover de la lista local
+      setUsuarios(prev => prev.filter(u => u.id !== id));
+      alert('Usuario eliminado (inactivado) correctamente');
+    } catch (error) {
+      console.error('Error eliminando usuario:', error);
+      alert('Error eliminando usuario');
+    }
+  };
+
   const editarUsuario = (usuario) => {
-    setFormData(usuario);
+    // Mapear fecha si es string
+    const mapped = {
+      ...usuario,
+      password: 'P@ssw0rd123'
+    };
+    setFormData(mapped);
     setModalType('editar');
     setShowModal(true);
   };
 
-  const toggleEstadoUsuario = (id) => {
-    setUsuarios(usuarios.map(u => 
-      u.id === id ? { ...u, activo: !u.activo } : u
-    ));
+  const toggleEstadoUsuario = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      // Encontrar usuario actual
+      const usuario = usuarios.find(u => u.id === id);
+      if (!usuario) return;
+
+      const res = await fetch(`http://localhost:3000/api/users/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ activo: !usuario.activo })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error al cambiar estado');
+        return;
+      }
+
+      const updated = await res.json();
+      setUsuarios(prev => prev.map(u => u.id === id ? updated : u));
+    } catch (error) {
+      console.error('Error toggling activo:', error);
+      alert('Error cambiando estado de usuario');
+    }
   };
 
   const resetForm = () => {
@@ -155,7 +218,8 @@ const CoordinadorUsuarios = () => {
       rol: 'becario',
       especialidad: '',
       fundacion_id: '',
-      activo: true
+      activo: true,
+      password: 'P@ssw0rd123'
     });
   };
 
@@ -294,6 +358,13 @@ const CoordinadorUsuarios = () => {
                         title={usuario.activo ? 'Desactivar' : 'Activar'}
                       >
                         {usuario.activo ? <FiXCircle /> : <FiCheckCircle />}
+                      </button>
+                      <button
+                        className="btn-text text-danger"
+                        onClick={() => deleteUsuario(usuario.id)}
+                        title="Eliminar"
+                      >
+                        <FiTrash2 />
                       </button>
                     </div>
                   </td>
@@ -436,7 +507,8 @@ const CoordinadorUsuarios = () => {
                     <label>Contraseña Temporal</label>
                     <input
                       type="text"
-                      value="P@ssw0rd123"
+                      name="password"
+                      value={formData.password}
                       className="input-field"
                       readOnly
                     />

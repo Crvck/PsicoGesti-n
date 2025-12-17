@@ -7,6 +7,7 @@ const CoordinadorUsuarios = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRol, setFilterRol] = useState('');
+  const [includeInactivos, setIncludeInactivos] = useState(true); // mostrar inactivos por defecto
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('nuevo');
   const [formData, setFormData] = useState({
@@ -58,8 +59,9 @@ const CoordinadorUsuarios = () => {
       usuario.email.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesRol = !filterRol || usuario.rol === filterRol;
+    const matchesActivo = includeInactivos ? true : usuario.activo;
     
-    return matchesSearch && matchesRol;
+    return matchesSearch && matchesRol && matchesActivo;
   });
 
   const handleInputChange = (e) => {
@@ -289,6 +291,31 @@ const CoordinadorUsuarios = () => {
             <option value="psicologo">Psicólogos</option>
             <option value="becario">Becarios</option>
           </select>
+
+          <label className="ml-10 flex-row align-center">
+            <input
+              type="checkbox"
+              checked={includeInactivos}
+              onChange={(e) => setIncludeInactivos(e.target.checked)}
+            />
+            <span className="ml-5">Incluir inactivos</span>
+          </label>
+
+          <button
+            className="btn-secondary ml-10"
+            onClick={() => { setFilterRol(''); setSearchTerm(''); setIncludeInactivos(true); fetchUsuarios(); }}
+            title="Mostrar todos"
+          >
+            Mostrar todos
+          </button>
+
+          <button
+            className="btn-secondary ml-10"
+            onClick={() => fetchUsuarios()}
+            title="Refrescar"
+          >
+            Actualizar
+          </button>
         </div>
       </div>
 

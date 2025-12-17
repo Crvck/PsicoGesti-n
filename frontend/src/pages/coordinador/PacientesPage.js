@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, FiPhone, FiMail, FiFileText } from 'react-icons/fi';
+import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiXCircle, FiCheckCircle } from 'react-icons/fi';
 import './coordinador.css';
 
 const CoordinadorPacientes = () => {
@@ -7,6 +7,7 @@ const CoordinadorPacientes = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [includeInactivos, setIncludeInactivos] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('nuevo');
   const [formData, setFormData] = useState({
@@ -34,90 +35,26 @@ const CoordinadorPacientes = () => {
 
   const fetchPacientes = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setPacientes([
-          {
-            id: 1,
-            nombre: 'Carlos',
-            apellido: 'Gómez',
-            fecha_nacimiento: '1998-05-15',
-            genero: 'masculino',
-            telefono: '555-1234',
-            email: 'carlos@gmail.com',
-            es_estudiante: true,
-            matricula: 'A123456',
-            institucion_educativa: 'Universidad Nacional',
-            motivo_consulta: 'Ansiedad académica',
-            antecedentes: 'No significativos',
-            activo: true,
-            estado: 'activo',
-            psicologo_asignado: 'Lic. Luis Fernández',
-            becario_asignado: 'Juan Pérez',
-            fecha_ingreso: '2023-10-15',
-            sesiones_completadas: 8
-          },
-          {
-            id: 2,
-            nombre: 'Mariana',
-            apellido: 'López',
-            fecha_nacimiento: '1995-08-22',
-            genero: 'femenino',
-            telefono: '555-5678',
-            email: 'mariana@hotmail.com',
-            es_estudiante: false,
-            motivo_consulta: 'Estrés laboral',
-            antecedentes: 'Antecedentes familiares de ansiedad',
-            activo: true,
-            estado: 'activo',
-            psicologo_asignado: 'Lic. Luis Fernández',
-            becario_asignado: 'Sofía Ramírez',
-            fecha_ingreso: '2023-09-20',
-            sesiones_completadas: 12
-          },
-          {
-            id: 3,
-            nombre: 'Roberto',
-            apellido: 'Sánchez',
-            fecha_nacimiento: '2000-02-10',
-            genero: 'masculino',
-            telefono: '555-9012',
-            email: 'roberto@yahoo.com',
-            es_estudiante: true,
-            matricula: 'B789012',
-            institucion_educativa: 'Instituto Tecnológico',
-            motivo_consulta: 'Problemas de adaptación',
-            antecedentes: 'No significativos',
-            activo: true,
-            estado: 'activo',
-            psicologo_asignado: 'Lic. Luis Fernández',
-            becario_asignado: null,
-            fecha_ingreso: '2023-11-05',
-            sesiones_completadas: 5
-          },
-          {
-            id: 4,
-            nombre: 'Ana',
-            apellido: 'Rodríguez',
-            fecha_nacimiento: '1988-03-30',
-            genero: 'femenino',
-            telefono: '555-3456',
-            email: 'ana@email.com',
-            motivo_consulta: 'Depresión',
-            antecedentes: 'Tratamiento previo en 2020',
-            activo: false,
-            estado: 'alta_terapeutica',
-            psicologo_asignado: 'Lic. Luis Fernández',
-            becario_asignado: 'Juan Pérez',
-            fecha_ingreso: '2023-06-10',
-            fecha_alta: '2024-01-05',
-            sesiones_completadas: 20
-          }
-        ]);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/pacientes', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        console.error('Error fetching pacientes:', res.status);
         setLoading(false);
-      }, 1000);
+        return;
+      }
+
+      const data = await res.json();
+      setPacientes(data);
     } catch (error) {
       console.error('Error al obtener pacientes:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -125,12 +62,13 @@ const CoordinadorPacientes = () => {
   const filteredPacientes = pacientes.filter(paciente => {
     const matchesSearch = 
       `${paciente.nombre} ${paciente.apellido}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paciente.motivo_consulta.toLowerCase().includes(searchTerm.toLowerCase());
+      (paciente.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (paciente.motivo_consulta || paciente.notas || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesEstado = !filterEstado || paciente.estado === filterEstado;
+    const matchesActivo = includeInactivos ? true : paciente.activo;
     
-    return matchesSearch && matchesEstado;
+    return matchesSearch && matchesEstado && matchesActivo;
   });
 
   const handleInputChange = (e) => {
@@ -141,26 +79,60 @@ const CoordinadorPacientes = () => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (modalType === 'nuevo') {
-      const nuevoPaciente = {
-        id: pacientes.length + 1,
-        ...formData,
-        fecha_ingreso: new Date().toISOString().split('T')[0],
-        psicologo_asignado: 'Por asignar',
-        becario_asignado: null,
-        sesiones_completadas: 0
-      };
-      setPacientes([...pacientes, nuevoPaciente]);
-      alert('Paciente creado exitosamente');
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:3000/api/pacientes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || 'Error creando paciente');
+          return;
+        }
+
+        const created = await res.json();
+        setPacientes(prev => [...prev, created]);
+        alert('Paciente creado exitosamente');
+      } catch (error) {
+        console.error('Error creando paciente:', error);
+        alert('Error creando paciente');
+      }
     } else {
-      // Editar paciente
-      setPacientes(pacientes.map(p => 
-        p.id === formData.id ? { ...p, ...formData } : p
-      ));
-      alert('Paciente actualizado exitosamente');
+      // Editar paciente: enviar al backend
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`http://localhost:3000/api/pacientes/${formData.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || 'Error actualizando paciente');
+          return;
+        }
+
+        const updated = await res.json();
+        setPacientes(prev => prev.map(p => p.id === updated.id ? updated : p));
+        alert('Paciente actualizado exitosamente');
+      } catch (error) {
+        console.error('Error actualizando paciente:', error);
+        alert('Error actualizando paciente');
+      }
     }
     
     setShowModal(false);
@@ -168,9 +140,63 @@ const CoordinadorPacientes = () => {
   };
 
   const editarPaciente = (paciente) => {
-    setFormData(paciente);
+    setFormData({ ...paciente });
     setModalType('editar');
     setShowModal(true);
+  };
+
+  const toggleActivoPaciente = async (id) => {
+    try {
+      const paciente = pacientes.find(p => p.id === id);
+      if (!paciente) return;
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/pacientes/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ activo: !paciente.activo })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error cambiando estado');
+        return;
+      }
+
+      const updated = await res.json();
+      setPacientes(prev => prev.map(p => p.id === id ? updated : p));
+    } catch (error) {
+      console.error('Error toggling paciente activo:', error);
+      alert('Error cambiando estado del paciente');
+    }
+  };
+
+  const deletePaciente = async (id) => {
+    if (!confirm('¿Seguro que desea eliminar (inactivar) este paciente?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/pacientes/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error eliminando paciente');
+        return;
+      }
+
+      setPacientes(prev => prev.filter(p => p.id !== id));
+      alert('Paciente eliminado (inactivado) correctamente');
+    } catch (error) {
+      console.error('Error eliminando paciente:', error);
+      alert('Error eliminando paciente');
+    }
   };
 
   const getEstadoLabel = (estado) => {
@@ -275,6 +301,31 @@ const CoordinadorPacientes = () => {
             <option value="abandono">Abandonos</option>
             <option value="traslado">Traslados</option>
           </select>
+
+          <label className="ml-10 flex-row align-center">
+            <input
+              type="checkbox"
+              checked={includeInactivos}
+              onChange={(e) => setIncludeInactivos(e.target.checked)}
+            />
+            <span className="ml-5">Incluir inactivos</span>
+          </label>
+
+          <button
+            className="btn-secondary ml-10"
+            onClick={() => { setFilterEstado(''); setSearchTerm(''); setIncludeInactivos(true); fetchPacientes(); }}
+            title="Mostrar todos"
+          >
+            Mostrar todos
+          </button>
+
+          <button
+            className="btn-secondary ml-10"
+            onClick={() => fetchPacientes()}
+            title="Refrescar"
+          >
+            Actualizar
+          </button>
         </div>
       </div>
 
@@ -347,6 +398,23 @@ const CoordinadorPacientes = () => {
                       >
                         <FiEdit2 />
                       </button>
+
+                      <button 
+                        className={`btn-text ${paciente.activo ? 'text-danger' : 'text-success'}`}
+                        onClick={() => toggleActivoPaciente(paciente.id)}
+                        title={paciente.activo ? 'Desactivar' : 'Activar'}
+                      >
+                        {paciente.activo ? <FiXCircle /> : <FiCheckCircle />}
+                      </button>
+
+                      <button
+                        className="btn-text text-danger"
+                        onClick={() => deletePaciente(paciente.id)}
+                        title="Eliminar"
+                      >
+                        <FiTrash2 />
+                      </button>
+
                       <button 
                         className="btn-text"
                         title="Ver expediente"
@@ -377,9 +445,9 @@ const CoordinadorPacientes = () => {
         <div className="card">
           <h4>Estadísticas</h4>
           <div className="mt-10">
-            <p>Sesiones totales: {pacientes.reduce((sum, p) => sum + p.sesiones_completadas, 0)}</p>
+            <p>Sesiones totales: {pacientes.reduce((sum, p) => sum + (p.sesiones_completadas || 0), 0)}</p>
             <p>Promedio por paciente: {
-              Math.round(pacientes.reduce((sum, p) => sum + p.sesiones_completadas, 0) / pacientes.length)
+              Math.round(pacientes.reduce((sum, p) => sum + (p.sesiones_completadas || 0), 0) / Math.max(pacientes.length, 1))
             }</p>
             <p>Altas este mes: {pacientes.filter(p => p.estado === 'alta_terapeutica').length}</p>
           </div>

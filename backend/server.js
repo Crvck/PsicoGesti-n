@@ -29,7 +29,7 @@ const expedienteRoutes = require('./src/routes/expedienteRoutes');
 const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const agendaRoutes = require('./src/routes/agendaRoutes');
 const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
-
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -68,6 +68,7 @@ app.use('/api/estadisticas', estadisticaRoutes);
 const userRoutes = require('./src/routes/userRoutes');
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
 
 // Sincronizar modelos
 sequelize.sync({ force: false, alter: false })

@@ -6,8 +6,7 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\.envlocal
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\.gitignore
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\base de datos.lnk
-  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\contenidoBACKEND_PsicoGestion.txt
-  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\contenidoFRONTEND_PsicoGestion.txt
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\codersito.py
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\package.json
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\psicogestion_contenido.txt
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\psicogestion_rutas.txt
@@ -42,7 +41,6 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\controllers/
 
 a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\db/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\db\db.sql
-  (sin archivos incluidos)
 
 a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\doc/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\doc\swagger.json
@@ -93,6 +91,7 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\api.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\backupService.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\calendarioService.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\dashboardService.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\databaseService.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\emailService.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services\estadisticaService.js
@@ -101,6 +100,7 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\services/
 
 a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\.env
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\contenidoFRONTEND_PsicoGestion.txt
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\package.json
 
 a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\public/
@@ -139,10 +139,7 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\context/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\context\AuthContext.js
 
 a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages/
-  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\CitasPage.js
-  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\ConfiguracionPage.js
-  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\DashboardPage.js
-  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\PacientesPage.js
+  (sin archivos incluidos)
 
 a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\becario/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\becario\CitasPage.js
@@ -169,6 +166,10 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\PacientesPage.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\SesionesPage.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\SupervisionPage.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\services/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\services\api.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\services\dashboardService.js
 
 a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\utils/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\utils\confirmations.js

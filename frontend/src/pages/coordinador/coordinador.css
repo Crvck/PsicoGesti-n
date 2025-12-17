@@ -582,3 +582,378 @@ input:checked + .slider:before {
     font-size: 24px;
   }
 }
+
+/* frontend/src/pages/coordinador/coordinador.css - Añadir al final */
+
+/* Alertas */
+.alertas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alerta-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  border-left: 4px solid var(--rl);
+  transition: transform 0.2s;
+}
+
+.alerta-item:hover {
+  transform: translateX(5px);
+  background: var(--bgh);
+}
+
+.alerta-icon {
+  margin-right: 12px;
+  font-size: 20px;
+}
+
+.alerta-content {
+  flex: 1;
+}
+
+.alerta-titulo {
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.alerta-subtitulo {
+  font-size: 12px;
+  color: var(--text-light);
+}
+
+/* Alertas de estado */
+.alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin: 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alert-warning {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  color: #ffc107;
+}
+
+/* frontend/src/pages/coordinador/coordinador.css - Añadir estos estilos */
+
+.alert-info {
+  background: rgba(13, 110, 253, 0.1);
+  border: 1px solid rgba(13, 110, 253, 0.3);
+  color: #0d6efd;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mejoras para las barras del gráfico */
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 200px;
+  padding: 20px;
+  gap: 10px;
+}
+
+.chart-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 60px;
+}
+
+.bar-fill {
+  width: 40px;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s ease;
+}
+
+.bar-label {
+  margin-top: 5px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-light);
+}
+
+.bar-value {
+  font-size: 11px;
+  color: var(--text-lighter);
+  margin-top: 2px;
+}
+
+/* ===== NUEVOS ESTILOS PARA DASHBOARD COORDINADOR ===== */
+
+/* Distribución de citas - gráfico mejorado */
+.distribution-chart {
+  height: 250px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 20px;
+  background: var(--blud);
+  border-radius: 10px;
+  margin-top: 15px;
+}
+
+.distribution-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 25px;
+  height: 100%;
+  width: 100%;
+}
+
+.distribution-bar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.distribution-bar-wrapper {
+  position: relative;
+  height: 100%;
+  width: 60px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.distribution-bar {
+  width: 100%;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.3s ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.distribution-bar:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.bar-value-inside {
+  position: absolute;
+  top: -25px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-weight: bold;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.distribution-label {
+  margin-top: 10px;
+  text-align: center;
+  width: 100px;
+}
+
+.psychologist-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 3px;
+  white-space: normal;
+  word-wrap: break-word;
+  line-height: 1.2;
+}
+
+.psychologist-sessions {
+  font-size: 11px;
+  color: var(--text-light);
+}
+
+/* Mensaje cuando no hay datos */
+.no-data-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  color: var(--text-light);
+  text-align: center;
+}
+
+.no-data-message svg {
+  margin-bottom: 10px;
+  opacity: 0.5;
+}
+
+.no-data-message p {
+  font-size: 14px;
+}
+
+/* Alertas mejoradas */
+.alerta-item-success {
+  border-left-color: var(--grnb);
+}
+
+.alerta-item-success .alerta-icon {
+  color: var(--grnb);
+}
+
+/* Quick actions grid */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.quick-action-btn {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: var(--text);
+}
+
+.quick-action-btn:hover {
+  background: var(--blub);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.quick-action-icon {
+  margin-right: 15px;
+  font-size: 24px;
+  color: var(--blu);
+}
+
+.quick-action-content h4 {
+  margin: 0 0 5px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.quick-action-content p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-light);
+  line-height: 1.3;
+}
+
+.timeline-item:hover {
+  transform: translateX(5px);
+}
+
+/* Progress bars para carga de pacientes */
+.progress-container {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--grnd), var(--grnl));
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.paciente-progreso {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 60%;
+}
+
+.progreso-text {
+  font-size: 12px;
+  color: var(--text-light);
+  min-width: 40px;
+}
+
+/* Botones de texto */
+.btn-text {
+  background: transparent;
+  border: none;
+  color: var(--blu);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.btn-text:hover {
+  background: rgba(31, 133, 186, 0.1);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .quick-actions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .distribution-bars {
+    gap: 15px;
+  }
+  
+  .distribution-bar-wrapper {
+    width: 50px;
+  }
+  
+  .distribution-label {
+    width: 80px;
+  }
+}
+
+@media (max-width: 768px) {
+  .quick-actions-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .distribution-bars {
+    flex-direction: column;
+    align-items: center;
+    height: auto;
+    gap: 20px;
+  }
+  
+  .distribution-bar-container {
+    flex-direction: row;
+    align-items: center;
+    height: auto;
+    width: 100%;
+  }
+  
+  .distribution-bar-wrapper {
+    width: 60px;
+    height: 150px;
+  }
+  
+  .distribution-label {
+    margin-top: 0;
+    margin-left: 15px;
+    text-align: left;
+    width: auto;
+  }
+  
+  .bar-value-inside {
+    top: -20px;
+    font-size: 12px;
+  }
+}

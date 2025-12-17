@@ -1,0 +1,2273 @@
+ARCHIVOS BACKEND PARA: COORDINADOR_AGENDA
+================================================================================
+Generado: 2025-12-17 14:42:22
+================================================================================
+
+/backend/src/services/api.js:
+--------------------------------------------------------------------------------
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  static async get(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async post(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async put(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async delete(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async handleResponse(response) {
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
+  }
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+}
+
+export default ApiService;
+
+
+/backend/src/models/citaModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const Paciente = require('./pacienteModel');
+const User = require('./userModel');
+
+const Cita = sequelize.define('Cita', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    paciente_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: Paciente,
+            key: 'id'
+        }
+    },
+    psicologo_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    becario_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    fecha: {
+        type: DataTypes.DATEONLY,
+        allowNull: false
+    },
+    hora: {
+        type: DataTypes.TIME,
+        allowNull: false,
+        get() {
+            // Obtener la hora sin segundos
+            const rawValue = this.getDataValue('hora');
+            return rawValue ? rawValue.substring(0, 5) : null;
+        }
+    },
+    tipo_consulta: {
+        type: DataTypes.ENUM('presencial', 'virtual'),
+        allowNull: false,
+        defaultValue: 'presencial'
+    },
+    estado: {
+        type: DataTypes.ENUM('programada', 'confirmada', 'completada', 'cancelada'),
+        allowNull: false,
+        defaultValue: 'programada'
+    },
+    notas: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    motivo_cancelacion: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    duracion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 50,
+        comment: 'Duración en minutos'
+    },
+    // Mantén compatibilidad con duracion_minutos
+    duracion_minutos: {
+        type: DataTypes.VIRTUAL,
+        get() {
+            return this.getDataValue('duracion');
+        }
+    }
+}, {
+    tableName: 'citas',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['fecha', 'estado']
+        },
+        {
+            fields: ['psicologo_id', 'fecha']
+        },
+        {
+            fields: ['becario_id']
+        },
+        {
+            fields: ['paciente_id']
+        }
+    ]
+});
+
+// Relaciones
+Cita.belongsTo(Paciente, { foreignKey: 'paciente_id' });
+Cita.belongsTo(User, { as: 'Psicologo', foreignKey: 'psicologo_id' });
+Cita.belongsTo(User, { as: 'Becario', foreignKey: 'becario_id' });
+
+module.exports = Cita;
+
+
+/backend/src/routes/agendaRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const AgendaController = require('../controllers/agendaController');
+const verifyToken = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
+
+// Todas las rutas requieren autenticación
+router.use(verifyToken);
+
+// Obtener agendas
+router.get('/global', AgendaController.obtenerAgendaGlobal);
+router.get('/diaria', AgendaController.obtenerAgendaDiaria);
+router.get('/mensual', AgendaController.obtenerCalendarioMensual);
+router.get('/disponibilidad-profesionales', AgendaController.obtenerDisponibilidadProfesionales);
+
+// Reprogramar citas
+router.put('/cita/:id/reprogramar', requireRole(['psicologo', 'becario', 'coordinador']), AgendaController.reprogramarCita);
+
+module.exports = router;
+
+
+/backend/src/db/db.sql:
+--------------------------------------------------------------------------------
+CREATE DATABASE IF NOT EXISTS psicogestion_db;
+USE psicogestion_db;
+
+CREATE TABLE fundaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(255) NOT NULL UNIQUE,
+    direccion TEXT,
+    telefono VARCHAR(20),
+    email VARCHAR(255),
+    responsable VARCHAR(255),
+    activo BOOLEAN DEFAULT TRUE,
+    convenio_inicio DATE,
+    convenio_fin DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20),
+    rol ENUM('coordinador', 'psicologo', 'becario') NOT NULL DEFAULT 'becario',
+    especialidad VARCHAR(100),
+    fundacion_id INT,
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL
+);
+
+CREATE TABLE pacientes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    email VARCHAR(255),
+    telefono VARCHAR(20),
+    fecha_nacimiento DATE,
+    genero ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
+    direccion TEXT,
+    estado VARCHAR(50) DEFAULT 'activo',
+    activo BOOLEAN DEFAULT TRUE,
+    notas TEXT,
+    fundacion_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
+    INDEX idx_activo (activo),
+    INDEX idx_apellido_nombre (apellido, nombre)
+);
+
+CREATE TABLE expedientes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL UNIQUE,
+    psicologo_id INT,
+    motivo_consulta TEXT,
+    historia_personal TEXT,
+    historia_familiar TEXT,
+    antecedentes_medicos TEXT,
+    antecedentes_psiquiatricos TEXT,
+    diagnostico_presuntivo VARCHAR(500),
+    diagnostico_definitivo VARCHAR(500),
+    tratamiento_actual TEXT,
+    medicamentos JSON,
+    alergias TEXT,
+    factores_riesgo JSON,
+    redes_apoyo TEXT,
+    emergencia_contacto VARCHAR(255),
+    emergencia_telefono VARCHAR(20),
+    consentimiento_informado BOOLEAN DEFAULT FALSE,
+    fecha_consentimiento DATE,
+    restricciones_acceso JSON,
+    notas_confidenciales TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE asignaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    psicologo_id INT NOT NULL,
+    becario_id INT,
+    fecha_inicio DATE NOT NULL DEFAULT (CURRENT_DATE),
+    fecha_fin DATE,
+    motivo_fin VARCHAR(255),
+    estado ENUM('activa', 'finalizada', 'suspendida') DEFAULT 'activa',
+    notas TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_paciente_estado (paciente_id, estado),
+    INDEX idx_psicologo_estado (psicologo_id, estado),
+    INDEX idx_becario (becario_id)
+);
+
+CREATE TABLE citas (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    psicologo_id INT,
+    becario_id INT,
+    fecha DATE NOT NULL,
+    hora TIME NOT NULL,
+    tipo_consulta ENUM('presencial', 'virtual') DEFAULT 'presencial',
+    estado ENUM('programada', 'confirmada', 'completada', 'cancelada') DEFAULT 'programada',
+    notas TEXT,
+    motivo_cancelacion VARCHAR(255),
+    duracion INT DEFAULT 50,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_fecha_estado (fecha, estado),
+    INDEX idx_psicologo_fecha (psicologo_id, fecha),
+    INDEX idx_becario (becario_id),
+    INDEX idx_paciente_id (paciente_id)
+);
+
+CREATE TABLE sesiones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    cita_id INT NOT NULL UNIQUE,
+    psicologo_id INT NOT NULL,
+    fecha DATE NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    tipo_sesion ENUM('evaluacion', 'terapia', 'seguimiento', 'crisis') DEFAULT 'terapia',
+    objetivo TEXT,
+    desarrollo TEXT,
+    conclusion TEXT,
+    tareas_asignadas TEXT,
+    emocion_predominante VARCHAR(100),
+    riesgo_suicida ENUM('ninguno', 'bajo', 'moderado', 'alto') DEFAULT 'ninguno',
+    escalas_aplicadas JSON,
+    siguiente_cita DATE,
+    privado BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (cita_id) REFERENCES citas(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_cita_id (cita_id),
+    INDEX idx_psicologo_fecha (psicologo_id, fecha),
+    INDEX idx_fecha (fecha)
+);
+
+CREATE TABLE notificaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    tipo ENUM('cita_programada', 'cita_modificada', 'cita_cancelada', 'asignacion_nueva', 'observacion_nueva', 'alerta_sistema', 'reporte_generado') NOT NULL,
+    titulo VARCHAR(255) NOT NULL,
+    mensaje TEXT NOT NULL,
+    leido BOOLEAN DEFAULT FALSE,
+    leido_at TIMESTAMP NULL,
+    accion_url VARCHAR(500),
+    prioridad ENUM('baja', 'media', 'alta', 'urgente') DEFAULT 'media',
+    datos_extra JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_leido (usuario_id, leido),
+    INDEX idx_created_at (created_at),
+    INDEX idx_tipo (tipo)
+);
+
+CREATE TABLE altas (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    usuario_id INT NOT NULL,
+    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro') NOT NULL,
+    fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
+    motivo_detallado TEXT,
+    recomendaciones TEXT,
+    sesiones_totales INT,
+    evaluacion_final ENUM('excelente', 'buena', 'regular', 'mala'),
+    seguimiento_recomendado BOOLEAN DEFAULT FALSE,
+    fecha_seguimiento DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_paciente_id (paciente_id),
+    INDEX idx_fecha_alta (fecha_alta),
+    INDEX idx_tipo_alta (tipo_alta)
+);
+
+CREATE TABLE reportes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    tipo_reporte ENUM('mensual', 'trimestral', 'semestral', 'anual', 'personalizado', 'paciente', 'becario', 'psicologo') NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    parametros JSON,
+    fecha_inicio DATE,
+    fecha_fin DATE,
+    formato ENUM('pdf', 'excel', 'csv', 'html') DEFAULT 'pdf',
+    archivo_url VARCHAR(500),
+    archivo_tamano INT,
+    estado ENUM('pendiente', 'generando', 'completado', 'error') DEFAULT 'pendiente',
+    compartido_con JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_id (usuario_id),
+    INDEX idx_tipo_reporte_estado (tipo_reporte, estado),
+    INDEX idx_created_at (created_at)
+);
+
+CREATE TABLE observaciones_becarios (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    becario_id INT NOT NULL,
+    supervisor_id INT NOT NULL,
+    cita_id INT,
+    fecha DATE NOT NULL DEFAULT (CURRENT_DATE),
+    tipo_observacion ENUM('sesion_observada', 'retroalimentacion', 'evaluacion_periodica', 'incidencia', 'reconocimiento') DEFAULT 'sesion_observada',
+    aspecto_evaluado ENUM('empatia', 'tecnicas', 'documentacion', 'puntualidad', 'profesionalismo', 'etica') NOT NULL,
+    calificacion INT NOT NULL CHECK (calificacion BETWEEN 1 AND 10),
+    fortalezas TEXT,
+    areas_mejora TEXT,
+    recomendaciones TEXT,
+    plan_accion TEXT,
+    fecha_seguimiento DATE,
+    privada BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (supervisor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (cita_id) REFERENCES citas(id) ON DELETE SET NULL,
+    INDEX idx_becario_fecha (becario_id, fecha),
+    INDEX idx_supervisor (supervisor_id),
+    INDEX idx_tipo_observacion (tipo_observacion)
+);
+
+CREATE TABLE disponibilidades (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    dia_semana ENUM('lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo') NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    tipo_disponibilidad ENUM('regular', 'extraordinaria', 'limitada') DEFAULT 'regular',
+    activo BOOLEAN DEFAULT TRUE,
+    fecha_inicio_vigencia DATE NOT NULL DEFAULT (CURRENT_DATE),
+    fecha_fin_vigencia DATE,
+    notas TEXT,
+    max_citas_dia INT DEFAULT 8,
+    intervalo_citas INT DEFAULT 50,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_dia_activo (usuario_id, dia_semana, activo),
+    INDEX idx_fecha_vigencia (fecha_inicio_vigencia, fecha_fin_vigencia)
+);
+
+CREATE TABLE logs_sistema (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT,
+    tipo_log ENUM('login', 'logout', 'creacion', 'modificacion', 'eliminacion', 'error', 'seguridad', 'backup', 'reporte', 'sistema') NOT NULL,
+    modulo VARCHAR(100) NOT NULL,
+    accion VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    datos_antes JSON,
+    datos_despues JSON,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    severidad ENUM('info', 'advertencia', 'error', 'critico') DEFAULT 'info',
+    resuelto BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_tipo_log_fecha (tipo_log, created_at),
+    INDEX idx_usuario_id (usuario_id),
+    INDEX idx_modulo (modulo),
+    INDEX idx_severidad_resuelto (severidad, resuelto)
+);
+
+CREATE TABLE permisos (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    descripcion TEXT,
+    categoria ENUM('administracion', 'pacientes', 'citas', 'reportes', 'configuracion', 'usuarios') NOT NULL,
+    nivel_requerido ENUM('basico', 'intermedio', 'avanzado', 'administrador') DEFAULT 'basico',
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE usuario_permisos (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    permiso_id INT NOT NULL,
+    concedido BOOLEAN DEFAULT FALSE,
+    concedido_por INT,
+    fecha_concesion TIMESTAMP NULL,
+    fecha_expiracion TIMESTAMP NULL,
+    motivo TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (permiso_id) REFERENCES permisos(id) ON DELETE CASCADE,
+    FOREIGN KEY (concedido_por) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE KEY idx_usuario_permiso (usuario_id, permiso_id)
+);
+
+CREATE TABLE backups (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tipo ENUM('completo', 'incremental') NOT NULL,
+    ruta VARCHAR(500) NOT NULL,
+    tamano BIGINT,
+    base_backup_id INT,
+    cambios INT DEFAULT 0,
+    estado ENUM('pendiente', 'generando', 'completado', 'error', 'eliminado') DEFAULT 'pendiente',
+    ultima_restauracion TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (base_backup_id) REFERENCES backups(id) ON DELETE SET NULL
+);
+
+INSERT INTO permisos (nombre, descripcion, categoria, nivel_requerido) VALUES
+('ver_panel_coordinacion', 'Ver panel de coordinación', 'administracion', 'avanzado'),
+('gestionar_usuarios', 'Gestionar usuarios (alta/baja/edición)', 'usuarios', 'avanzado'),
+('gestionar_fundaciones', 'Gestionar fundaciones', 'administracion', 'avanzado'),
+('gestionar_pacientes', 'Gestionar pacientes', 'pacientes', 'intermedio'),
+('gestionar_asignaciones', 'Asignar pacientes a psicólogos/becarios', 'pacientes', 'intermedio'),
+('ver_agenda_global', 'Ver agenda global completa', 'citas', 'intermedio'),
+('generar_reportes', 'Generar reportes estadísticos', 'reportes', 'avanzado'),
+('gestionar_altas', 'Gestionar altas de pacientes', 'pacientes', 'intermedio'),
+('ver_expedientes_completos', 'Ver expedientes completos de pacientes', 'pacientes', 'avanzado'),
+('configurar_sistema', 'Configurar parámetros del sistema', 'configuracion', 'administrador'),
+('ver_panel_psicologo', 'Ver panel principal de psicólogo', 'administracion', 'basico'),
+('ver_mis_pacientes', 'Ver pacientes asignados', 'pacientes', 'basico'),
+('gestionar_mis_citas', 'Gestionar mis propias citas', 'citas', 'basico'),
+('registrar_sesiones', 'Registrar contenido de sesiones', 'citas', 'intermedio'),
+('supervisar_becarios', 'Supervisar becarios asignados', 'usuarios', 'intermedio'),
+('crear_observaciones', 'Crear observaciones de becarios', 'usuarios', 'intermedio'),
+('ver_expedientes_asignados', 'Ver expedientes de pacientes asignados', 'pacientes', 'intermedio'),
+('dar_altas_pacientes', 'Dar de alta a pacientes', 'pacientes', 'intermedio'),
+('ver_panel_becario', 'Ver panel principal de becario', 'administracion', 'basico'),
+('ver_citas_dia', 'Ver citas del día', 'citas', 'basico'),
+('gestionar_citas_asignadas', 'Gestionar citas asignadas', 'citas', 'basico'),
+('ver_pacientes_asignados', 'Ver pacientes asignados', 'pacientes', 'basico'),
+('ver_observaciones_propias', 'Ver observaciones propias', 'usuarios', 'basico'),
+('configurar_disponibilidad', 'Configurar disponibilidad personal', 'configuracion', 'basico');
+
+INSERT INTO fundaciones (nombre, telefono, email, responsable) VALUES
+('Fundación Salud Mental Comunitaria', '555-1234', 'contacto@fsmc.org', 'Dra. María González'),
+('Asociación de Psicología Aplicada', '555-5678', 'info@asocpsicologia.edu', 'Lic. Carlos Rodríguez');
+
+INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialidad, fundacion_id) VALUES
+('coordinador@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ana', 'Martínez', '555-1111', 'coordinador', 'Coordinación Clínica', 1),
+('psicologo1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Luis', 'Fernández', '555-2222', 'psicologo', 'Terapia Cognitivo-Conductual', 1),
+('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
+('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
+('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
+
+INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
+('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),
+('Mariana', 'López', '1995-08-22', 'femenino', '555-0022', 'mariana@hotmail.com'),
+('Roberto', 'Sánchez', '2000-02-10', 'masculino', '555-0033', 'roberto@yahoo.com');
+
+INSERT INTO expedientes (paciente_id, psicologo_id, motivo_consulta) VALUES
+(1, 2, 'Ansiedad académica con síntomas de estrés elevado'),
+(2, 2, 'Estrés laboral crónico con afectación del sueño'),
+(3, 2, 'Dificultades de adaptación al entorno universitario');
+
+INSERT INTO asignaciones (paciente_id, psicologo_id, becario_id, fecha_inicio) VALUES
+(1, 2, 3, CURDATE()),
+(2, 2, 4, CURDATE()),
+(3, 2, NULL, CURDATE());
+
+INSERT INTO citas (paciente_id, psicologo_id, becario_id, fecha, hora, estado, tipo_consulta, notas) VALUES
+(1, 2, 3, DATE_ADD(CURDATE(), INTERVAL 1 DAY), '10:00:00', 'programada', 'presencial', 'Primera consulta'),
+(2, 2, 4, DATE_ADD(CURDATE(), INTERVAL 2 DAY), '11:00:00', 'confirmada', 'virtual', 'Seguimiento'),
+(3, 2, NULL, DATE_ADD(CURDATE(), INTERVAL 3 DAY), '09:00:00', 'programada', 'presencial', 'Evaluación inicial');
+
+INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje) VALUES
+(3, 'cita_programada', 'Nueva cita asignada', 'Tienes una nueva cita con Carlos Gómez para mañana a las 10:00 AM'),
+(4, 'cita_modificada', 'Cita modificada', 'La cita con Mariana López ha sido cambiada a modalidad virtual');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'coordinador'
+AND p.nivel_requerido IN ('basico', 'intermedio', 'avanzado', 'administrador');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'psicologo'
+AND p.nivel_requerido IN ('basico', 'intermedio');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'becario'
+AND p.nivel_requerido = 'basico';
+
+CREATE VIEW vista_citas_hoy AS
+SELECT 
+    c.id,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    c.fecha,
+    TIME_FORMAT(c.hora, '%H:%i') AS hora,
+    c.estado,
+    c.tipo_consulta,
+    u_psi.nombre AS psicologo_nombre,
+    u_bec.nombre AS becario_nombre
+FROM citas c
+JOIN pacientes p ON c.paciente_id = p.id
+JOIN users u_psi ON c.psicologo_id = u_psi.id
+LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+WHERE c.fecha = CURDATE()
+AND c.estado IN ('programada', 'confirmada')
+ORDER BY c.hora;
+
+CREATE VIEW vista_pacientes_asignados AS
+SELECT 
+    a.id,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    p.telefono,
+    p.email,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    CONCAT(ub.nombre, ' ', ub.apellido) AS becario,
+    a.fecha_inicio,
+    a.estado AS estado_asignacion,
+    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado = 'completada') AS sesiones_completadas,
+    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado IN ('programada', 'confirmada') AND fecha >= CURDATE()) AS citas_pendientes
+FROM asignaciones a
+JOIN pacientes p ON a.paciente_id = p.id
+JOIN users u ON a.psicologo_id = u.id
+LEFT JOIN users ub ON a.becario_id = ub.id
+WHERE p.activo = TRUE AND a.estado = 'activa';
+
+CREATE VIEW vista_resumen_coordinacion AS
+SELECT 
+    (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) AS becarios_activos,
+    (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) AS psicologos_activos,
+    (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) AS pacientes_activos,
+    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado IN ('programada', 'confirmada')) AS citas_hoy,
+    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') AS citas_completadas_hoy,
+    (SELECT COUNT(*) FROM altas WHERE MONTH(fecha_alta) = MONTH(CURDATE())) AS altas_mes_actual;
+
+CREATE VIEW vista_historial_sesiones AS
+SELECT 
+    s.id,
+    s.fecha,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    s.desarrollo AS contenido_sesion,
+    s.conclusion AS observaciones,
+    s.tareas_asignadas,
+    s.siguiente_cita AS proxima_sesion
+FROM sesiones s
+JOIN citas c ON s.cita_id = c.id
+JOIN pacientes p ON c.paciente_id = p.id
+JOIN users u ON s.psicologo_id = u.id
+ORDER BY s.fecha DESC;
+
+CREATE VIEW vista_estadisticas_psicologos AS
+SELECT 
+    u.id,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    COUNT(DISTINCT a.paciente_id) AS pacientes_asignados,
+    COUNT(c.id) AS total_citas,
+    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS citas_completadas,
+    ROUND(AVG(CASE WHEN c.estado = 'completada' THEN c.duracion END), 1) AS duracion_promedio,
+    COUNT(DISTINCT a.becario_id) AS becarios_supervisados
+FROM users u
+LEFT JOIN asignaciones a ON u.id = a.psicologo_id AND a.estado = 'activa'
+LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+WHERE u.rol = 'psicologo' AND u.activo = TRUE
+GROUP BY u.id, u.nombre, u.apellido;
+
+CREATE VIEW vista_disponibilidad_semanal AS
+SELECT 
+    u.id,
+    CONCAT(u.nombre, ' ', u.apellido) AS profesional,
+    u.rol,
+    d.dia_semana,
+    TIME_FORMAT(d.hora_inicio, '%H:%i') AS hora_inicio,
+    TIME_FORMAT(d.hora_fin, '%H:%i') AS hora_fin,
+    d.max_citas_dia,
+    (SELECT COUNT(*) FROM citas c 
+     WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
+     AND c.fecha = CURDATE()
+     AND c.estado IN ('programada', 'confirmada')) AS citas_hoy
+FROM users u
+LEFT JOIN disponibilidades d ON u.id = d.usuario_id AND d.activo = TRUE
+WHERE u.rol IN ('psicologo', 'becario') AND u.activo = TRUE
+ORDER BY u.rol, u.apellido, FIELD(d.dia_semana, 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo');
+
+DELIMITER $$
+CREATE PROCEDURE sp_obtener_citas_por_fecha_becario(
+    IN p_fecha DATE,
+    IN p_becario_id INT
+)
+BEGIN
+    SELECT 
+        c.*,
+        CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+        p.telefono AS paciente_telefono,
+        p.email AS paciente_email,
+        u_psi.nombre AS psicologo_nombre,
+        u_bec.nombre AS becario_nombre,
+        c.duracion AS duracion_minutos,
+        c.notas AS motivo
+    FROM citas c
+    JOIN pacientes p ON c.paciente_id = p.id
+    LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
+    LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+    WHERE c.fecha = p_fecha
+    AND (c.becario_id = p_becario_id OR p_becario_id IS NULL)
+    ORDER BY c.hora;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE sp_generar_reporte_mensual(
+    IN p_mes INT,
+    IN p_anio INT,
+    IN p_psicologo_id INT
+)
+BEGIN
+    SELECT 
+        p.id,
+        CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+        COUNT(c.id) AS total_sesiones,
+        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS sesiones_completadas,
+        SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) AS sesiones_canceladas,
+        SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) AS sesiones_programadas,
+        MIN(c.fecha) AS primera_sesion_mes,
+        MAX(c.fecha) AS ultima_sesion_mes
+    FROM pacientes p
+    LEFT JOIN citas c ON p.id = c.paciente_id 
+        AND MONTH(c.fecha) = p_mes 
+        AND YEAR(c.fecha) = p_anio
+        AND (c.psicologo_id = p_psicologo_id OR p_psicologo_id IS NULL)
+    WHERE p.activo = TRUE
+    GROUP BY p.id, p.nombre, p.apellido
+    ORDER BY p.apellido, p.nombre;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_insert_alta
+AFTER INSERT ON altas
+FOR EACH ROW
+BEGIN
+    UPDATE pacientes 
+    SET estado = CONCAT('alta_', NEW.tipo_alta),
+        activo = FALSE,
+        updated_at = NOW()
+    WHERE id = NEW.paciente_id;
+    
+    UPDATE citas 
+    SET estado = 'cancelada',
+        motivo_cancelacion = CONCAT('Paciente dado de alta (', NEW.tipo_alta, ')'),
+        updated_at = NOW()
+    WHERE paciente_id = NEW.paciente_id 
+    AND fecha >= CURDATE()
+    AND estado IN ('programada', 'confirmada');
+    
+    UPDATE asignaciones 
+    SET estado = 'finalizada',
+        fecha_fin = CURDATE(),
+        motivo_fin = CONCAT('Paciente dado de alta (', NEW.tipo_alta, ')')
+    WHERE paciente_id = NEW.paciente_id 
+    AND estado = 'activa';
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_update_cita
+AFTER UPDATE ON citas
+FOR EACH ROW
+BEGIN
+    DECLARE paciente_nombre VARCHAR(200);
+    DECLARE paciente_email VARCHAR(255);
+    
+    IF OLD.fecha != NEW.fecha OR OLD.hora != NEW.hora OR OLD.tipo_consulta != NEW.tipo_consulta THEN
+        
+        SELECT CONCAT(nombre, ' ', apellido), email INTO paciente_nombre, paciente_email
+        FROM pacientes WHERE id = NEW.paciente_id;
+        
+        IF NEW.psicologo_id IS NOT NULL THEN
+            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+            VALUES (
+                NEW.psicologo_id,
+                'cita_modificada',
+                'Cita modificada',
+                CONCAT('La cita con ', paciente_nombre, ' ha sido modificada. Nueva fecha: ', NEW.fecha, ' ', TIME_FORMAT(NEW.hora, '%H:%i')),
+                NOW()
+            );
+        END IF;
+        
+        IF NEW.becario_id IS NOT NULL THEN
+            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+            VALUES (
+                NEW.becario_id,
+                'cita_modificada',
+                'Cita modificada',
+                CONCAT('La cita con ', paciente_nombre, ' ha sido modificada. Nueva fecha: ', NEW.fecha, ' ', TIME_FORMAT(NEW.hora, '%H:%i')),
+                NOW()
+            );
+        END IF;
+        
+        INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
+        VALUES (
+            NEW.psicologo_id,
+            'modificacion',
+            'citas',
+            'Actualizar cita',
+            CONCAT('Cita ', NEW.id, ' modificada para paciente ', paciente_nombre),
+            NOW()
+        );
+    END IF;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_insert_sesion
+AFTER INSERT ON sesiones
+FOR EACH ROW
+BEGIN
+    UPDATE expedientes 
+    SET riesgo_suicida = NEW.riesgo_suicida,
+        updated_at = NOW()
+    WHERE paciente_id = (SELECT paciente_id FROM citas WHERE id = NEW.cita_id);
+END$$
+DELIMITER ;
+
+CREATE INDEX idx_pacientes_activo ON pacientes(activo);
+CREATE INDEX idx_citas_psicologo_fecha ON citas(psicologo_id, fecha, estado);
+CREATE INDEX idx_sesiones_cita ON sesiones(cita_id);
+CREATE INDEX idx_asignaciones_psicologo ON asignaciones(psicologo_id, fecha_fin);
+CREATE INDEX idx_users_rol_activo ON users(rol, activo);
+CREATE INDEX idx_expediente_paciente ON expedientes(paciente_id);
+CREATE INDEX idx_expediente_psicologo ON expedientes(psicologo_id);
+CREATE INDEX idx_reportes_usuario ON reportes(usuario_id, estado);
+CREATE INDEX idx_reportes_tipo ON reportes(tipo_reporte, created_at);
+CREATE INDEX idx_disponibilidades_vigencia ON disponibilidades(fecha_inicio_vigencia, fecha_fin_vigencia);
+CREATE INDEX idx_logs_severidad ON logs_sistema(severidad, resuelto);
+CREATE INDEX idx_observaciones_fecha_seguimiento ON observaciones_becarios(fecha_seguimiento);
+
+CREATE USER IF NOT EXISTS 'psicogestion_user'@'localhost' IDENTIFIED BY 'SecurePass123!';
+GRANT ALL PRIVILEGES ON psicogestion_db.* TO 'psicogestion_user'@'localhost';
+GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_obtener_citas_por_fecha_becario TO 'psicogestion_user'@'localhost';
+GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicogestion_user'@'localhost';
+FLUSH PRIVILEGES;
+
+
+/frontend/src/index.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
+
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
+
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+/backend/src/models/userModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+const User = sequelize.define('User', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    email: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        unique: {
+            msg: 'El correo electrónico ya está registrado'
+        },
+        validate: {
+            isEmail: {
+                msg: 'Debe proporcionar un correo electrónico válido'
+            },
+            notEmpty: true
+        }
+    },
+    password: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        validate: {
+            notEmpty: true
+        }
+    },
+    nombre: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    apellido: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    telefono: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    rol: {
+        type: DataTypes.ENUM('coordinador', 'psicologo', 'becario'),
+        allowNull: false,
+        defaultValue: 'becario'
+    },
+    especialidad: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
+    fundacion_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    activo: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    }
+}, {
+    tableName: 'users',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true
+});
+
+module.exports = User;
+
+
+/backend/src/controllers/agendaController.js:
+--------------------------------------------------------------------------------
+const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
+const User = require('../models/userModel');
+const Disponibilidad = require('../models/disponibilidadModel');
+const { QueryTypes, Op } = require('sequelize');
+const sequelize = require('../config/db');
+
+class AgendaController {
+    
+    static async obtenerAgendaGlobal(req, res) {
+        try {
+            const { 
+                fecha_inicio, 
+                fecha_fin, 
+                psicologo_id, 
+                becario_id, 
+                paciente_id,
+                estado,
+                tipo_consulta,
+                limit = 50,
+                offset = 0
+            } = req.query;
+            
+            const usuarioId = req.user.id;
+            const usuarioRol = req.user.rol;
+            
+            // Construir condiciones de filtro
+            const whereClause = {};
+            const includeConditions = [];
+            
+            if (fecha_inicio && fecha_fin) {
+                whereClause.fecha = {
+                    [Op.between]: [fecha_inicio, fecha_fin]
+                };
+            } else if (fecha_inicio) {
+                whereClause.fecha = { [Op.gte]: fecha_inicio };
+            } else if (fecha_fin) {
+                whereClause.fecha = { [Op.lte]: fecha_fin };
+            } else {
+                // Por defecto, mostrar solo citas futuras y de hoy
+                whereClause.fecha = { [Op.gte]: new Date().toISOString().split('T')[0] };
+            }
+            
+            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
+            if (becario_id) whereClause.becario_id = becario_id;
+            if (paciente_id) whereClause.paciente_id = paciente_id;
+            if (estado) whereClause.estado = estado;
+            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
+            
+            // Para becarios y psicólogos, limitar a sus pacientes
+            if (usuarioRol === 'becario') {
+                whereClause.becario_id = usuarioId;
+            } else if (usuarioRol === 'psicologo') {
+                whereClause.psicologo_id = usuarioId;
+            }
+            
+            const citas = await Cita.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: Paciente,
+                        attributes: ['id', 'nombre', 'apellido', 'telefono', 'email']
+                    },
+                    {
+                        model: User,
+                        as: 'Psicologo',
+                        attributes: ['id', 'nombre', 'apellido', 'especialidad']
+                    },
+                    {
+                        model: User,
+                        as: 'Becario',
+                        attributes: ['id', 'nombre', 'apellido']
+                    }
+                ],
+                order: [
+                    ['fecha', 'ASC'],
+                    ['hora', 'ASC']
+                ],
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            });
+            
+            // Para coordinador, incluir estadísticas
+            let estadisticas = null;
+            if (usuarioRol === 'coordinador') {
+                const [stats] = await sequelize.query(`
+                    SELECT 
+                        COUNT(*) as total_citas,
+                        SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) as programadas,
+                        SUM(CASE WHEN estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
+                        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+                        SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
+                        COUNT(DISTINCT psicologo_id) as psicologos_involucrados,
+                        COUNT(DISTINCT becario_id) as becarios_involucrados,
+                        COUNT(DISTINCT paciente_id) as pacientes_atendidos
+                    FROM citas
+                    WHERE ${Object.keys(whereClause).length > 0 ? 
+                        this.construirWhereSQL(whereClause) : '1=1'}
+                `, { type: QueryTypes.SELECT });
+                
+                estadisticas = stats;
+            }
+            
+            res.json({
+                success: true,
+                data: {
+                    citas,
+                    estadisticas,
+                    filtros: {
+                        fecha_inicio,
+                        fecha_fin,
+                        psicologo_id,
+                        becario_id,
+                        paciente_id,
+                        estado,
+                        tipo_consulta
+                    }
+                },
+                count: citas.length
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerAgendaGlobal:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener agenda global'
+            });
+        }
+    }
+    
+    static async obtenerAgendaDiaria(req, res) {
+        try {
+            const { fecha } = req.query;
+            const usuarioId = req.user.id;
+            const usuarioRol = req.user.rol;
+            
+            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
+            
+            let query = `
+                SELECT 
+                    c.id,
+                    c.fecha,
+                    TIME_FORMAT(c.hora, '%H:%i') as hora,
+                    c.estado,
+                    c.tipo_consulta,
+                    c.duracion_minutos,
+                    c.notas,
+                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
+                    p.telefono as paciente_telefono,
+                    p.email as paciente_email,
+                    CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo,
+                    CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario,
+                    u_psi.especialidad as psicologo_especialidad
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                JOIN users u_psi ON c.psicologo_id = u_psi.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                WHERE c.fecha = ?
+            `;
+            
+            const replacements = [fechaConsulta];
+            
+            // Filtrar por rol
+            if (usuarioRol === 'psicologo') {
+                query += ` AND c.psicologo_id = ?`;
+                replacements.push(usuarioId);
+            } else if (usuarioRol === 'becario') {
+                query += ` AND c.becario_id = ?`;
+                replacements.push(usuarioId);
+            }
+            
+            query += ` ORDER BY c.hora`;
+            
+            const citas = await sequelize.query(query, {
+                replacements,
+                type: QueryTypes.SELECT
+            });
+            
+            // Obtener disponibilidad de profesionales para este día
+            const diaSemana = this.obtenerDiaSemana(fechaConsulta);
+            const [disponibilidad] = await sequelize.query(`
+                SELECT 
+                    u.id,
+                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
+                    u.rol,
+                    GROUP_CONCAT(
+                        CONCAT(
+                            TIME_FORMAT(d.hora_inicio, '%H:%i'), 
+                            ' - ', 
+                            TIME_FORMAT(d.hora_fin, '%H:%i')
+                        ) SEPARATOR ', '
+                    ) as horarios_disponibles,
+                    COUNT(DISTINCT c.id) as citas_programadas
+                FROM users u
+                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
+                    AND d.dia_semana = ?
+                    AND d.activo = TRUE
+                LEFT JOIN citas c ON u.id = c.psicologo_id 
+                    AND c.fecha = ?
+                    AND c.estado IN ('programada', 'confirmada')
+                WHERE u.rol IN ('psicologo', 'becario')
+                AND u.activo = TRUE
+                GROUP BY u.id, u.nombre, u.apellido, u.rol
+                ORDER BY u.rol, u.apellido, u.nombre
+            `, {
+                replacements: [diaSemana, fechaConsulta],
+                type: QueryTypes.SELECT
+            });
+            
+            res.json({
+                success: true,
+                data: {
+                    fecha: fechaConsulta,
+                    citas,
+                    disponibilidad: disponibilidad || [],
+                    total_citas: citas.length
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerAgendaDiaria:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener agenda diaria'
+            });
+        }
+    }
+    
+    static async obtenerCalendarioMensual(req, res) {
+        try {
+            const { mes, anio } = req.query;
+            const usuarioId = req.user.id;
+            const usuarioRol = req.user.rol;
+            
+            const mesActual = mes || new Date().getMonth() + 1;
+            const anioActual = anio || new Date().getFullYear();
+            
+            // Obtener citas del mes
+            let query = `
+                SELECT 
+                    c.fecha,
+                    COUNT(*) as total_citas,
+                    SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) as programadas,
+                    SUM(CASE WHEN c.estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
+                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
+                    GROUP_CONCAT(
+                        CONCAT(
+                            TIME_FORMAT(c.hora, '%H:%i'), ' ', 
+                            SUBSTRING(p.nombre, 1, 1), '. ', p.apellido
+                        ) 
+                        ORDER BY c.hora 
+                        SEPARATOR '; '
+                    ) as detalle_citas
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                WHERE MONTH(c.fecha) = ? AND YEAR(c.fecha) = ?
+            `;
+            
+            const replacements = [mesActual, anioActual];
+            
+            // Filtrar por rol
+            if (usuarioRol === 'psicologo') {
+                query += ` AND c.psicologo_id = ?`;
+                replacements.push(usuarioId);
+            } else if (usuarioRol === 'becario') {
+                query += ` AND c.becario_id = ?`;
+                replacements.push(usuarioId);
+            }
+            
+            query += ` GROUP BY c.fecha ORDER BY c.fecha`;
+            
+            const citasPorDia = await sequelize.query(query, {
+                replacements,
+                type: QueryTypes.SELECT
+            });
+            
+            // Crear calendario
+            const diasMes = new Date(anioActual, mesActual, 0).getDate();
+            const calendario = [];
+            
+            for (let dia = 1; dia <= diasMes; dia++) {
+                const fecha = `${anioActual}-${mesActual.toString().padStart(2, '0')}-${dia.toString().padStart(2, '0')}`;
+                const datosDia = citasPorDia.find(c => c.fecha === fecha);
+                
+                calendario.push({
+                    fecha,
+                    dia,
+                    dia_semana: this.obtenerDiaSemana(fecha),
+                    total_citas: datosDia ? datosDia.total_citas : 0,
+                    programadas: datosDia ? datosDia.programadas : 0,
+                    confirmadas: datosDia ? datosDia.confirmadas : 0,
+                    completadas: datosDia ? datosDia.completadas : 0,
+                    canceladas: datosDia ? datosDia.canceladas : 0,
+                    detalle_citas: datosDia ? datosDia.detalle_citas : null
+                });
+            }
+            
+            // Estadísticas del mes
+            const [estadisticasMes] = await sequelize.query(`
+                SELECT 
+                    COUNT(*) as total_citas_mes,
+                    COUNT(DISTINCT paciente_id) as pacientes_unicos,
+                    COUNT(DISTINCT psicologo_id) as psicologos_activos,
+                    COUNT(DISTINCT becario_id) as becarios_activos,
+                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
+                    ROUND(AVG(duracion_minutos), 1) as duracion_promedio
+                FROM citas
+                WHERE MONTH(fecha) = ? AND YEAR(fecha) = ?
+                ${usuarioRol === 'psicologo' ? 'AND psicologo_id = ?' : ''}
+                ${usuarioRol === 'becario' ? 'AND becario_id = ?' : ''}
+            `, {
+                replacements: usuarioRol === 'psicologo' ? [mesActual, anioActual, usuarioId] :
+                           usuarioRol === 'becario' ? [mesActual, anioActual, usuarioId] :
+                           [mesActual, anioActual],
+                type: QueryTypes.SELECT
+            });
+            
+            res.json({
+                success: true,
+                data: {
+                    mes: mesActual,
+                    anio: anioActual,
+                    calendario,
+                    estadisticas: estadisticasMes || {},
+                    total_dias: diasMes
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerCalendarioMensual:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener calendario mensual'
+            });
+        }
+    }
+    
+    static async reprogramarCita(req, res) {
+        try {
+            const { id } = req.params;
+            const { nueva_fecha, nueva_hora, motivo } = req.body;
+            const usuarioId = req.user.id;
+            const usuarioRol = req.user.rol;
+            
+            const cita = await Cita.findByPk(id);
+            
+            if (!cita) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Cita no encontrada'
+                });
+            }
+            
+            // Verificar permisos
+            if (usuarioRol === 'becario' && cita.becario_id !== usuarioId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No tiene permisos para reprogramar esta cita'
+                });
+            }
+            
+            if (usuarioRol === 'psicologo' && cita.psicologo_id !== usuarioId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No tiene permisos para reprogramar esta cita'
+                });
+            }
+            
+            // Verificar que la nueva fecha/hora no se solape
+            const [solapamiento] = await sequelize.query(`
+                SELECT id FROM citas 
+                WHERE (
+                    (psicologo_id = ? OR becario_id = ?)
+                    AND fecha = ?
+                    AND hora = ?
+                    AND estado IN ('programada', 'confirmada')
+                    AND id != ?
+                )
+            `, {
+                replacements: [
+                    cita.psicologo_id,
+                    cita.becario_id || 0,
+                    nueva_fecha,
+                    nueva_hora,
+                    id
+                ],
+                type: QueryTypes.SELECT
+            });
+            
+            if (solapamiento) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Ya existe una cita programada en ese horario'
+                });
+            }
+            
+            // Guardar datos originales para log
+            const datosOriginales = {
+                fecha: cita.fecha,
+                hora: cita.hora,
+                estado: cita.estado
+            };
+            
+            // Actualizar cita
+            await cita.update({
+                fecha: nueva_fecha,
+                hora: nueva_hora,
+                estado: 'programada',
+                motivo_cancelacion: motivo ? `Reprogramación: ${motivo}` : 'Reprogramación'
+            });
+            
+            // Crear notificaciones
+            const notificaciones = [];
+            
+            // Notificar al paciente (si tiene email)
+            const [paciente] = await sequelize.query(
+                'SELECT email, nombre, apellido FROM pacientes WHERE id = ?',
+                { replacements: [cita.paciente_id], type: QueryTypes.SELECT }
+            );
+            
+            if (paciente && paciente.email) {
+                // Aquí se podría integrar con el servicio de email
+                notificaciones.push({
+                    tipo: 'email',
+                    destinatario: paciente.email,
+                    asunto: 'Cita reprogramada',
+                    mensaje: `Estimad@ ${paciente.nombre}, su cita ha sido reprogramada para el ${nueva_fecha} a las ${nueva_hora}.`
+                });
+            }
+            
+            // Notificar al psicólogo
+            if (cita.psicologo_id) {
+                await sequelize.query(`
+                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                    VALUES (?, 'cita_modificada', 'Cita reprogramada', 
+                    CONCAT('Cita reprogramada para el paciente: ', ?, '. Nueva fecha: ', ?, ' ', ?), NOW())
+                `, {
+                    replacements: [
+                        cita.psicologo_id,
+                        `${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}`,
+                        nueva_fecha,
+                        nueva_hora
+                    ]
+                });
+            }
+            
+            // Notificar al becario si está asignado
+            if (cita.becario_id) {
+                await sequelize.query(`
+                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                    VALUES (?, 'cita_modificada', 'Cita reprogramada', 
+                    CONCAT('Cita reprogramada para el paciente: ', ?, '. Nueva fecha: ', ?, ' ', ?), NOW())
+                `, {
+                    replacements: [
+                        cita.becario_id,
+                        `${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}`,
+                        nueva_fecha,
+                        nueva_hora
+                    ]
+                });
+            }
+            
+            // Log
+            await sequelize.query(`
+                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
+                VALUES (?, 'modificacion', 'agenda', 'Reprogramar cita', ?, ?, ?, NOW())
+            `, {
+                replacements: [
+                    usuarioId,
+                    `Cita ${id} reprogramada`,
+                    JSON.stringify(datosOriginales),
+                    JSON.stringify({
+                        fecha: nueva_fecha,
+                        hora: nueva_hora,
+                        estado: 'programada'
+                    })
+                ]
+            });
+            
+            res.json({
+                success: true,
+                message: 'Cita reprogramada exitosamente',
+                data: {
+                    cita_id: id,
+                    fecha_anterior: datosOriginales.fecha,
+                    hora_anterior: datosOriginales.hora,
+                    nueva_fecha,
+                    nueva_hora
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error en reprogramarCita:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al reprogramar cita'
+            });
+        }
+    }
+    
+    static async obtenerDisponibilidadProfesionales(req, res) {
+        try {
+            const { fecha } = req.query;
+            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
+            const diaSemana = this.obtenerDiaSemana(fechaConsulta);
+            
+            const disponibilidad = await sequelize.query(`
+                SELECT 
+                    u.id,
+                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
+                    u.rol,
+                    u.especialidad,
+                    d.hora_inicio,
+                    d.hora_fin,
+                    d.max_citas_dia,
+                    d.intervalo_citas,
+                    (SELECT COUNT(*) FROM citas c 
+                     WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
+                     AND c.fecha = ?
+                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas,
+                    (d.max_citas_dia - 
+                     (SELECT COUNT(*) FROM citas c 
+                      WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
+                      AND c.fecha = ?
+                      AND c.estado IN ('programada', 'confirmada'))
+                    ) as cupos_disponibles
+                FROM users u
+                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
+                    AND d.dia_semana = ?
+                    AND d.activo = TRUE
+                WHERE u.rol IN ('psicologo', 'becario')
+                AND u.activo = TRUE
+                AND d.id IS NOT NULL
+                ORDER BY u.rol, u.apellido, u.nombre
+            `, {
+                replacements: [fechaConsulta, fechaConsulta, diaSemana],
+                type: QueryTypes.SELECT
+            });
+            
+            res.json({
+                success: true,
+                data: {
+                    fecha: fechaConsulta,
+                    dia_semana: diaSemana,
+                    disponibilidad,
+                    total_profesionales: disponibilidad.length
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerDisponibilidadProfesionales:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener disponibilidad de profesionales'
+            });
+        }
+    }
+    
+    // Métodos auxiliares
+    static obtenerDiaSemana(fecha) {
+        const dias = [
+            'domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'
+        ];
+        const fechaObj = new Date(fecha);
+        return dias[fechaObj.getDay()];
+    }
+    
+    static construirWhereSQL(whereClause) {
+        const condiciones = [];
+        
+        for (const [key, value] of Object.entries(whereClause)) {
+            if (typeof value === 'object' && value[Op.between]) {
+                condiciones.push(`${key} BETWEEN '${value[Op.between][0]}' AND '${value[Op.between][1]}'`);
+            } else if (typeof value === 'object' && value[Op.gte]) {
+                condiciones.push(`${key} >= '${value[Op.gte]}'`);
+            } else if (typeof value === 'object' && value[Op.lte]) {
+                condiciones.push(`${key} <= '${value[Op.lte]}'`);
+            } else {
+                condiciones.push(`${key} = ${typeof value === 'string' ? `'${value}'` : value}`);
+            }
+        }
+        
+        return condiciones.join(' AND ');
+    }
+}
+
+module.exports = AgendaController;
+
+
+/backend/server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
+
+const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes');
+const roleRoutes = require('./src/routes/roleRoutes');
+const fundacionRoutes = require('./src/routes/fundacionRoutes');
+const asignacionRoutes = require('./src/routes/asignacionRoutes');
+const sesionRoutes = require('./src/routes/sesionRoutes');
+const notificacionRoutes = require('./src/routes/notificacionRoutes');
+const altaRoutes = require('./src/routes/altaRoutes');
+const reporteRoutes = require('./src/routes/reporteRoutes');
+const observacionRoutes = require('./src/routes/observacionRoutes');
+const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
+const expedienteRoutes = require('./src/routes/expedienteRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const agendaRoutes = require('./src/routes/agendaRoutes');
+const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
+app.use('/api/fundaciones', fundacionRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/sesiones', sesionRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/altas', altaRoutes);
+app.use('/api/reportes', reporteRoutes);
+app.use('/api/observaciones', observacionRoutes);
+app.use('/api/disponibilidad', disponibilidadRoutes);
+app.use('/api/expedientes', expedienteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agenda', agendaRoutes);
+app.use('/api/estadisticas', estadisticaRoutes);
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
+
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
+
+
+/frontend/src/services/api.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
+
+  static async get(url) {
+    return this.request(url);
+  }
+
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+    // Primero verificar si hay contenido
+    if (response.status === 204 || response.status === 205) {
+      return {};
+    }
+    
+    const contentType = response.headers.get('content-type');
+    
+    // Si no es JSON, manejar como texto
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      
+      if (!response.ok) {
+        throw new Error(text || `HTTP error! status: ${response.status}`);
+      }
+      
+      return text ? JSON.parse(text) : {};
+    }
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+    
+    return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
+}
+
+export default ApiService;
+
+
+/backend/src/services/calendarioService.js:
+--------------------------------------------------------------------------------
+const { google } = require('googleapis');
+const { OAuth2 } = google.auth;
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+class CalendarioService {
+    
+    static oAuth2Client = null;
+    static calendar = null;
+    
+    static async inicializar() {
+        try {
+            if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
+                console.warn('Credenciales de Google Calendar no configuradas');
+                return false;
+            }
+            
+            this.oAuth2Client = new OAuth2(
+                process.env.GOOGLE_CLIENT_ID,
+                process.env.GOOGLE_CLIENT_SECRET,
+                process.env.GOOGLE_REDIRECT_URI
+            );
+            
+            // Configurar tokens si existen
+            if (process.env.GOOGLE_ACCESS_TOKEN && process.env.GOOGLE_REFRESH_TOKEN) {
+                this.oAuth2Client.setCredentials({
+                    access_token: process.env.GOOGLE_ACCESS_TOKEN,
+                    refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+                });
+            }
+            
+            this.calendar = google.calendar({ version: 'v3', auth: this.oAuth2Client });
+            
+            console.log('✅ Servicio de Google Calendar inicializado');
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Error al inicializar Google Calendar:', error);
+            return false;
+        }
+    }
+    
+    static async sincronizarCitaConGoogleCalendar(citaId) {
+        try {
+            if (!this.calendar) {
+                console.warn('Google Calendar no está inicializado');
+                return false;
+            }
+            
+            // Obtener datos de la cita
+            const [cita] = await sequelize.query(`
+                SELECT 
+                    c.*,
+                    CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                    p.email as paciente_email,
+                    CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+                    u_psi.email as psicologo_email,
+                    CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
+                    u_bec.email as becario_email
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                JOIN users u_psi ON c.psicologo_id = u_psi.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                WHERE c.id = ?
+            `, {
+                replacements: [citaId],
+                type: QueryTypes.SELECT
+            });
+            
+            if (!cita) {
+                throw new Error('Cita no encontrada');
+            }
+            
+            // Crear evento en Google Calendar
+            const evento = {
+                summary: `Sesión psicológica - ${cita.paciente_nombre}`,
+                description: this.generarDescripcionEvento(cita),
+                start: {
+                    dateTime: `${cita.fecha}T${cita.hora}:00`,
+                    timeZone: 'America/Mexico_City'
+                },
+                end: {
+                    dateTime: this.calcularHoraFin(cita.fecha, cita.hora, cita.duracion_minutos || 50),
+                    timeZone: 'America/Mexico_City'
+                },
+                attendees: this.obtenerAsistentes(cita),
+                reminders: {
+                    useDefault: false,
+                    overrides: [
+                        { method: 'email', minutes: 24 * 60 }, // 1 día antes
+                        { method: 'popup', minutes: 30 } // 30 minutos antes
+                    ]
+                },
+                colorId: cita.tipo_consulta === 'virtual' ? '5' : '2' // Color diferente para virtual
+            };
+            
+            const response = await this.calendar.events.insert({
+                calendarId: 'primary',
+                resource: evento,
+                sendUpdates: 'all'
+            });
+            
+            // Guardar ID del evento en la cita
+            await sequelize.query(
+                'UPDATE citas SET google_calendar_event_id = ? WHERE id = ?',
+                { replacements: [response.data.id, citaId] }
+            );
+            
+            console.log(`✅ Cita ${citaId} sincronizada con Google Calendar: ${response.data.htmlLink}`);
+            return response.data;
+            
+        } catch (error) {
+            console.error('❌ Error al sincronizar cita con Google Calendar:', error);
+            throw error;
+        }
+    }
+    
+    static async actualizarEventoGoogleCalendar(citaId) {
+        try {
+            if (!this.calendar) {
+                console.warn('Google Calendar no está inicializado');
+                return false;
+            }
+            
+            // Obtener cita con ID del evento
+            const [cita] = await sequelize.query(
+                'SELECT google_calendar_event_id FROM citas WHERE id = ?',
+                { replacements: [citaId], type: QueryTypes.SELECT }
+            );
+            
+            if (!cita || !cita.google_calendar_event_id) {
+                // Si no tiene evento, crear uno nuevo
+                return await this.sincronizarCitaConGoogleCalendar(citaId);
+            }
+            
+            // Obtener datos actualizados de la cita
+            const [citaActualizada] = await sequelize.query(`
+                SELECT 
+                    c.*,
+                    CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                    p.email as paciente_email,
+                    CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+                    u_psi.email as psicologo_email,
+                    CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
+                    u_bec.email as becario_email
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                JOIN users u_psi ON c.psicologo_id = u_psi.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                WHERE c.id = ?
+            `, {
+                replacements: [citaId],
+                type: QueryTypes.SELECT
+            });
+            
+            // Actualizar evento
+            const evento = {
+                summary: `Sesión psicológica - ${citaActualizada.paciente_nombre}`,
+                description: this.generarDescripcionEvento(citaActualizada),
+                start: {
+                    dateTime: `${citaActualizada.fecha}T${citaActualizada.hora}:00`,
+                    timeZone: 'America/Mexico_City'
+                },
+                end: {
+                    dateTime: this.calcularHoraFin(citaActualizada.fecha, citaActualizada.hora, citaActualizada.duracion_minutos || 50),
+                    timeZone: 'America/Mexico_City'
+                },
+                attendees: this.obtenerAsistentes(citaActualizada),
+                colorId: citaActualizada.tipo_consulta === 'virtual' ? '5' : '2'
+            };
+            
+            const response = await this.calendar.events.update({
+                calendarId: 'primary',
+                eventId: cita.google_calendar_event_id,
+                resource: evento,
+                sendUpdates: 'all'
+            });
+            
+            console.log(`✅ Evento de cita ${citaId} actualizado en Google Calendar`);
+            return response.data;
+            
+        } catch (error) {
+            console.error('❌ Error al actualizar evento en Google Calendar:', error);
+            throw error;
+        }
+    }
+    
+    static async eliminarEventoGoogleCalendar(citaId) {
+        try {
+            if (!this.calendar) {
+                console.warn('Google Calendar no está inicializado');
+                return false;
+            }
+            
+            // Obtener ID del evento
+            const [cita] = await sequelize.query(
+                'SELECT google_calendar_event_id FROM citas WHERE id = ?',
+                { replacements: [citaId], type: QueryTypes.SELECT }
+            );
+            
+            if (!cita || !cita.google_calendar_event_id) {
+                return true; // No hay evento que eliminar
+            }
+            
+            // Eliminar evento
+            await this.calendar.events.delete({
+                calendarId: 'primary',
+                eventId: cita.google_calendar_event_id,
+                sendUpdates: 'all'
+            });
+            
+            // Limpiar ID del evento en la cita
+            await sequelize.query(
+                'UPDATE citas SET google_calendar_event_id = NULL WHERE id = ?',
+                { replacements: [citaId] }
+            );
+            
+            console.log(`✅ Evento de cita ${citaId} eliminado de Google Calendar`);
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Error al eliminar evento de Google Calendar:', error);
+            throw error;
+        }
+    }
+    
+    static async obtenerDisponibilidadProfesional(usuarioId, fecha) {
+        try {
+            if (!this.calendar) {
+                console.warn('Google Calendar no está inicializado');
+                return null;
+            }
+            
+            // Obtener email del profesional
+            const [profesional] = await sequelize.query(
+                'SELECT email FROM users WHERE id = ?',
+                { replacements: [usuarioId], type: QueryTypes.SELECT }
+            );
+            
+            if (!profesional || !profesional.email) {
+                throw new Error('Profesional no encontrado o sin email');
+            }
+            
+            // Obtener eventos del profesional para la fecha
+            const inicio = new Date(`${fecha}T00:00:00`);
+            const fin = new Date(`${fecha}T23:59:59`);
+            
+            const response = await this.calendar.events.list({
+                calendarId: profesional.email,
+                timeMin: inicio.toISOString(),
+                timeMax: fin.toISOString(),
+                singleEvents: true,
+                orderBy: 'startTime'
+            });
+            
+            return response.data.items.map(evento => ({
+                inicio: evento.start.dateTime || evento.start.date,
+                fin: evento.end.dateTime || evento.end.date,
+                titulo: evento.summary,
+                descripcion: evento.description
+            }));
+            
+        } catch (error) {
+            console.error('❌ Error al obtener disponibilidad de Google Calendar:', error);
+            throw error;
+        }
+    }
+    
+    static async sincronizarAgendaCompleta(psicologoId, fechaInicio, fechaFin) {
+        try {
+            if (!this.calendar) {
+                console.warn('Google Calendar no está inicializado');
+                return false;
+            }
+            
+            // Obtener citas del psicólogo en el rango de fechas
+            const citas = await sequelize.query(`
+                SELECT 
+                    c.id,
+                    c.fecha,
+                    c.hora,
+                    c.duracion_minutos,
+                    c.tipo_consulta,
+                    c.estado,
+                    CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                    c.google_calendar_event_id
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                WHERE c.psicologo_id = ?
+                AND c.fecha BETWEEN ? AND ?
+                AND c.estado IN ('programada', 'confirmada')
+                ORDER BY c.fecha, c.hora
+            `, {
+                replacements: [psicologoId, fechaInicio, fechaFin],
+                type: QueryTypes.SELECT
+            });
+            
+            const resultados = {
+                creados: 0,
+                actualizados: 0,
+                errores: 0
+            };
+            
+            // Sincronizar cada cita
+            for (const cita of citas) {
+                try {
+                    if (cita.google_calendar_event_id) {
+                        await this.actualizarEventoGoogleCalendar(cita.id);
+                        resultados.actualizados++;
+                    } else {
+                        await this.sincronizarCitaConGoogleCalendar(cita.id);
+                        resultados.creados++;
+                    }
+                } catch (error) {
+                    console.error(`❌ Error al sincronizar cita ${cita.id}:`, error.message);
+                    resultados.errores++;
+                }
+            }
+            
+            console.log(`✅ Agenda sincronizada: ${resultados.creados} creados, ${resultados.actualizados} actualizados, ${resultados.errores} errores`);
+            return resultados;
+            
+        } catch (error) {
+            console.error('❌ Error al sincronizar agenda completa:', error);
+            throw error;
+        }
+    }
+    
+    // Métodos auxiliares
+    static generarDescripcionEvento(cita) {
+        let descripcion = `Sesión psicológica con ${cita.paciente_nombre}\n`;
+        descripcion += `Tipo: ${cita.tipo_consulta === 'virtual' ? 'Virtual' : 'Presencial'}\n`;
+        descripcion += `Estado: ${cita.estado}\n`;
+        descripcion += `Psicólogo: ${cita.psicologo_nombre}\n`;
+        
+        if (cita.becario_nombre) {
+            descripcion += `Becario: ${cita.becario_nombre}\n`;
+        }
+        
+        if (cita.notas) {
+            descripcion += `\nNotas: ${cita.notas}\n`;
+        }
+        
+        descripcion += `\nID de cita: ${cita.id}`;
+        return descripcion;
+    }
+    
+    static calcularHoraFin(fecha, hora, duracionMinutos) {
+        const [horas, minutos] = hora.split(':').map(Number);
+        const fechaHora = new Date(`${fecha}T${hora.padStart(5, '0')}:00`);
+        fechaHora.setMinutes(fechaHora.getMinutes() + duracionMinutos);
+        
+        return fechaHora.toISOString();
+    }
+    
+    static obtenerAsistentes(cita) {
+        const asistentes = [];
+        
+        // Paciente
+        if (cita.paciente_email) {
+            asistentes.push({ email: cita.paciente_email, displayName: cita.paciente_nombre });
+        }
+        
+        // Psicólogo
+        if (cita.psicologo_email) {
+            asistentes.push({ email: cita.psicologo_email, displayName: cita.psicologo_nombre });
+        }
+        
+        // Becario
+        if (cita.becario_email) {
+            asistentes.push({ email: cita.becario_email, displayName: cita.becario_nombre });
+        }
+        
+        return asistentes;
+    }
+    
+    static async obtenerUrlAutorizacion() {
+        if (!this.oAuth2Client) {
+            throw new Error('OAuth2 no inicializado');
+        }
+        
+        const url = this.oAuth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: [
+                'https://www.googleapis.com/auth/calendar',
+                'https://www.googleapis.com/auth/calendar.events'
+            ]
+        });
+        
+        return url;
+    }
+    
+    static async intercambiarCodigoPorToken(codigo) {
+        if (!this.oAuth2Client) {
+            throw new Error('OAuth2 no inicializado');
+        }
+        
+        const { tokens } = await this.oAuth2Client.getToken(codigo);
+        this.oAuth2Client.setCredentials(tokens);
+        
+        return tokens;
+    }
+}
+
+// Inicializar al cargar el módulo
+CalendarioService.inicializar().catch(console.error);
+
+module.exports = CalendarioService;
+
+
+/frontend/src/App.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Login from './components/Auth/Login';
+import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
+
+// Páginas para Becarios
+import BecarioDashboard from './pages/becario/DashboardPage';
+import BecarioCitas from './pages/becario/CitasPage';
+import BecarioPacientes from './pages/becario/PacientesPage';
+import BecarioNotificaciones from './pages/becario/NotificacionesPage';
+import BecarioObservaciones from './pages/becario/ObservacionesPage';
+
+// Páginas para Psicólogos
+import PsicologoDashboard from './pages/psicologo/DashboardPage';
+import PsicologoPacientes from './pages/psicologo/PacientesPage';
+import PsicologoCitas from './pages/psicologo/CitasPage';
+import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
+import PsicologoSesiones from './pages/psicologo/SesionesPage';
+import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+
+// Páginas para Coordinadores
+import CoordinadorDashboard from './pages/coordinador/DashboardPage';
+import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
+import CoordinadorPacientes from './pages/coordinador/PacientesPage';
+import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
+import CoordinadorAgenda from './pages/coordinador/AgendaPage';
+import CoordinadorReportes from './pages/coordinador/ReportesPage';
+import CoordinadorAltas from './pages/coordinador/AltasPage';
+import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          {/* Rutas de Becario */}
+          <Route path="/" element={<RoleRouter />}>
+            <Route index element={<BecarioDashboard />} />
+            
+            {/* Becario */}
+            <Route path="becario/dashboard" element={<BecarioDashboard />} />
+            <Route path="becario/citas" element={<BecarioCitas />} />
+            <Route path="becario/pacientes" element={<BecarioPacientes />} />
+            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
+            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
+            
+            {/* Psicólogo */}
+            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
+            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
+            <Route path="psicologo/citas" element={<PsicologoCitas />} />
+            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
+            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
+            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
+            
+            {/* Coordinador */}
+            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
+            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
+            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
+            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
+            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
+            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
+            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
+            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
+          </Route>
+          
+          {/* Redirección por defecto */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;
+
+
+================================================================================
+RESUMEN PARA COORDINADOR_AGENDA:
+----------------------------------------
+Archivos necesarios: 11
+Archivos encontrados: 11
+Archivos no encontrados: 0

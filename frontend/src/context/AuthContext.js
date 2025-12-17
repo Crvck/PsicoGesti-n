@@ -1,5 +1,6 @@
+// frontend/src/context/AuthContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
+import ApiService from '../services/api';
 
 const AuthContext = createContext({});
 
@@ -12,7 +13,6 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       fetchUserData();
     } else {
       setLoading(false);
@@ -21,13 +21,23 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserData = async () => {
     try {
-      const response = await axios.get('http://localhost:3000/api/auth/me');
-      setUser(response.data.user);
+      const response = await ApiService.getCurrentUser();
+      setUser(response.user);
+      
+      // Guardar también en localStorage para acceso rápido
+      localStorage.setItem('psico_user', JSON.stringify(response.user));
     } catch (error) {
       console.error('Error fetching user data:', error);
+      
       // Si el error es 401 (token inválido/vencido), hacer logout
-      if (error.response?.status === 401) {
+      if (error.status === 401) {
         logout();
+      }
+      
+      // Intentar recuperar usuario de localStorage como fallback
+      const storedUser = localStorage.getItem('psico_user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
       }
     } finally {
       setLoading(false);
@@ -36,34 +46,22 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post('http://localhost:3000/api/auth/login', {
-        email,
-        password
-      });
+      const response = await ApiService.post('/auth/login', { email, password });
       
-      const { token, user } = response.data;
+      const { token, user } = response;
       
       localStorage.setItem('token', token);
       localStorage.setItem('psico_user', JSON.stringify(user));
       
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setToken(token);
       setUser(user);
       
       // Redirigir según el rol después del login exitoso
       setTimeout(() => {
-        switch (user.rol) {
-          case 'becario':
-            window.location.href = '/becario/dashboard';
-            break;
-          case 'psicologo':
-            window.location.href = '/psicologo/dashboard';
-            break;
-          case 'coordinador':
-            window.location.href = '/coordinador/dashboard';
-            break;
-          default:
-            window.location.href = '/dashboard';
+        if (user.rol) {
+          window.location.href = `/${user.rol}/dashboard`;
+        } else {
+          window.location.href = '/dashboard';
         }
       }, 100);
       
@@ -72,7 +70,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Login error:', error);
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Error en el inicio de sesión' 
+        message: error.message || 'Error en el inicio de sesión' 
       };
     }
   };
@@ -80,7 +78,6 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('psico_user');
-    delete axios.defaults.headers.common['Authorization'];
     setToken(null);
     setUser(null);
     window.location.href = '/login';
@@ -97,7 +94,10 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     updateUser,
-    loading
+    loading,
+    isCoordinador: user?.rol === 'coordinador',
+    isPsicologo: user?.rol === 'psicologo',
+    isBecario: user?.rol === 'becario'
   };
 
   return (

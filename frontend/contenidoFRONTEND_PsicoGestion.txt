@@ -50,6 +50,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import Login from './components/Auth/Login';
 import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
 
 // Páginas para Becarios
 import BecarioDashboard from './pages/becario/DashboardPage';
@@ -80,6 +85,10 @@ function App() {
   return (
     <Router>
       <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
         <Routes>
           <Route path="/login" element={<Login />} />
           
@@ -129,6 +138,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './global.css';
 import './App.css';
+
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
+
 import App from './App';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
@@ -330,10 +344,55 @@ const PrivateRoute = ({ children }) => {
 
 export default PrivateRoute;
 
+/src\components\Auth\ProtectedRoute.js:
+--------------------------------------------------------------------------------
+// src/components/Auth/ProtectedRoute.js
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+
+const ProtectedRoute = ({ children, allowedRoles }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="global-loader">
+        <div className="global-loader-content">
+          <div className="global-loader-spinner"></div>
+          <div className="global-loader-text">Cargando...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  // Verificar si el usuario tiene un rol permitido
+  if (!allowedRoles.includes(user.rol)) {
+    // Redirigir al dashboard correspondiente según el rol
+    switch (user.rol) {
+      case 'becario':
+        return <Navigate to="/becario/dashboard" replace />;
+      case 'psicologo':
+        return <Navigate to="/psicologo/dashboard" replace />;
+      case 'coordinador':
+        return <Navigate to="/coordinador/dashboard" replace />;
+      default:
+        return <Navigate to="/login" />;
+    }
+  }
+
+  return children;
+};
+
+export default ProtectedRoute;
+
 /src\components\Auth\RoleRouter.js:
 --------------------------------------------------------------------------------
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import BecarioLayout from '../Layout/BecarioLayout';
 import PsicologoLayout from '../Layout/PsicologoLayout';
@@ -341,6 +400,7 @@ import CoordinadorLayout from '../Layout/CoordinadorLayout';
 
 const RoleRouter = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -357,6 +417,21 @@ const RoleRouter = ({ children }) => {
     return <Navigate to="/login" />;
   }
 
+  // Verificar si la ruta actual corresponde al rol del usuario
+  const path = location.pathname;
+  
+  if (user.rol === 'becario' && !path.startsWith('/becario')) {
+    return <Navigate to="/becario/dashboard" replace />;
+  }
+  
+  if (user.rol === 'psicologo' && !path.startsWith('/psicologo')) {
+    return <Navigate to="/psicologo/dashboard" replace />;
+  }
+  
+  if (user.rol === 'coordinador' && !path.startsWith('/coordinador')) {
+    return <Navigate to="/coordinador/dashboard" replace />;
+  }
+
   // Determinar layout basado en el rol del usuario
   switch (user.rol) {
     case 'becario':
@@ -366,12 +441,224 @@ const RoleRouter = ({ children }) => {
     case 'coordinador':
       return <CoordinadorLayout>{children}</CoordinadorLayout>;
     default:
-      // Si el rol no está definido, redirigir a login
       return <Navigate to="/login" />;
   }
 };
 
 export default RoleRouter;
+
+/src\components\Common\ConfirmModal.jsx:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react'
+import './ConfirmModal.css'
+
+let showConfirmFunc = null
+
+const ConfirmModal = () => {
+  const [visible, setVisible] = useState(false)
+  const [message, setMessage] = useState('')
+  const [type, setType] = useState('warning') // 'warning', 'danger', 'info'
+  const [callback, setCallback] = useState(null)
+
+  const show = (msg, confirmCallback, msgType = 'warning') => {
+    setMessage(msg)
+    setType(msgType)
+    setCallback(() => confirmCallback)
+    setVisible(true)
+  }
+
+  const handleConfirm = () => {
+    if (callback) callback(true)
+    hide()
+  }
+
+  const handleCancel = () => {
+    if (callback) callback(false)
+    hide()
+  }
+
+  const hide = () => {
+    setVisible(false)
+    setMessage('')
+    setCallback(null)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleConfirm()
+    } else if (e.key === 'Escape') {
+      handleCancel()
+    }
+  }
+
+  const handleOverlayClick = (e) => {
+    if (e.target.classList.contains('confirm-overlay')) {
+      handleCancel()
+    }
+  }
+
+  // Exponer la función show al objeto global
+  useEffect(() => {
+    showConfirmFunc = show
+    
+    return () => {
+      showConfirmFunc = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (visible) {
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [visible])
+
+  if (!visible) return null
+
+  const getButtonTexts = () => {
+    switch (type) {
+      case 'danger': return { confirm: 'Sí', cancel: 'Cancelar' }
+      case 'info': return { confirm: 'Sí', cancel: 'No' }
+      default: return { confirm: 'Sí', cancel: 'Cancelar' }
+    }
+  }
+
+  const buttonTexts = getButtonTexts()
+
+  return (
+    <div 
+      className="confirm-overlay" 
+      onClick={handleOverlayClick}
+    >
+      <div className={`modal-confirm modal-confirm-${type}`}>
+        <div className="confirm-message">
+          {message}
+        </div>
+        <div className="confirm-buttons-container">
+          <button 
+            className={`modal-button confirm-button-cancel confirm-button-${type}-cancel`}
+            onClick={handleCancel}
+          >
+            {buttonTexts.cancel}
+          </button>
+          <button 
+            className={`modal-button confirm-button-confirm confirm-button-${type}`}
+            onClick={handleConfirm}
+            autoFocus
+          >
+            {buttonTexts.confirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Función global para mostrar confirmaciones
+export const showConfirm = (message, type = 'warning') => {
+  return new Promise((resolve) => {
+    if (showConfirmFunc) {
+      showConfirmFunc(message, resolve, type)
+    } else {
+      console.error('ConfirmModal no está montado')
+      // Fallback al confirm nativo si no está disponible
+      const result = window.confirm(message)
+      resolve(result)
+    }
+  })
+}
+
+export default ConfirmModal
+
+/src\components\Common\NotificationModal.jsx:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react'
+import './NotificationModal.css'
+
+let showNotificationFunc = null
+
+const NotificationModal = () => {
+  const [visible, setVisible] = useState(false)
+  const [message, setMessage] = useState('')
+  const [type, setType] = useState('info') // 'info', 'success', 'error', 'warning'
+
+  const show = (msg, msgType = 'info') => {
+    setMessage(msg)
+    setType(msgType)
+    setVisible(true)
+  }
+
+  const hide = () => {
+    setVisible(false)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      hide()
+    }
+  }
+
+  const handleOverlayClick = (e) => {
+    if (e.target.classList.contains('notification-overlay')) {
+      hide()
+    }
+  }
+
+  // Exponer la función show al objeto global
+  useEffect(() => {
+    showNotificationFunc = show
+    
+    return () => {
+      showNotificationFunc = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (visible) {
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [visible])
+
+  if (!visible) return null
+
+  return (
+    <div 
+      className="notification-overlay" 
+      onClick={handleOverlayClick}
+    >
+      <div className={`modal-notification modal-notification-${type}`}>
+        <div className="notification-message">
+          {message}
+        </div>
+        <button 
+          className={`modal-button notification-close-button notification-button-${type}`}
+          onClick={hide}
+          autoFocus
+        >
+          Aceptar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Función global para mostrar notificaciones
+export const showNotification = (message, type = 'info') => {
+  if (showNotificationFunc) {
+    showNotificationFunc(message, type)
+  } else {
+    console.error('NotificationModal no está montado')
+    // Fallback al alert si no está disponible
+
+  }
+}
+
+export default NotificationModal
 
 /src\components\Layout\BecarioLayout.js:
 --------------------------------------------------------------------------------
@@ -379,15 +666,40 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell, 
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell,FiSun, FiMoon,
   FiFileText, FiLogOut, FiClock
 } from 'react-icons/fi';
 
 const BecarioLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout } = useAuth();
+  const [darkMode, setDarkMode] = useState(false);
   const navigate = useNavigate();
   const [notificaciones, setNotificaciones] = useState([]);
+
+  useEffect(() => {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark') {
+        setDarkMode(true);
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        setDarkMode(false);
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    }, []);
+  
+    const toggleDarkMode = () => {
+      const newDarkMode = !darkMode;
+      setDarkMode(newDarkMode);
+      
+      if (newDarkMode) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'light');
+        localStorage.setItem('theme', 'light');
+      }
+    };
 
   const handleLogout = () => {
     logout();
@@ -457,6 +769,30 @@ const BecarioLayout = () => {
               )}
             </button>
           </div>
+
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
           
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
@@ -510,7 +846,7 @@ const BecarioLayout = () => {
         {/* Main Content */}
         <main className="main-content">
           <div className="content-area">
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>
@@ -531,19 +867,45 @@ export default BecarioLayout;
 
 /src\components\Layout\CoordinadorLayout.js:
 --------------------------------------------------------------------------------
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBarChart2,
-  FiUserPlus, FiFileText, FiSettings, FiLogOut, FiClock,
+  FiUserPlus, FiFileText, FiSettings, FiLogOut, FiClock,FiSun, FiMoon,
   FiTrendingUp, FiUserCheck
 } from 'react-icons/fi';
 
 const CoordinadorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Inicializar el tema desde localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    
+    if (newDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -578,8 +940,32 @@ const CoordinadorLayout = () => {
               />
           <h2 className="app-name">- Coordinación</h2>
         </div>
-        
+
         <div className="flex-row align-center gap-20">
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
+          
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
             <span className="user-rol">Coordinador</span>
@@ -636,7 +1022,7 @@ const CoordinadorLayout = () => {
 
         <main className="main-content">
           <div className="content-area">
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>
@@ -733,7 +1119,7 @@ const MainLayout = () => {
         {/* Main Content */}
         <main className="main-content">
           <div className="content-area">
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>
@@ -753,18 +1139,44 @@ export default MainLayout;
 
 /src\components\Layout\PsicologoLayout.js:
 --------------------------------------------------------------------------------
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiFileText,
-  FiBarChart2, FiUserCheck, FiLogOut, FiClock
+  FiBarChart2, FiUserCheck, FiLogOut, FiClock, FiSun, FiMoon
 } from 'react-icons/fi';
 
 const PsicologoLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Inicializar el tema desde localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    
+    if (newDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -791,14 +1203,38 @@ const PsicologoLayout = () => {
             {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
           <img 
-                src="/images/logoCESUN2wide.png" 
-                alt="PsicoGestión" 
-                className="dashboard-logo"
-              />
+            src="/images/logoCESUN2wide.png" 
+            alt="PsicoGestión" 
+            className="dashboard-logo"
+          />
           <h2 className="app-name">- Psicólogo</h2>
         </div>
         
         <div className="flex-row align-center gap-20">
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
+          
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
             <span className="user-rol">Psicólogo</span>
@@ -851,7 +1287,7 @@ const PsicologoLayout = () => {
 
         <main className="main-content">
           <div className="content-area">
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>
@@ -980,1922 +1416,6 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-/src\pages\CitasPage.js:
---------------------------------------------------------------------------------
-import React, { useState, useEffect } from 'react';
-import { 
-  FiCalendar, 
-  FiClock, 
-  FiUser, 
-  FiPlus, 
-  FiEdit2, 
-  FiChevronLeft, 
-  FiChevronRight,
-  FiPhone,
-  FiMail,
-  FiRefreshCw,
-  FiX
-} from 'react-icons/fi';
-import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isToday } from 'date-fns';
-import { es } from 'date-fns/locale';
-
-const CitasPage = () => {
-  const [citas, setCitas] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [view, setView] = useState('day');
-  const [loading, setLoading] = useState(true);
-  const [filterBecario, setFilterBecario] = useState('');
-  const [becarios, setBecarios] = useState([]);
-  const [selectedCita, setSelectedCita] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [showNuevaCitaModal, setShowNuevaCitaModal] = useState(false);
-  const [nuevaCitaData, setNuevaCitaData] = useState({
-    paciente_nombre: '',
-    paciente_apellido: '',
-    paciente_telefono: '',
-    paciente_email: '',
-    fecha: '',
-    hora: '',
-    tipo_consulta: 'presencial',
-    duracion: 50,
-    notas: '',
-    psicologo_id: '',
-    becario_id: ''
-  });
-  const [error, setError] = useState('');
-
-  const getToken = () => {
-    return localStorage.getItem('token');
-  };
-
-  const formatDateForAPI = (date) => {
-    return format(date, 'yyyy-MM-dd');
-  };
-
-  const fetchBecarios = async () => {
-    try {
-      const token = getToken();
-      const response = await fetch('http://localhost:3000/api/users/becarios', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setBecarios(data);
-      }
-    } catch (error) {
-      console.error('Error al obtener becarios:', error);
-    }
-  };
-
-  const fetchCitas = async () => {
-    try {
-      setLoading(true);
-      const token = getToken();
-      const fecha = formatDateForAPI(selectedDate);
-      
-      let url = `http://localhost:3000/api/citas/citas-por-fecha?fecha=${fecha}`;
-      
-      if (filterBecario) {
-        url += `&becario_id=${filterBecario}`;
-      }
-      
-      console.log('🔍 Fetching citas from:', url);
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        // NORMALIZA LOS DATOS
-        const citasNormalizadas = (data.data || []).map(cita => {
-          return {
-            ...cita,
-            // Formatea la hora para quitar los segundos
-            hora: cita.hora ? cita.hora.substring(0, 5) : '',
-            // Usa duracion_minutos como duracion
-            duracion: cita.duracion_minutos || cita.duracion || 50,
-            // Usa motivo como notas
-            notas: cita.motivo || cita.notas || '',
-            // Asegura que paciente_nombre exista
-            paciente_nombre: cita.paciente_nombre || `Paciente ${cita.id}`
-          };
-        });
-        
-        setCitas(citasNormalizadas);
-      } else {
-        console.error('Error al obtener citas');
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCitasSemana = async () => {
-    try {
-      setLoading(true);
-      const token = getToken();
-      
-      const startDate = startOfWeek(selectedDate, { weekStartsOn: 1 });
-      const endDate = endOfWeek(selectedDate, { weekStartsOn: 1 });
-      
-      const promises = eachDayOfInterval({ start: startDate, end: endDate }).map(async (date) => {
-        const fecha = formatDateForAPI(date);
-        const response = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${fecha}${filterBecario ? `&becario_id=${filterBecario}` : ''}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          return { fecha, citas: data.data || [] };
-        }
-        return { fecha, citas: [] };
-      });
-      
-      const results = await Promise.all(promises);
-      setCitas(results.flatMap(r => r.citas));
-      
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchBecarios();
-    if (view === 'day') {
-      fetchCitas();
-    } else if (view === 'week') {
-      fetchCitasSemana();
-    }
-  }, [selectedDate, view, filterBecario]);
-
-  const goToPreviousDay = () => {
-    setSelectedDate(prev => subDays(prev, 1));
-  };
-
-  const goToNextDay = () => {
-    setSelectedDate(prev => addDays(prev, 1));
-  };
-
-  const goToToday = () => {
-    setSelectedDate(new Date());
-  };
-
-  const goToPreviousWeek = () => {
-    setSelectedDate(prev => subDays(prev, 7));
-  };
-
-  const goToNextWeek = () => {
-    setSelectedDate(prev => addDays(prev, 7));
-  };
-
-  const formatDateSpanish = (date) => {
-    return format(date, "EEEE d 'de' MMMM, yyyy", { locale: es });
-  };
-
-  const generateHours = () => {
-    const hours = [];
-    for (let i = 9; i <= 20; i++) {
-      hours.push(`${i}:00`);
-      if (i !== 20) {
-        hours.push(`${i}:30`);
-      }
-    }
-    return hours;
-  };
-
-
-  const citasDelDia = citas.filter(cita => {
-    console.log('🔍 Cita individual:', {
-      id: cita.id,
-      cita_fecha: cita.fecha,
-      cita_fecha_raw: cita.fecha,
-      selected_date_formatted: formatDateForAPI(selectedDate),
-      cita_date_object: new Date(cita.fecha),
-      cita_date_formatted: formatDateForAPI(new Date(cita.fecha))
-    });
-    
-    const isSameDay1 = cita.fecha === formatDateForAPI(selectedDate);
-    
-    const citaDate = new Date(cita.fecha);
-    const selectedDateObj = new Date(selectedDate);
-    const isSameDay2 = formatDateForAPI(citaDate) === formatDateForAPI(selectedDateObj);
-    
-    // Método 3: Comparar año, mes y día
-    const isSameDay3 = 
-      citaDate.getFullYear() === selectedDateObj.getFullYear() &&
-      citaDate.getMonth() === selectedDateObj.getMonth() &&
-      citaDate.getDate() === selectedDateObj.getDate();
-    
-    
-    return isSameDay1 || isSameDay2 || isSameDay3;
-  });
-
-  const handleConfirmCita = async (citaId) => {
-    try {
-      const token = getToken();
-      const response = await fetch(`http://localhost:3000/api/citas/cita/${citaId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ estado: 'confirmada' })
-      });
-      
-      if (response.ok) {
-        fetchCitas();
-      }
-    } catch (error) {
-      console.error('Error al confirmar cita:', error);
-    }
-  };
-
-  const handleCancelCita = async (citaId) => {
-    try {
-      const token = getToken();
-      const response = await fetch(`http://localhost:3000/api/citas/cita/${citaId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          estado: 'cancelada',
-          motivo_cancelacion: 'Cancelada por usuario' 
-        })
-      });
-      
-      if (response.ok) {
-        fetchCitas();
-      }
-    } catch (error) {
-      console.error('Error al cancelar cita:', error);
-    }
-  };
-
-  const showCitaDetails = (cita) => {
-    setSelectedCita(cita);
-    setShowModal(true);
-  };
-
-  const handleNuevaCitaChange = (e) => {
-    const { name, value } = e.target;
-    setNuevaCitaData({
-      ...nuevaCitaData,
-      [name]: value
-    });
-  };
-
-  const handleNuevaCitaSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    if (!nuevaCitaData.paciente_nombre || !nuevaCitaData.paciente_apellido || !nuevaCitaData.fecha || !nuevaCitaData.hora) {
-      setError('Por favor complete los campos requeridos: Nombre, Apellido, Fecha y Hora');
-      return;
-    }
-
-    try {
-      const token = getToken();
-      
-      const citaData = {
-        paciente: {
-          nombre: nuevaCitaData.paciente_nombre.trim(),
-          apellido: nuevaCitaData.paciente_apellido.trim(),
-          telefono: nuevaCitaData.paciente_telefono || '',
-          email: nuevaCitaData.paciente_email || ''
-        },
-        fecha: nuevaCitaData.fecha,
-        hora: nuevaCitaData.hora,
-        tipo_consulta: nuevaCitaData.tipo_consulta,
-        duracion: parseInt(nuevaCitaData.duracion),
-        notas: nuevaCitaData.notas || '',
-        becario_id: nuevaCitaData.becario_id || null
-      };
-
-      console.log('📤 Enviando datos de cita:', citaData);
-
-      const response = await fetch('http://localhost:3000/api/citas/nueva', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(citaData)
-      });
-
-      const responseText = await response.text();
-      console.log('📥 Respuesta del servidor:', responseText);
-
-      if (!response.ok) {
-        try {
-          const errorData = JSON.parse(responseText);
-          throw new Error(errorData.message || 'Error al crear la cita');
-        } catch (parseError) {
-          throw new Error(responseText || 'Error al crear la cita');
-        }
-      }
-
-      const data = JSON.parse(responseText);
-      
-      if (data.success) {
-        setShowNuevaCitaModal(false);
-        setNuevaCitaData({
-          paciente_nombre: '',
-          paciente_apellido: '',
-          paciente_telefono: '',
-          paciente_email: '',
-          fecha: formatDateForAPI(selectedDate),
-          hora: '',
-          tipo_consulta: 'presencial',
-          duracion: 50,
-          notas: '',
-          becario_id: ''
-        });
-        
-        // Mostrar mensaje de éxito
-        notifications.success('✅ Cita creada exitosamente');
-        
-        // Recargar las citas
-        if (view === 'day') {
-          fetchCitas();
-        } else {
-          fetchCitasSemana();
-        }
-      } else {
-        setError(data.message || 'Error al crear la cita');
-      }
-      
-    } catch (error) {
-      console.error('Error al crear cita:', error);
-      setError(error.message || 'Error al crear la cita');
-    }
-  };
-
-  const weekDays = view === 'week' ? 
-    eachDayOfInterval({ 
-      start: startOfWeek(selectedDate, { weekStartsOn: 1 }), 
-      end: endOfWeek(selectedDate, { weekStartsOn: 1 }) 
-    }) : [];
-
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <div className="loading-text">Cargando citas...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="citas-page">
-      <div className="page-header">
-        <div>
-          <h1>Calendario de Citas</h1>
-          <p>Gestión de agenda del consultorio</p>
-        </div>
-        <div className="flex-row gap-10">
-          <div className="filter-select">
-            <select 
-              value={filterBecario} 
-              onChange={(e) => setFilterBecario(e.target.value)}
-              className="form-select"
-            >
-              <option value="">Todos los becarios</option>
-              {becarios.map(becario => (
-                <option key={becario.id} value={becario.id}>
-                  {becario.nombre} {becario.apellido}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button className="btn-secondary" onClick={fetchCitas}>
-            <FiRefreshCw /> Actualizar
-          </button>
-          <button className="btn-primary" onClick={() => setShowNuevaCitaModal(true)}>
-            <FiPlus /> Nueva Cita
-          </button>
-        </div>
-      </div>
-
-      <div className="calendar-controls">
-        <div className="view-selector">
-          <button 
-            className={`btn-text ${view === 'day' ? 'active' : ''}`}
-            onClick={() => setView('day')}
-          >
-            Día
-          </button>
-          <button 
-            className={`btn-text ${view === 'week' ? 'active' : ''}`}
-            onClick={() => setView('week')}
-          >
-            Semana
-          </button>
-        </div>
-
-        <div className="date-navigation">
-          <button 
-            className="btn-text"
-            onClick={view === 'day' ? goToPreviousDay : goToPreviousWeek}
-          >
-            <FiChevronLeft /> {view === 'day' ? 'Ayer' : 'Sem. anterior'}
-          </button>
-          
-          <div className="current-date">
-            <h3>
-              {view === 'day' 
-                ? formatDateSpanish(selectedDate)
-                : `Semana del ${format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM')} al ${format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'd MMM, yyyy')}`
-              }
-            </h3>
-          </div>
-          
-          <button 
-            className="btn-text"
-            onClick={view === 'day' ? goToNextDay : goToNextWeek}
-          >
-            {view === 'day' ? 'Mañana' : 'Próx. semana'} <FiChevronRight />
-          </button>
-        </div>
-
-        <div className="quick-actions">
-          <button className="btn-secondary" onClick={goToToday}>
-            Hoy
-          </button>
-        </div>
-      </div>
-
-      {view === 'day' ? (
-        <div className="calendar-day-view">
-          <div className="time-column">
-            {generateHours().map((hour) => (
-              <div key={hour} className="time-slot">
-                <span className="time-label">{hour}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="events-column">
-            {generateHours().map((hour) => {
-              const hourCitas = citasDelDia.filter(cita => 
-                cita.hora.startsWith(hour.split(':')[0])
-              );
-
-              return (
-                <div key={hour} className="hour-slot">
-                  {hourCitas.map((cita) => (
-                    <div 
-                      key={cita.id}
-                      className={`event-item ${
-                        cita.estado === 'confirmada' ? 'event-confirmed' :
-                        cita.estado === 'completada' ? 'event-completed' :
-                        cita.estado === 'programada' ? 'event-pending' :
-                        'event-cancelled'
-                      }`}
-                      style={{ height: `${(cita.duracion / 30) * 50}px` }}
-                      onClick={() => showCitaDetails(cita)}
-                    >
-                      <div className="event-header">
-                        <div className="event-time">
-                          <FiClock /> {cita.hora}
-                        </div>
-                        <div className="event-actions">
-                          <button className="btn-text" onClick={(e) => {
-                            e.stopPropagation();
-                            showCitaDetails(cita);
-                          }}>
-                            <FiEdit2 />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="event-content">
-                        <div className="event-patient">
-                          <FiUser /> {cita.paciente_nombre || 'Sin nombre'}
-                        </div>
-                        <div className="event-type">{cita.tipo_consulta}</div>
-                        {cita.notas && (
-                          <div className="event-notes">{cita.notas}</div>
-                        )}
-                      </div>
-                      <div className="event-footer">
-                        <span className={`badge ${
-                          cita.estado === 'confirmada' ? 'badge-success' :
-                          cita.estado === 'completada' ? 'badge-primary' :
-                          cita.estado === 'programada' ? 'badge-warning' :
-                          'badge-danger'
-                        }`}>
-                          {cita.estado}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <div className="calendar-week-view">
-          <div className="week-header">
-            <div className="time-header"></div>
-            {weekDays.map((day) => (
-              <div key={day.toISOString()} className="day-header">
-                <div className={`day-name ${isToday(day) ? 'today' : ''}`}>
-                  {format(day, 'EEE', { locale: es })}
-                </div>
-                <div className="day-number">
-                  {format(day, 'd')}
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          <div className="week-body">
-            <div className="time-column">
-              {generateHours().map(hour => (
-                <div key={hour} className="time-slot">{hour}</div>
-              ))}
-            </div>
-            
-            {weekDays.map((day) => (
-              <div key={day.toISOString()} className="day-column">
-                {generateHours().map(hour => {
-                  const dayCitas = citas.filter(cita => {
-                    const citaDate = new Date(cita.fecha);
-                    return citaDate.toDateString() === day.toDateString() &&
-                           cita.hora.startsWith(hour.split(':')[0]);
-                  });
-                  
-                  return (
-                    <div key={hour} className="hour-cell">
-                      {dayCitas.map(cita => (
-                        <div 
-                          key={cita.id}
-                          className={`week-event ${
-                            cita.estado === 'confirmada' ? 'event-confirmed' :
-                            'event-pending'
-                          }`}
-                          onClick={() => showCitaDetails(cita)}
-                          title={`${cita.hora} - ${cita.paciente_nombre}`}
-                        >
-                          <div className="week-event-time">{cita.hora}</div>
-                          <div className="week-event-patient">{cita.paciente_nombre}</div>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="day-citas-list">
-        <h3>
-          Citas para {formatDateSpanish(selectedDate)} ({citasDelDia.length})
-        </h3>
-        
-        {citasDelDia.length > 0 ? (
-          <div className="citas-cards">
-            {citasDelDia.map((cita) => (
-              <div key={cita.id} className="cita-card">
-                <div className="cita-card-header">
-                  <div className="cita-time">
-                    <FiClock /> {cita.hora} ({cita.duracion || 50} min)
-                  </div>
-                  <div className={`cita-status badge ${
-                    cita.estado === 'confirmada' ? 'badge-success' :
-                    cita.estado === 'completada' ? 'badge-primary' :
-                    cita.estado === 'programada' ? 'badge-warning' :
-                    'badge-danger'
-                  }`}>
-                    {cita.estado}
-                  </div>
-                </div>
-                
-                <div className="cita-card-body">
-                  <div className="cita-paciente">
-                    <FiUser /> {cita.paciente_nombre || 'Paciente'}
-                  </div>
-                  
-                  <div className="cita-info">
-                    <div className="cita-tipo">
-                      {cita.tipo_consulta === 'presencial' ? '📋 Presencial' : '💻 Virtual'}
-                    </div>
-                    
-                    {cita.paciente_telefono && (
-                      <div className="cita-contacto">
-                        <FiPhone /> {cita.paciente_telefono}
-                      </div>
-                    )}
-                    
-                    {cita.psicologo_nombre && (
-                      <div className="cita-psicologo">
-                        👨‍⚕️ {cita.psicologo_nombre}
-                      </div>
-                    )}
-                    
-                    {cita.becario_nombre && (
-                      <div className="cita-becario">
-                        👨‍🎓 {cita.becario_nombre}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {cita.notas && (
-                    <div className="cita-notas">
-                      <strong>Notas:</strong> {cita.notas}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="cita-card-footer">
-                  <button 
-                    className="btn-text"
-                    onClick={() => showCitaDetails(cita)}
-                  >
-                    Detalles
-                  </button>
-                  
-                  {cita.estado === 'programada' && (
-                    <button 
-                      className="btn-text text-success"
-                      onClick={() => handleConfirmCita(cita.id)}
-                    >
-                      Confirmar
-                    </button>
-                  )}
-                  
-                  {(cita.estado === 'programada' || cita.estado === 'confirmada') && (
-                    <button 
-                      className="btn-text text-danger"
-                      onClick={() => handleCancelCita(cita.id)}
-                    >
-                      Cancelar
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="no-citas">
-            <div className="no-citas-icon">📅</div>
-            <div>No hay citas programadas para este día</div>
-            <button className="btn-text" onClick={() => setShowNuevaCitaModal(true)}>Agendar nueva cita</button>
-          </div>
-        )}
-      </div>
-
-      {showModal && selectedCita && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>Detalles de la Cita</h2>
-              <button className="btn-text" onClick={() => setShowModal(false)}>×</button>
-            </div>
-            
-            <div className="modal-body">
-              <div className="detail-row">
-                <strong>Paciente:</strong>
-                <span>{selectedCita.paciente_nombre}</span>
-              </div>
-              
-              <div className="detail-row">
-                <strong>Fecha y hora:</strong>
-                <span>{selectedCita.fecha} {selectedCita.hora}</span>
-              </div>
-              
-              <div className="detail-row">
-                <strong>Duración:</strong>
-                <span>{selectedCita.duracion || 50} minutos</span>
-              </div>
-              
-              <div className="detail-row">
-                <strong>Tipo:</strong>
-                <span>{selectedCita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual'}</span>
-              </div>
-              
-              <div className="detail-row">
-                <strong>Estado:</strong>
-                <span className={`badge ${
-                  selectedCita.estado === 'confirmada' ? 'badge-success' :
-                  selectedCita.estado === 'completada' ? 'badge-primary' :
-                  selectedCita.estado === 'programada' ? 'badge-warning' :
-                  'badge-danger'
-                }`}>
-                  {selectedCita.estado}
-                </span>
-              </div>
-              
-              {selectedCita.psicologo_nombre && (
-                <div className="detail-row">
-                  <strong>Psicólogo:</strong>
-                  <span>{selectedCita.psicologo_nombre}</span>
-                </div>
-              )}
-              
-              {selectedCita.becario_nombre && (
-                <div className="detail-row">
-                  <strong>Becario:</strong>
-                  <span>{selectedCita.becario_nombre}</span>
-                </div>
-              )}
-              
-              {selectedCita.paciente_telefono && (
-                <div className="detail-row">
-                  <strong>Teléfono:</strong>
-                  <span>{selectedCita.paciente_telefono}</span>
-                </div>
-              )}
-              
-              {selectedCita.notas && (
-                <div className="detail-row notes">
-                  <strong>Notas:</strong>
-                  <p>{selectedCita.notas}</p>
-                </div>
-              )}
-            </div>
-            
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowModal(false)}>
-                Cerrar
-              </button>
-              <button className="btn-primary">
-                <FiEdit2 /> Editar Cita
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showNuevaCitaModal && (
-      <div className="modal-overlay">
-        <div className="modal-container">
-          <div className="modal-header">
-            <h2 className="modal-title">Agendar Nueva Cita</h2>
-            <button 
-              className="modal-close"
-              onClick={() => {
-                setShowNuevaCitaModal(false);
-                setError('');
-              }}
-            >
-              ×
-            </button>
-          </div>
-
-          {error && (
-            <div className="error-message">
-              {error}
-            </div>
-          )}
-          
-          <form onSubmit={handleNuevaCitaSubmit}>
-            <div className="form-grid">
-              <div className="form-group">
-                <input 
-                  type="text" 
-                  name="paciente_nombre" 
-                  placeholder="Nombre del paciente"
-                  value={nuevaCitaData.paciente_nombre}
-                  onChange={handleNuevaCitaChange}
-                  className="input-field"
-                  required
-                />
-              </div>
-              
-              <div className="form-group">
-                <input 
-                  type="text" 
-                  name="paciente_apellido" 
-                  placeholder="Apellido del paciente"
-                  value={nuevaCitaData.paciente_apellido}
-                  onChange={handleNuevaCitaChange}
-                  className="input-field"
-                  required
-                />
-              </div>
-              
-              <div className="form-group">
-                <input 
-                  type="tel" 
-                  name="paciente_telefono" 
-                  placeholder="Teléfono"
-                  value={nuevaCitaData.paciente_telefono}
-                  onChange={handleNuevaCitaChange}
-                  className="input-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <input 
-                  type="email" 
-                  name="paciente_email" 
-                  placeholder="Email"
-                  value={nuevaCitaData.paciente_email}
-                  onChange={handleNuevaCitaChange}
-                  className="input-field"
-                />
-              </div>
-              
-              <div className="form-group">
-                <input 
-                  type="date" 
-                  name="fecha" 
-                  value={nuevaCitaData.fecha || formatDateForAPI(selectedDate)}
-                  onChange={handleNuevaCitaChange}
-                  className="input-field"
-                  required
-                />
-              </div>
-              
-              <div className="form-group">
-                <select
-                  name="hora"
-                  value={nuevaCitaData.hora}
-                  onChange={handleNuevaCitaChange}
-                  className="select-field"
-                  required
-                >
-                  <option value="">Seleccione hora</option>
-                  {generateHours().map(hour => (
-                    <option key={hour} value={hour}>{hour}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="form-group">
-                <select
-                  name="tipo_consulta"
-                  value={nuevaCitaData.tipo_consulta}
-                  onChange={handleNuevaCitaChange}
-                  className="select-field"
-                >
-                  <option value="presencial">Presencial</option>
-                  <option value="virtual">Virtual</option>
-                </select>
-              </div>
-              
-              <div className="form-group">
-                <select
-                  name="duracion"
-                  value={nuevaCitaData.duracion}
-                  onChange={handleNuevaCitaChange}
-                  className="select-field"
-                >
-                  <option value="30">30 minutos</option>
-                  <option value="50">50 minutos</option>
-                  <option value="60">60 minutos</option>
-                  <option value="90">90 minutos</option>
-                </select>
-              </div>
-              
-              <div className="form-group">
-                <select
-                  name="becario_id"
-                  value={nuevaCitaData.becario_id}
-                  onChange={handleNuevaCitaChange}
-                  className="select-field"
-                >
-                  <option value="">Sin becario asignado</option>
-                  {becarios.map(becario => (
-                    <option key={becario.id} value={becario.id}>
-                      {becario.nombre} {becario.apellido}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                <textarea 
-                  name="notas" 
-                  placeholder="Notas adicionales"
-                  value={nuevaCitaData.notas}
-                  onChange={handleNuevaCitaChange}
-                  className="textarea-field"
-                  rows="3"
-                />
-              </div>
-            </div>
-            
-            <div className="modal-footer">
-              <button 
-                type="submit"
-                className="btn-primary"
-              >
-                <FiPlus /> Agendar Cita
-              </button>
-              <button 
-                type="button"
-                onClick={() => {
-                  setShowNuevaCitaModal(false);
-                  setError('');
-                }}
-                className="btn-danger"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )}
-    </div>
-  );
-};
-
-export default CitasPage;
-
-/src\pages\ConfiguracionPage.js:
---------------------------------------------------------------------------------
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { 
-  FiUser, 
-  FiLock, 
-  FiBell, 
-  FiCalendar, 
-  FiSave,
-  FiUpload,
-  FiDownload
-} from 'react-icons/fi';
-
-const ConfiguracionPage = () => {
-  const { user, updateUser } = useAuth();
-  const [activeTab, setActiveTab] = useState('perfil');
-  const [formData, setFormData] = useState({
-    nombre: '',
-    email: '',
-    telefono: '',
-    especialidad: '',
-    horarioInicio: '09:00',
-    horarioFin: '18:00',
-    duracionCita: 45,
-    notificacionesEmail: true,
-    notificacionesSMS: false
-  });
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  });
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
-
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        nombre: user.nombre || '',
-        email: user.email || '',
-        telefono: user.telefono || '',
-        especialidad: user.especialidad || 'Psicología Clínica',
-        horarioInicio: user.horarioInicio || '09:00',
-        horarioFin: user.horarioFin || '18:00',
-        duracionCita: user.duracionCita || 45,
-        notificacionesEmail: user.notificacionesEmail || true,
-        notificacionesSMS: user.notificacionesSMS || false
-      });
-    }
-  }, [user]);
-
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value
-    });
-  };
-
-  const handlePasswordChange = (e) => {
-    const { name, value } = e.target;
-    setPasswordData({
-      ...passwordData,
-      [name]: value
-    });
-  };
-
-  const handleSaveProfile = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    
-    try {
-      // Simular guardado
-      setTimeout(() => {
-        updateUser(formData);
-        setMessage({ type: 'success', text: 'Perfil actualizado correctamente' });
-        setSaving(false);
-        
-        setTimeout(() => {
-          setMessage({ type: '', text: '' });
-        }, 3000);
-      }, 1000);
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Error al guardar los cambios' });
-      setSaving(false);
-    }
-  };
-
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
-    
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setMessage({ type: 'error', text: 'Las contraseñas no coinciden' });
-      return;
-    }
-    
-    if (passwordData.newPassword.length < 6) {
-      setMessage({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres' });
-      return;
-    }
-    
-    setSaving(true);
-    
-    try {
-      // Simular cambio de contraseña
-      setTimeout(() => {
-        setMessage({ type: 'success', text: 'Contraseña cambiada correctamente' });
-        setPasswordData({
-          currentPassword: '',
-          newPassword: '',
-          confirmPassword: ''
-        });
-        setSaving(false);
-        
-        setTimeout(() => {
-          setMessage({ type: '', text: '' });
-        }, 3000);
-      }, 1000);
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Error al cambiar la contraseña' });
-      setSaving(false);
-    }
-  };
-
-  const tabs = [
-    { id: 'perfil', label: 'Perfil', icon: <FiUser /> },
-    { id: 'seguridad', label: 'Seguridad', icon: <FiLock /> },
-    { id: 'notificaciones', label: 'Notificaciones', icon: <FiBell /> },
-    { id: 'horarios', label: 'Horarios', icon: <FiCalendar /> }
-  ];
-
-  return (
-    <div className="configuracion-page">
-      <div className="page-header">
-        <h1>Configuración</h1>
-        <p>Configuración del sistema y perfil de usuario</p>
-      </div>
-
-      {message.text && (
-        <div className={`alert-message ${message.type}`}>
-          {message.text}
-        </div>
-      )}
-
-      <div className="configuracion-container">
-        {/* Tabs */}
-        <div className="config-tabs">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              className={`config-tab ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Contenido de las tabs */}
-        <div className="config-content">
-          {/* Perfil */}
-          {activeTab === 'perfil' && (
-            <div className="tab-content">
-              <h3>Información del Perfil</h3>
-              <form onSubmit={handleSaveProfile}>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Nombre completo</label>
-                    <input
-                      type="text"
-                      name="nombre"
-                      className="input-field"
-                      value={formData.nombre}
-                      onChange={handleInputChange}
-                      placeholder="Tu nombre completo"
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Correo electrónico</label>
-                    <input
-                      type="email"
-                      name="email"
-                      className="input-field"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="tu@email.com"
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Teléfono</label>
-                    <input
-                      type="tel"
-                      name="telefono"
-                      className="input-field"
-                      value={formData.telefono}
-                      onChange={handleInputChange}
-                      placeholder="Número de teléfono"
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Especialidad</label>
-                    <select
-                      name="especialidad"
-                      className="select-field"
-                      value={formData.especialidad}
-                      onChange={handleInputChange}
-                    >
-                      <option value="Psicología Clínica">Psicología Clínica</option>
-                      <option value="Psicología Educativa">Psicología Educativa</option>
-                      <option value="Psicología Organizacional">Psicología Organizacional</option>
-                      <option value="Neuropsicología">Neuropsicología</option>
-                      <option value="Psicoterapia">Psicoterapia</option>
-                    </select>
-                  </div>
-                </div>
-                
-                <div className="form-actions">
-                  <button 
-                    type="submit" 
-                    className="btn-primary"
-                    disabled={saving}
-                  >
-                    <FiSave /> {saving ? 'Guardando...' : 'Guardar Cambios'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* Seguridad */}
-          {activeTab === 'seguridad' && (
-            <div className="tab-content">
-              <h3>Cambiar Contraseña</h3>
-              <form onSubmit={handleChangePassword}>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Contraseña actual</label>
-                    <input
-                      type="password"
-                      name="currentPassword"
-                      className="input-field"
-                      value={passwordData.currentPassword}
-                      onChange={handlePasswordChange}
-                      placeholder="Ingresa tu contraseña actual"
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Nueva contraseña</label>
-                    <input
-                      type="password"
-                      name="newPassword"
-                      className="input-field"
-                      value={passwordData.newPassword}
-                      onChange={handlePasswordChange}
-                      placeholder="Mínimo 6 caracteres"
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Confirmar nueva contraseña</label>
-                    <input
-                      type="password"
-                      name="confirmPassword"
-                      className="input-field"
-                      value={passwordData.confirmPassword}
-                      onChange={handlePasswordChange}
-                      placeholder="Repite la nueva contraseña"
-                    />
-                  </div>
-                </div>
-                
-                <div className="form-actions">
-                  <button 
-                    type="submit" 
-                    className="btn-primary"
-                    disabled={saving}
-                  >
-                    <FiSave /> {saving ? 'Cambiando...' : 'Cambiar Contraseña'}
-                  </button>
-                </div>
-              </form>
-              
-              <div className="security-info">
-                <h4>Recomendaciones de seguridad:</h4>
-                <ul>
-                  <li>Usa una contraseña con al menos 8 caracteres</li>
-                  <li>Incluye mayúsculas, minúsculas, números y símbolos</li>
-                  <li>No uses la misma contraseña en múltiples sitios</li>
-                  <li>Cambia tu contraseña regularmente</li>
-                </ul>
-              </div>
-            </div>
-          )}
-
-          {/* Notificaciones */}
-          {activeTab === 'notificaciones' && (
-            <div className="tab-content">
-              <h3>Preferencias de Notificaciones</h3>
-              <div className="notifications-list">
-                <div className="notification-item">
-                  <div>
-                    <h4>Notificaciones por Email</h4>
-                    <p>Recibe notificaciones por correo electrónico</p>
-                  </div>
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      name="notificacionesEmail"
-                      checked={formData.notificacionesEmail}
-                      onChange={handleInputChange}
-                    />
-                    <span className="slider"></span>
-                  </label>
-                </div>
-                
-                <div className="notification-item">
-                  <div>
-                    <h4>Notificaciones por SMS</h4>
-                    <p>Recibe notificaciones por mensaje de texto</p>
-                  </div>
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      name="notificacionesSMS"
-                      checked={formData.notificacionesSMS}
-                      onChange={handleInputChange}
-                    />
-                    <span className="slider"></span>
-                  </label>
-                </div>
-                
-                <div className="notification-item">
-                  <div>
-                    <h4>Recordatorios de citas</h4>
-                    <p>Recuerda a los pacientes 24 horas antes de su cita</p>
-                  </div>
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      defaultChecked
-                    />
-                    <span className="slider"></span>
-                  </label>
-                </div>
-                
-                <div className="notification-item">
-                  <div>
-                    <h4>Reportes semanales</h4>
-                    <p>Recibe un resumen semanal por email</p>
-                  </div>
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      defaultChecked
-                    />
-                    <span className="slider"></span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Horarios */}
-          {activeTab === 'horarios' && (
-            <div className="tab-content">
-              <h3>Configuración de Horarios</h3>
-              <form>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>Horario de inicio</label>
-                    <input
-                      type="time"
-                      name="horarioInicio"
-                      className="input-field"
-                      value={formData.horarioInicio}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Horario de fin</label>
-                    <input
-                      type="time"
-                      name="horarioFin"
-                      className="input-field"
-                      value={formData.horarioFin}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Duración de citas (minutos)</label>
-                    <select
-                      name="duracionCita"
-                      className="select-field"
-                      value={formData.duracionCita}
-                      onChange={handleInputChange}
-                    >
-                      <option value="30">30 minutos</option>
-                      <option value="45">45 minutos</option>
-                      <option value="60">60 minutos</option>
-                      <option value="90">90 minutos</option>
-                    </select>
-                  </div>
-                </div>
-                
-                <div className="horario-disponibilidad">
-                  <h4>Días de atención</h4>
-                  <div className="dias-grid">
-                    {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((dia) => (
-                      <div key={dia} className="dia-item">
-                        <label className="switch">
-                          <input
-                            type="checkbox"
-                            defaultChecked={dia !== 'Domingo'}
-                          />
-                          <span className="slider"></span>
-                        </label>
-                        <span>{dia}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="form-actions">
-                  <button type="submit" className="btn-primary">
-                    <FiSave /> Guardar Horarios
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Opciones avanzadas */}
-      <div className="advanced-settings">
-        <h3>Opciones Avanzadas</h3>
-        <div className="advanced-actions">
-          <button className="btn-warning">
-            <FiDownload /> Exportar Datos
-          </button>
-          <button className="btn-secondary">
-            <FiUpload /> Importar Datos
-          </button>
-          <button className="btn-danger">
-            Limpiar Cache
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default ConfiguracionPage;
-
-/src\pages\DashboardPage.js:
---------------------------------------------------------------------------------
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
-import { 
-  FiUsers, 
-  FiCalendar, 
-  FiTrendingUp, 
-  FiAlertCircle,
-  FiClock,
-  FiDollarSign
-} from 'react-icons/fi';
-
-const DashboardPage = () => {
-  const { token } = useAuth();
-  const [stats, setStats] = useState({
-    totalPacientes: 0,
-    totalCitasHoy: 0,
-    totalCitasProximas: 0,
-    promedioSesiones: 0,
-    ingresosMes: 0,
-    citasPendientes: 0
-  });
-  const [citasProximas, setCitasProximas] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [token]);
-
-  const fetchDashboardData = async () => {
-    try {
-      const response = await axios.get('http://localhost:3000/api/dashboard/estadisticas', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (response.data) {
-        setStats(response.data);
-      }
-      
-      // Simular datos de citas próximas (en un proyecto real vendría del backend)
-      setCitasProximas([
-        { id: 1, paciente: 'Juan Pérez', hora: '10:00 AM', estado: 'confirmada' },
-        { id: 2, paciente: 'María García', hora: '11:30 AM', estado: 'pendiente' },
-        { id: 3, paciente: 'Carlos López', hora: '2:00 PM', estado: 'confirmada' },
-        { id: 4, paciente: 'Ana Martínez', hora: '4:30 PM', estado: 'cancelada' },
-      ]);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const statCards = [
-    {
-      title: 'Total Pacientes',
-      value: stats.totalPacientes,
-      icon: <FiUsers size={24} />,
-      color: 'var(--blu)',
-      change: '+12% este mes'
-    },
-    {
-      title: 'Citas Hoy',
-      value: stats.totalCitasHoy,
-      icon: <FiCalendar size={24} />,
-      color: 'var(--grnb)',
-      change: `${stats.citasPendientes} pendientes`
-    },
-    {
-      title: 'Próximas Citas',
-      value: stats.totalCitasProximas,
-      icon: <FiClock size={24} />,
-      color: 'var(--yy)',
-      change: 'Próximos 7 días'
-    },
-    {
-      title: 'Ingresos del Mes',
-      value: `$${stats.ingresosMes.toLocaleString()}`,
-      icon: <FiDollarSign size={24} />,
-      color: 'var(--grnd)',
-      change: '+8% vs mes anterior'
-    },
-    {
-      title: 'Promedio Sesiones',
-      value: stats.promedioSesiones,
-      icon: <FiTrendingUp size={24} />,
-      color: 'var(--grnl)',
-      change: 'por paciente'
-    },
-    {
-      title: 'Alertas',
-      value: stats.citasPendientes,
-      icon: <FiAlertCircle size={24} />,
-      color: 'var(--rr)',
-      change: 'Requieren atención'
-    }
-  ];
-
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <div className="loading-text">Cargando dashboard...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="dashboard-page">
-      <div className="page-header">
-        <h1>Dashboard</h1>
-        <p>Resumen general del consultorio</p>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="stats-grid">
-        {statCards.map((stat, index) => (
-          <div key={index} className="stat-card">
-            <div className="stat-header">
-              <div className="stat-icon" style={{ color: stat.color }}>
-                {stat.icon}
-              </div>
-              <h3>{stat.title}</h3>
-            </div>
-            <div className="stat-value">{stat.value}</div>
-            <div className="stat-change">{stat.change}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Content Grid */}
-      <div className="dashboard-content-grid">
-        {/* Próximas Citas */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Próximas Citas</h3>
-            <button className="btn-text">Ver todas</button>
-          </div>
-          
-          <div className="citas-list">
-            {citasProximas.map((cita) => (
-              <div key={cita.id} className="cita-item">
-                <div className="cita-info">
-                  <div className="cita-paciente">{cita.paciente}</div>
-                  <div className="cita-hora">{cita.hora}</div>
-                </div>
-                <div className={`cita-estado badge ${
-                  cita.estado === 'confirmada' ? 'badge-success' :
-                  cita.estado === 'pendiente' ? 'badge-warning' :
-                  'badge-danger'
-                }`}>
-                  {cita.estado}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Gráfico de Actividad (Placeholder) */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Actividad Semanal</h3>
-          </div>
-          <div className="activity-chart">
-            <div className="chart-placeholder">
-              <p>Gráfico de actividad semanal</p>
-              <div className="chart-bars">
-                {[65, 80, 45, 90, 75, 60, 85].map((height, index) => (
-                  <div key={index} className="chart-bar">
-                    <div 
-                      className="bar-fill"
-                      style={{ height: `${height}%` }}
-                    ></div>
-                    <div className="bar-label">
-                      {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'][index]}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Pacientes Recientes */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Pacientes Recientes</h3>
-            <button className="btn-text">Ver todos</button>
-          </div>
-          
-          <div className="pacientes-list">
-            {[
-              { id: 1, nombre: 'Juan Pérez', ultimaSesion: '2024-01-10', progreso: 75 },
-              { id: 2, nombre: 'María García', ultimaSesion: '2024-01-09', progreso: 60 },
-              { id: 3, nombre: 'Carlos López', ultimaSesion: '2024-01-08', progreso: 90 },
-              { id: 4, nombre: 'Ana Martínez', ultimaSesion: '2024-01-07', progreso: 45 },
-              { id: 5, nombre: 'Roberto Díaz', ultimaSesion: '2024-01-06', progreso: 30 },
-            ].map((paciente) => (
-              <div key={paciente.id} className="paciente-item">
-                <div className="paciente-info">
-                  <div className="paciente-nombre">{paciente.nombre}</div>
-                  <div className="paciente-fecha">
-                    Última: {new Date(paciente.ultimaSesion).toLocaleDateString()}
-                  </div>
-                </div>
-                <div className="paciente-progreso">
-                  <div className="progress-container">
-                    <div 
-                      className="progress-bar"
-                      style={{ width: `${paciente.progreso}%` }}
-                    ></div>
-                  </div>
-                  <span className="progreso-text">{paciente.progreso}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Acciones Rápidas</h3>
-          </div>
-          
-          <div className="quick-actions">
-            <button className="btn-primary w-100 mb-10">
-              Agendar Nueva Cita
-            </button>
-            <button className="btn-secondary w-100 mb-10">
-              Registrar Nuevo Paciente
-            </button>
-            <button className="btn-warning w-100 mb-10">
-              Generar Reporte Mensual
-            </button>
-            <button className="btn-text w-100">
-              Ver Calendario Completo
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default DashboardPage;
-
-/src\pages\PacientesPage.js:
---------------------------------------------------------------------------------
-import React, { useState, useEffect } from 'react';
-import { FiSearch, FiUserPlus, FiEdit, FiTrash2, FiFilter } from 'react-icons/fi';
-
-const PacientesPage = () => {
-  const [pacientes, setPacientes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showModal, setShowModal] = useState(false);
-
-  useEffect(() => {
-    // Simular carga de datos
-    setTimeout(() => {
-      setPacientes([
-        {
-          id: 1,
-          nombre: 'Juan Pérez',
-          email: 'juan@email.com',
-          telefono: '555-1234',
-          edad: 35,
-          diagnostico: 'Ansiedad generalizada',
-          ultimaSesion: '2024-01-10',
-          proximaCita: '2024-01-17',
-          estado: 'activo'
-        },
-        {
-          id: 2,
-          nombre: 'María García',
-          email: 'maria@email.com',
-          telefono: '555-5678',
-          edad: 28,
-          diagnostico: 'Depresión moderada',
-          ultimaSesion: '2024-01-09',
-          proximaCita: '2024-01-16',
-          estado: 'activo'
-        },
-        {
-          id: 3,
-          nombre: 'Carlos López',
-          email: 'carlos@email.com',
-          telefono: '555-9012',
-          edad: 42,
-          diagnostico: 'Trastorno de estrés postraumático',
-          ultimaSesion: '2024-01-08',
-          proximaCita: '2024-01-15',
-          estado: 'inactivo'
-        },
-        {
-          id: 4,
-          nombre: 'Ana Martínez',
-          email: 'ana@email.com',
-          telefono: '555-3456',
-          edad: 31,
-          diagnostico: 'Fobia social',
-          ultimaSesion: '2024-01-07',
-          proximaCita: '2024-01-14',
-          estado: 'activo'
-        },
-        {
-          id: 5,
-          nombre: 'Roberto Díaz',
-          email: 'roberto@email.com',
-          telefono: '555-7890',
-          edad: 39,
-          diagnostico: 'Trastorno obsesivo-compulsivo',
-          ultimaSesion: '2024-01-06',
-          proximaCita: '2024-01-13',
-          estado: 'pendiente'
-        }
-      ]);
-      setLoading(false);
-    }, 1000);
-  }, []);
-
-  const filteredPacientes = pacientes.filter(paciente =>
-    paciente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    paciente.diagnostico.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const handleDelete = (id) => {
-    if (window.confirm('¿Estás seguro de eliminar este paciente?')) {
-      setPacientes(pacientes.filter(p => p.id !== id));
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <div className="loading-text">Cargando pacientes...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="pacientes-page">
-      <div className="page-header">
-        <div>
-          <h1>Pacientes</h1>
-          <p>Gestión de pacientes del consultorio</p>
-        </div>
-        <button 
-          className="btn-primary"
-          onClick={() => setShowModal(true)}
-        >
-          <FiUserPlus /> Nuevo Paciente
-        </button>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="filters-container">
-        <div className="search-box">
-          <FiSearch />
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Buscar paciente por nombre, email o diagnóstico..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        
-        <div className="filter-buttons">
-          <button className="btn-secondary">
-            <FiFilter /> Filtrar
-          </button>
-          <select className="select-field" style={{ width: '200px' }}>
-            <option value="">Todos los estados</option>
-            <option value="activo">Activos</option>
-            <option value="inactivo">Inactivos</option>
-            <option value="pendiente">Pendientes</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Patients Table */}
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Contacto</th>
-              <th>Edad</th>
-              <th>Diagnóstico</th>
-              <th>Última Sesión</th>
-              <th>Próxima Cita</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPacientes.map((paciente) => (
-              <tr key={paciente.id}>
-                <td>
-                  <div className="flex-row align-center gap-10">
-                    <div className="avatar">
-                      {paciente.nombre.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <div>
-                      <div className="font-bold">{paciente.nombre}</div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <div>{paciente.email}</div>
-                  <div className="text-small">{paciente.telefono}</div>
-                </td>
-                <td>{paciente.edad} años</td>
-                <td>
-                  <div className="diagnostico-tag">
-                    {paciente.diagnostico}
-                  </div>
-                </td>
-                <td>
-                  {new Date(paciente.ultimaSesion).toLocaleDateString()}
-                </td>
-                <td>
-                  {new Date(paciente.proximaCita).toLocaleDateString()}
-                </td>
-                <td>
-                  <span className={`badge ${
-                    paciente.estado === 'activo' ? 'badge-success' :
-                    paciente.estado === 'inactivo' ? 'badge-danger' :
-                    'badge-warning'
-                  }`}>
-                    {paciente.estado}
-                  </span>
-                </td>
-                <td>
-                  <div className="flex-row gap-5">
-                    <button 
-                      className="btn-text"
-                      title="Editar"
-                    >
-                      <FiEdit />
-                    </button>
-                    <button 
-                      className="btn-text text-danger"
-                      onClick={() => handleDelete(paciente.id)}
-                      title="Eliminar"
-                    >
-                      <FiTrash2 />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      <div className="pagination">
-        <button className="page-item">«</button>
-        <button className="page-item active">1</button>
-        <button className="page-item">2</button>
-        <button className="page-item">3</button>
-        <button className="page-item">»</button>
-      </div>
-
-      {/* Modal para nuevo paciente (placeholder) */}
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3 className="modal-title">Nuevo Paciente</h3>
-              <button 
-                className="modal-close"
-                onClick={() => setShowModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-content">
-              <p>Formulario para nuevo paciente...</p>
-            </div>
-            <div className="modal-footer">
-              <button 
-                className="btn-primary"
-                onClick={() => setShowModal(false)}
-              >
-                Guardar
-              </button>
-              <button 
-                className="btn-danger"
-                onClick={() => setShowModal(false)}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default PacientesPage;
-
 /src\pages\becario\CitasPage.js:
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
@@ -2906,6 +1426,8 @@ import {
 } from 'react-icons/fi';
 import { format, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const BecarioCitas = () => {
   const [citas, setCitas] = useState([]);
@@ -2983,7 +1505,7 @@ const BecarioCitas = () => {
       }
     } catch (error) {
       console.error('Error al actualizar cita:', error);
-      notifications.success('Error al actualizar la cita');
+      notifications.error('Error al actualizar la cita');
     }
   };
 
@@ -3195,6 +1717,8 @@ import {
 } from 'react-icons/fi';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const BecarioDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
@@ -3462,6 +1986,8 @@ export default BecarioDashboard;
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiBell, FiCheckCircle, FiClock, FiCalendar, FiMessageSquare } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const BecarioNotificaciones = () => {
   const [notificaciones, setNotificaciones] = useState([]);
@@ -3692,6 +2218,9 @@ export default BecarioNotificaciones;
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiFileText, FiPlus, FiEdit2, FiTrash2, FiCalendar, FiUser, FiSave } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
+
 
 const BecarioObservaciones = () => {
   const [observaciones, setObservaciones] = useState([]);
@@ -3782,8 +2311,10 @@ const BecarioObservaciones = () => {
     notifications.success('Observación registrada exitosamente');
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('¿Estás seguro de eliminar esta observación?')) {
+  const handleDelete = async (id) => {
+    const confirmado = await confirmations.danger('¿Estás seguro de eliminar esta observación?');
+    
+    if (confirmado) {
       setObservaciones(observaciones.filter(o => o.id !== id));
     }
   };
@@ -4000,6 +2531,8 @@ export default BecarioObservaciones;
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUser, FiCalendar, FiPhone, FiMail, FiFileText } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const BecarioPacientes = () => {
   const [pacientes, setPacientes] = useState([]);
@@ -4262,6 +2795,8 @@ import {
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorAgenda = () => {
   const [citas, setCitas] = useState([]);
@@ -4725,6 +3260,8 @@ import {
   FiSearch, FiCalendar, FiUser, FiFileText, FiDownload
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorAltas = () => {
   const [altas, setAltas] = useState([]);
@@ -4868,16 +3405,27 @@ const CoordinadorAltas = () => {
     return matchesEstado && matchesMes;
   });
 
-  const procesarAlta = (pacienteId, decision) => {
-    if (decision === 'aprobar') {
-      if (window.confirm('¿Estás seguro de aprobar el alta terapéutica de este paciente?')) {
-        notifications.success('Alta aprobada exitosamente');
-        setCandidatosAlta(candidatosAlta.filter(p => p.id !== pacienteId));
+  const procesarAlta = async (pacienteId, decision) => {
+    try {
+      if (decision === 'aprobar') {
+        // Para aprobar - usar warning (amarillo) o info (azul)
+        const confirmado = await confirmations.warning('¿Estás seguro de aprobar el alta terapéutica de este paciente?');
+        
+        if (confirmado) {
+          notifications.success('Alta aprobada exitosamente');
+          setCandidatosAlta(candidatosAlta.filter(p => p.id !== pacienteId));
+        }
+      } else {
+        // Para rechazar - usar danger (rojo)
+        const confirmado = await confirmations.danger('¿Estás seguro de rechazar el alta de este paciente?');
+        
+        if (confirmado) {
+          notifications.error('Alta rechazada. Se notificará al psicólogo.');
+        }
       }
-    } else {
-      if (window.confirm('¿Estás seguro de rechazar el alta de este paciente?')) {
-        notifications.success('Alta rechazada. Se notificará al psicólogo.');
-      }
+    } catch (error) {
+      console.error('Error en el proceso de alta:', error);
+      notifications.error('Ocurrió un error al procesar la solicitud');
     }
   };
 
@@ -5300,6 +3848,8 @@ import {
   FiRefreshCw, FiSearch, FiFilter, FiEdit2
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorAsignaciones = () => {
   const [becarios, setBecarios] = useState([]);
@@ -5365,10 +3915,16 @@ const CoordinadorAsignaciones = () => {
     notifications.success(`Paciente reasignado exitosamente`);
   };
 
-  const handleFinalizarAsignacion = (asignacionId) => {
-    // Lógica para finalizar asignación
-    if (window.confirm('¿Estás seguro de finalizar esta asignación?')) {
-      notifications.success('Asignación finalizada exitosamente');
+  const handleFinalizarAsignacion = async (asignacionId) => {
+    try {
+      const confirmado = await confirmations.warning('¿Estás seguro de finalizar esta asignación?');
+      
+      if (confirmado) {
+        notifications.success('Asignación finalizada exitosamente');
+      }
+    } catch (error) {
+      console.error('Error al finalizar asignación:', error);
+      notifications.error('No se pudo finalizar la asignación');
     }
   };
 
@@ -5687,6 +4243,8 @@ import {
   FiShield, FiGlobe, FiMail, FiLock
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorConfiguracion = () => {
   const [activeTab, setActiveTab] = useState('general');
@@ -5845,18 +4403,21 @@ const CoordinadorConfiguracion = () => {
     reader.readAsText(file);
   };
 
-  const restaurarValoresPredeterminados = (categoria) => {
-    if (window.confirm('¿Estás seguro de restaurar los valores predeterminados?')) {
-      // Aquí se restaurarían los valores predeterminados
+  const restaurarValoresPredeterminados = async (categoria) => {
+    const confirmado = await confirmations.warning('¿Estás seguro de restaurar los valores predeterminados?');
+    
+    if (confirmado) {
       notifications.success('Valores predeterminados restaurados');
     }
   };
 
-  const toggleModoMantenimiento = () => {
+  const toggleModoMantenimiento = async () => {
     const nuevoValor = !configuraciones.avanzada?.modoMantenimiento;
-    if (window.confirm(`¿${nuevoValor ? 'Activar' : 'Desactivar'} modo mantenimiento? Esto afectará a todos los usuarios.`)) {
+    const confirmado = await confirmations.danger(`¿${nuevoValor ? 'Activar' : 'Desactivar'} modo mantenimiento? Esto afectará a todos los usuarios.`);
+    
+    if (confirmado) {
       handleInputChange('avanzada', 'modoMantenimiento', nuevoValor);
-      notifications.success(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
+      notifications.warning(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
     }
   };
 
@@ -6710,6 +5271,8 @@ import {
   FiDollarSign, FiActivity
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
@@ -6980,6 +5543,8 @@ export default CoordinadorDashboard;
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiXCircle, FiCheckCircle } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorPacientes = () => {
   const [pacientes, setPacientes] = useState([]);
@@ -7075,7 +5640,7 @@ const CoordinadorPacientes = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          notifications.success(err.message || 'Error creando paciente');
+          notifications.error(err.message || 'Error creando paciente');
           return;
         }
 
@@ -7084,7 +5649,7 @@ const CoordinadorPacientes = () => {
         notifications.success('Paciente creado exitosamente');
       } catch (error) {
         console.error('Error creando paciente:', error);
-        notifications.success('Error creando paciente');
+        notifications.error('Error creando paciente');
       }
     } else {
       // Editar paciente: enviar al backend
@@ -7101,7 +5666,7 @@ const CoordinadorPacientes = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          notifications.success(err.message || 'Error actualizando paciente');
+          notifications.error(err.message || 'Error actualizando paciente');
           return;
         }
 
@@ -7110,7 +5675,7 @@ const CoordinadorPacientes = () => {
         notifications.success('Paciente actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando paciente:', error);
-        notifications.success('Error actualizando paciente');
+        notifications.error('Error actualizando paciente');
       }
     }
     
@@ -7140,7 +5705,7 @@ const CoordinadorPacientes = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        notifications.success(err.message || 'Error cambiando estado');
+        notifications.error(err.message || 'Error cambiando estado');
         return;
       }
 
@@ -7148,12 +5713,14 @@ const CoordinadorPacientes = () => {
       setPacientes(prev => prev.map(p => p.id === id ? updated : p));
     } catch (error) {
       console.error('Error toggling paciente activo:', error);
-      notifications.success('Error cambiando estado del paciente');
+      notifications.error('Error cambiando estado del paciente');
     }
   };
 
   const deletePaciente = async (id) => {
-    if (!confirm('¿Seguro que desea eliminar (inactivar) este paciente?')) return;
+    const confirmado = await confirmations.danger('¿Seguro que desea eliminar (inactivar) este paciente?');
+    if (!confirmado) return;
+    
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:3000/api/pacientes/${id}`, {
@@ -7166,7 +5733,7 @@ const CoordinadorPacientes = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        notifications.success(err.message || 'Error eliminando paciente');
+        notifications.error(err.message || 'Error eliminando paciente');
         return;
       }
 
@@ -7174,7 +5741,7 @@ const CoordinadorPacientes = () => {
       notifications.success('Paciente eliminado (inactivado) correctamente');
     } catch (error) {
       console.error('Error eliminando paciente:', error);
-      notifications.success('Error eliminando paciente');
+      notifications.error('Error eliminando paciente');
     }
   };
 
@@ -7686,6 +6253,9 @@ import {
   FiTrendingUp, FiFilter, FiRefreshCw, FiPrinter
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
+
 
 const CoordinadorReportes = () => {
   const [reportes, setReportes] = useState([]);
@@ -8104,6 +6674,8 @@ export default CoordinadorReportes;
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPhone, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorUsuarios = () => {
   const [usuarios, setUsuarios] = useState([]);
@@ -8202,7 +6774,7 @@ const CoordinadorUsuarios = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          notifications.success(err.message || 'Error creando usuario');
+          notifications.error(err.message || 'Error creando usuario');
           return;
         }
 
@@ -8212,7 +6784,7 @@ const CoordinadorUsuarios = () => {
         notifications.success('Usuario creado exitosamente');
       } catch (error) {
         console.error('Error creando usuario:', error);
-        notifications.success('Error creando usuario');
+        notifications.error('Error creando usuario');
       }
     } else {
       // Editar usuario: enviar al backend
@@ -8229,7 +6801,7 @@ const CoordinadorUsuarios = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          notifications.success(err.message || 'Error actualizando usuario');
+          notifications.error(err.message || 'Error actualizando usuario');
           return;
         }
 
@@ -8238,7 +6810,7 @@ const CoordinadorUsuarios = () => {
         notifications.success('Usuario actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando usuario:', error);
-        notifications.success('Error actualizando usuario');
+        notifications.error('Error actualizando usuario');
       }
     }
     
@@ -8247,7 +6819,9 @@ const CoordinadorUsuarios = () => {
   };
 
   const deleteUsuario = async (id) => {
-    if (!confirm('¿Seguro que desea eliminar (inactivar) este usuario?')) return;
+    const confirmado = await confirmations.danger('¿Seguro que desea eliminar este usuario?');
+    if (!confirmado) return;
+    
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:3000/api/users/${id}`, {
@@ -8260,16 +6834,15 @@ const CoordinadorUsuarios = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        notifications.success(err.message || 'Error eliminando usuario');
+        notifications.error(err.message || 'Error eliminando usuario');
         return;
       }
 
-      // remover de la lista local
       setUsuarios(prev => prev.filter(u => u.id !== id));
-      notifications.success('Usuario eliminado (inactivado) correctamente');
+      notifications.success('Usuario eliminado correctamente');
     } catch (error) {
       console.error('Error eliminando usuario:', error);
-      notifications.success('Error eliminando usuario');
+      notifications.error('Error eliminando usuario');
     }
   };
 
@@ -8302,7 +6875,7 @@ const CoordinadorUsuarios = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        notifications.success(err.message || 'Error al cambiar estado');
+        notifications.error(err.message || 'Error al cambiar estado');
         return;
       }
 
@@ -8310,7 +6883,7 @@ const CoordinadorUsuarios = () => {
       setUsuarios(prev => prev.map(u => u.id === id ? updated : u));
     } catch (error) {
       console.error('Error toggling activo:', error);
-      notifications.success('Error cambiando estado de usuario');
+      notifications.error('Error cambiando estado de usuario');
     }
   };
 
@@ -8691,6 +7264,8 @@ import {
 } from 'react-icons/fi';
 import { format, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoCitas = () => {
   const [citas, setCitas] = useState([]);
@@ -9058,6 +7633,8 @@ import {
   FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
   FiUserCheck, FiClock, FiRefreshCw
 } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
@@ -9302,6 +7879,8 @@ export default PsicologoDashboard;
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiFileText, FiCalendar, FiUser, FiPhone, FiMail, FiDownload } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoExpedientes = () => {
   const [expedientes, setExpedientes] = useState([]);
@@ -9550,6 +8129,8 @@ export default PsicologoExpedientes;
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiFilter } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoPacientes = () => {
   const [pacientes, setPacientes] = useState([]);
@@ -9920,6 +8501,8 @@ export default PsicologoPacientes;
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiCalendar, FiUser, FiFileText, FiPlus, FiEdit2, FiSave } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoSesiones = () => {
   const [sesiones, setSesiones] = useState([]);
@@ -10272,6 +8855,8 @@ export default PsicologoSesiones;
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
 import { FiUser, FiFileText, FiCalendar, FiMessageSquare, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoSupervision = () => {
   const [becarios, setBecarios] = useState([]);
@@ -10581,3 +9166,69 @@ const PsicologoSupervision = () => {
 };
 
 export default PsicologoSupervision;
+
+/src\utils\confirmations.js:
+--------------------------------------------------------------------------------
+import { showConfirm } from '../components/Common/ConfirmModal'
+
+// Función para confirmaciones de peligro (rojo - para eliminar)
+export const confirmDanger = (message) => {
+  return showConfirm(message, 'danger')
+}
+
+// Función para confirmaciones de advertencia (amarillo - estándar)
+export const confirmWarning = (message) => {
+  return showConfirm(message, 'warning')
+}
+
+// Función para confirmaciones de información (azul - neutral)
+export const confirmInfo = (message) => {
+  return showConfirm(message, 'info')
+}
+
+// Alias para la función principal
+export const confirm = showConfirm
+
+// Exporta como objeto global
+export default {
+  danger: confirmDanger,
+  warning: confirmWarning,
+  info: confirmInfo,
+  show: confirm
+}
+
+/src\utils\notifications.js:
+--------------------------------------------------------------------------------
+import { showNotification } from '../components/Common/NotificationModal'
+
+// Función para notificaciones de éxito (verde)
+export const notifySuccess = (message) => {
+  showNotification(message, 'success')
+}
+
+// Función para notificaciones de error (rojo)
+export const notifyError = (message) => {
+  showNotification(message, 'error')
+}
+
+// Función para notificaciones de advertencia (amarillo)
+export const notifyWarning = (message) => {
+  showNotification(message, 'warning')
+}
+
+// Función para notificaciones de información (azul)
+export const notifyInfo = (message) => {
+  showNotification(message, 'info')
+}
+
+// Alias para la función principal
+export const notify = showNotification
+
+// Exporta como objeto global
+export default {
+  success: notifySuccess,
+  error: notifyError,
+  warning: notifyWarning,
+  info: notifyInfo,
+  show: notify
+}

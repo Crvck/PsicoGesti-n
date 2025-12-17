@@ -1,0 +1,1900 @@
+ARCHIVOS BACKEND PARA: COORDINADOR_CONFIGURACION
+================================================================================
+Generado: 2025-12-17 14:42:22
+================================================================================
+
+/backend/src/services/api.js:
+--------------------------------------------------------------------------------
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  static async get(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async post(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async put(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async delete(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async handleResponse(response) {
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
+  }
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+}
+
+export default ApiService;
+
+
+/backend/src/db/db.sql:
+--------------------------------------------------------------------------------
+CREATE DATABASE IF NOT EXISTS psicogestion_db;
+USE psicogestion_db;
+
+CREATE TABLE fundaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(255) NOT NULL UNIQUE,
+    direccion TEXT,
+    telefono VARCHAR(20),
+    email VARCHAR(255),
+    responsable VARCHAR(255),
+    activo BOOLEAN DEFAULT TRUE,
+    convenio_inicio DATE,
+    convenio_fin DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20),
+    rol ENUM('coordinador', 'psicologo', 'becario') NOT NULL DEFAULT 'becario',
+    especialidad VARCHAR(100),
+    fundacion_id INT,
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL
+);
+
+CREATE TABLE pacientes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    email VARCHAR(255),
+    telefono VARCHAR(20),
+    fecha_nacimiento DATE,
+    genero ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
+    direccion TEXT,
+    estado VARCHAR(50) DEFAULT 'activo',
+    activo BOOLEAN DEFAULT TRUE,
+    notas TEXT,
+    fundacion_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
+    INDEX idx_activo (activo),
+    INDEX idx_apellido_nombre (apellido, nombre)
+);
+
+CREATE TABLE expedientes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL UNIQUE,
+    psicologo_id INT,
+    motivo_consulta TEXT,
+    historia_personal TEXT,
+    historia_familiar TEXT,
+    antecedentes_medicos TEXT,
+    antecedentes_psiquiatricos TEXT,
+    diagnostico_presuntivo VARCHAR(500),
+    diagnostico_definitivo VARCHAR(500),
+    tratamiento_actual TEXT,
+    medicamentos JSON,
+    alergias TEXT,
+    factores_riesgo JSON,
+    redes_apoyo TEXT,
+    emergencia_contacto VARCHAR(255),
+    emergencia_telefono VARCHAR(20),
+    consentimiento_informado BOOLEAN DEFAULT FALSE,
+    fecha_consentimiento DATE,
+    restricciones_acceso JSON,
+    notas_confidenciales TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE asignaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    psicologo_id INT NOT NULL,
+    becario_id INT,
+    fecha_inicio DATE NOT NULL DEFAULT (CURRENT_DATE),
+    fecha_fin DATE,
+    motivo_fin VARCHAR(255),
+    estado ENUM('activa', 'finalizada', 'suspendida') DEFAULT 'activa',
+    notas TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_paciente_estado (paciente_id, estado),
+    INDEX idx_psicologo_estado (psicologo_id, estado),
+    INDEX idx_becario (becario_id)
+);
+
+CREATE TABLE citas (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    psicologo_id INT,
+    becario_id INT,
+    fecha DATE NOT NULL,
+    hora TIME NOT NULL,
+    tipo_consulta ENUM('presencial', 'virtual') DEFAULT 'presencial',
+    estado ENUM('programada', 'confirmada', 'completada', 'cancelada') DEFAULT 'programada',
+    notas TEXT,
+    motivo_cancelacion VARCHAR(255),
+    duracion INT DEFAULT 50,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_fecha_estado (fecha, estado),
+    INDEX idx_psicologo_fecha (psicologo_id, fecha),
+    INDEX idx_becario (becario_id),
+    INDEX idx_paciente_id (paciente_id)
+);
+
+CREATE TABLE sesiones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    cita_id INT NOT NULL UNIQUE,
+    psicologo_id INT NOT NULL,
+    fecha DATE NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    tipo_sesion ENUM('evaluacion', 'terapia', 'seguimiento', 'crisis') DEFAULT 'terapia',
+    objetivo TEXT,
+    desarrollo TEXT,
+    conclusion TEXT,
+    tareas_asignadas TEXT,
+    emocion_predominante VARCHAR(100),
+    riesgo_suicida ENUM('ninguno', 'bajo', 'moderado', 'alto') DEFAULT 'ninguno',
+    escalas_aplicadas JSON,
+    siguiente_cita DATE,
+    privado BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (cita_id) REFERENCES citas(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_cita_id (cita_id),
+    INDEX idx_psicologo_fecha (psicologo_id, fecha),
+    INDEX idx_fecha (fecha)
+);
+
+CREATE TABLE notificaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    tipo ENUM('cita_programada', 'cita_modificada', 'cita_cancelada', 'asignacion_nueva', 'observacion_nueva', 'alerta_sistema', 'reporte_generado') NOT NULL,
+    titulo VARCHAR(255) NOT NULL,
+    mensaje TEXT NOT NULL,
+    leido BOOLEAN DEFAULT FALSE,
+    leido_at TIMESTAMP NULL,
+    accion_url VARCHAR(500),
+    prioridad ENUM('baja', 'media', 'alta', 'urgente') DEFAULT 'media',
+    datos_extra JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_leido (usuario_id, leido),
+    INDEX idx_created_at (created_at),
+    INDEX idx_tipo (tipo)
+);
+
+CREATE TABLE altas (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    usuario_id INT NOT NULL,
+    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro') NOT NULL,
+    fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
+    motivo_detallado TEXT,
+    recomendaciones TEXT,
+    sesiones_totales INT,
+    evaluacion_final ENUM('excelente', 'buena', 'regular', 'mala'),
+    seguimiento_recomendado BOOLEAN DEFAULT FALSE,
+    fecha_seguimiento DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_paciente_id (paciente_id),
+    INDEX idx_fecha_alta (fecha_alta),
+    INDEX idx_tipo_alta (tipo_alta)
+);
+
+CREATE TABLE reportes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    tipo_reporte ENUM('mensual', 'trimestral', 'semestral', 'anual', 'personalizado', 'paciente', 'becario', 'psicologo') NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    parametros JSON,
+    fecha_inicio DATE,
+    fecha_fin DATE,
+    formato ENUM('pdf', 'excel', 'csv', 'html') DEFAULT 'pdf',
+    archivo_url VARCHAR(500),
+    archivo_tamano INT,
+    estado ENUM('pendiente', 'generando', 'completado', 'error') DEFAULT 'pendiente',
+    compartido_con JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_id (usuario_id),
+    INDEX idx_tipo_reporte_estado (tipo_reporte, estado),
+    INDEX idx_created_at (created_at)
+);
+
+CREATE TABLE observaciones_becarios (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    becario_id INT NOT NULL,
+    supervisor_id INT NOT NULL,
+    cita_id INT,
+    fecha DATE NOT NULL DEFAULT (CURRENT_DATE),
+    tipo_observacion ENUM('sesion_observada', 'retroalimentacion', 'evaluacion_periodica', 'incidencia', 'reconocimiento') DEFAULT 'sesion_observada',
+    aspecto_evaluado ENUM('empatia', 'tecnicas', 'documentacion', 'puntualidad', 'profesionalismo', 'etica') NOT NULL,
+    calificacion INT NOT NULL CHECK (calificacion BETWEEN 1 AND 10),
+    fortalezas TEXT,
+    areas_mejora TEXT,
+    recomendaciones TEXT,
+    plan_accion TEXT,
+    fecha_seguimiento DATE,
+    privada BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (supervisor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (cita_id) REFERENCES citas(id) ON DELETE SET NULL,
+    INDEX idx_becario_fecha (becario_id, fecha),
+    INDEX idx_supervisor (supervisor_id),
+    INDEX idx_tipo_observacion (tipo_observacion)
+);
+
+CREATE TABLE disponibilidades (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    dia_semana ENUM('lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo') NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    tipo_disponibilidad ENUM('regular', 'extraordinaria', 'limitada') DEFAULT 'regular',
+    activo BOOLEAN DEFAULT TRUE,
+    fecha_inicio_vigencia DATE NOT NULL DEFAULT (CURRENT_DATE),
+    fecha_fin_vigencia DATE,
+    notas TEXT,
+    max_citas_dia INT DEFAULT 8,
+    intervalo_citas INT DEFAULT 50,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_dia_activo (usuario_id, dia_semana, activo),
+    INDEX idx_fecha_vigencia (fecha_inicio_vigencia, fecha_fin_vigencia)
+);
+
+CREATE TABLE logs_sistema (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT,
+    tipo_log ENUM('login', 'logout', 'creacion', 'modificacion', 'eliminacion', 'error', 'seguridad', 'backup', 'reporte', 'sistema') NOT NULL,
+    modulo VARCHAR(100) NOT NULL,
+    accion VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    datos_antes JSON,
+    datos_despues JSON,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    severidad ENUM('info', 'advertencia', 'error', 'critico') DEFAULT 'info',
+    resuelto BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_tipo_log_fecha (tipo_log, created_at),
+    INDEX idx_usuario_id (usuario_id),
+    INDEX idx_modulo (modulo),
+    INDEX idx_severidad_resuelto (severidad, resuelto)
+);
+
+CREATE TABLE permisos (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    descripcion TEXT,
+    categoria ENUM('administracion', 'pacientes', 'citas', 'reportes', 'configuracion', 'usuarios') NOT NULL,
+    nivel_requerido ENUM('basico', 'intermedio', 'avanzado', 'administrador') DEFAULT 'basico',
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE usuario_permisos (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    permiso_id INT NOT NULL,
+    concedido BOOLEAN DEFAULT FALSE,
+    concedido_por INT,
+    fecha_concesion TIMESTAMP NULL,
+    fecha_expiracion TIMESTAMP NULL,
+    motivo TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (permiso_id) REFERENCES permisos(id) ON DELETE CASCADE,
+    FOREIGN KEY (concedido_por) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE KEY idx_usuario_permiso (usuario_id, permiso_id)
+);
+
+CREATE TABLE backups (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tipo ENUM('completo', 'incremental') NOT NULL,
+    ruta VARCHAR(500) NOT NULL,
+    tamano BIGINT,
+    base_backup_id INT,
+    cambios INT DEFAULT 0,
+    estado ENUM('pendiente', 'generando', 'completado', 'error', 'eliminado') DEFAULT 'pendiente',
+    ultima_restauracion TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (base_backup_id) REFERENCES backups(id) ON DELETE SET NULL
+);
+
+INSERT INTO permisos (nombre, descripcion, categoria, nivel_requerido) VALUES
+('ver_panel_coordinacion', 'Ver panel de coordinación', 'administracion', 'avanzado'),
+('gestionar_usuarios', 'Gestionar usuarios (alta/baja/edición)', 'usuarios', 'avanzado'),
+('gestionar_fundaciones', 'Gestionar fundaciones', 'administracion', 'avanzado'),
+('gestionar_pacientes', 'Gestionar pacientes', 'pacientes', 'intermedio'),
+('gestionar_asignaciones', 'Asignar pacientes a psicólogos/becarios', 'pacientes', 'intermedio'),
+('ver_agenda_global', 'Ver agenda global completa', 'citas', 'intermedio'),
+('generar_reportes', 'Generar reportes estadísticos', 'reportes', 'avanzado'),
+('gestionar_altas', 'Gestionar altas de pacientes', 'pacientes', 'intermedio'),
+('ver_expedientes_completos', 'Ver expedientes completos de pacientes', 'pacientes', 'avanzado'),
+('configurar_sistema', 'Configurar parámetros del sistema', 'configuracion', 'administrador'),
+('ver_panel_psicologo', 'Ver panel principal de psicólogo', 'administracion', 'basico'),
+('ver_mis_pacientes', 'Ver pacientes asignados', 'pacientes', 'basico'),
+('gestionar_mis_citas', 'Gestionar mis propias citas', 'citas', 'basico'),
+('registrar_sesiones', 'Registrar contenido de sesiones', 'citas', 'intermedio'),
+('supervisar_becarios', 'Supervisar becarios asignados', 'usuarios', 'intermedio'),
+('crear_observaciones', 'Crear observaciones de becarios', 'usuarios', 'intermedio'),
+('ver_expedientes_asignados', 'Ver expedientes de pacientes asignados', 'pacientes', 'intermedio'),
+('dar_altas_pacientes', 'Dar de alta a pacientes', 'pacientes', 'intermedio'),
+('ver_panel_becario', 'Ver panel principal de becario', 'administracion', 'basico'),
+('ver_citas_dia', 'Ver citas del día', 'citas', 'basico'),
+('gestionar_citas_asignadas', 'Gestionar citas asignadas', 'citas', 'basico'),
+('ver_pacientes_asignados', 'Ver pacientes asignados', 'pacientes', 'basico'),
+('ver_observaciones_propias', 'Ver observaciones propias', 'usuarios', 'basico'),
+('configurar_disponibilidad', 'Configurar disponibilidad personal', 'configuracion', 'basico');
+
+INSERT INTO fundaciones (nombre, telefono, email, responsable) VALUES
+('Fundación Salud Mental Comunitaria', '555-1234', 'contacto@fsmc.org', 'Dra. María González'),
+('Asociación de Psicología Aplicada', '555-5678', 'info@asocpsicologia.edu', 'Lic. Carlos Rodríguez');
+
+INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialidad, fundacion_id) VALUES
+('coordinador@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ana', 'Martínez', '555-1111', 'coordinador', 'Coordinación Clínica', 1),
+('psicologo1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Luis', 'Fernández', '555-2222', 'psicologo', 'Terapia Cognitivo-Conductual', 1),
+('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
+('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
+('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
+
+INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
+('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),
+('Mariana', 'López', '1995-08-22', 'femenino', '555-0022', 'mariana@hotmail.com'),
+('Roberto', 'Sánchez', '2000-02-10', 'masculino', '555-0033', 'roberto@yahoo.com');
+
+INSERT INTO expedientes (paciente_id, psicologo_id, motivo_consulta) VALUES
+(1, 2, 'Ansiedad académica con síntomas de estrés elevado'),
+(2, 2, 'Estrés laboral crónico con afectación del sueño'),
+(3, 2, 'Dificultades de adaptación al entorno universitario');
+
+INSERT INTO asignaciones (paciente_id, psicologo_id, becario_id, fecha_inicio) VALUES
+(1, 2, 3, CURDATE()),
+(2, 2, 4, CURDATE()),
+(3, 2, NULL, CURDATE());
+
+INSERT INTO citas (paciente_id, psicologo_id, becario_id, fecha, hora, estado, tipo_consulta, notas) VALUES
+(1, 2, 3, DATE_ADD(CURDATE(), INTERVAL 1 DAY), '10:00:00', 'programada', 'presencial', 'Primera consulta'),
+(2, 2, 4, DATE_ADD(CURDATE(), INTERVAL 2 DAY), '11:00:00', 'confirmada', 'virtual', 'Seguimiento'),
+(3, 2, NULL, DATE_ADD(CURDATE(), INTERVAL 3 DAY), '09:00:00', 'programada', 'presencial', 'Evaluación inicial');
+
+INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje) VALUES
+(3, 'cita_programada', 'Nueva cita asignada', 'Tienes una nueva cita con Carlos Gómez para mañana a las 10:00 AM'),
+(4, 'cita_modificada', 'Cita modificada', 'La cita con Mariana López ha sido cambiada a modalidad virtual');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'coordinador'
+AND p.nivel_requerido IN ('basico', 'intermedio', 'avanzado', 'administrador');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'psicologo'
+AND p.nivel_requerido IN ('basico', 'intermedio');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'becario'
+AND p.nivel_requerido = 'basico';
+
+CREATE VIEW vista_citas_hoy AS
+SELECT 
+    c.id,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    c.fecha,
+    TIME_FORMAT(c.hora, '%H:%i') AS hora,
+    c.estado,
+    c.tipo_consulta,
+    u_psi.nombre AS psicologo_nombre,
+    u_bec.nombre AS becario_nombre
+FROM citas c
+JOIN pacientes p ON c.paciente_id = p.id
+JOIN users u_psi ON c.psicologo_id = u_psi.id
+LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+WHERE c.fecha = CURDATE()
+AND c.estado IN ('programada', 'confirmada')
+ORDER BY c.hora;
+
+CREATE VIEW vista_pacientes_asignados AS
+SELECT 
+    a.id,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    p.telefono,
+    p.email,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    CONCAT(ub.nombre, ' ', ub.apellido) AS becario,
+    a.fecha_inicio,
+    a.estado AS estado_asignacion,
+    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado = 'completada') AS sesiones_completadas,
+    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado IN ('programada', 'confirmada') AND fecha >= CURDATE()) AS citas_pendientes
+FROM asignaciones a
+JOIN pacientes p ON a.paciente_id = p.id
+JOIN users u ON a.psicologo_id = u.id
+LEFT JOIN users ub ON a.becario_id = ub.id
+WHERE p.activo = TRUE AND a.estado = 'activa';
+
+CREATE VIEW vista_resumen_coordinacion AS
+SELECT 
+    (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) AS becarios_activos,
+    (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) AS psicologos_activos,
+    (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) AS pacientes_activos,
+    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado IN ('programada', 'confirmada')) AS citas_hoy,
+    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') AS citas_completadas_hoy,
+    (SELECT COUNT(*) FROM altas WHERE MONTH(fecha_alta) = MONTH(CURDATE())) AS altas_mes_actual;
+
+CREATE VIEW vista_historial_sesiones AS
+SELECT 
+    s.id,
+    s.fecha,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    s.desarrollo AS contenido_sesion,
+    s.conclusion AS observaciones,
+    s.tareas_asignadas,
+    s.siguiente_cita AS proxima_sesion
+FROM sesiones s
+JOIN citas c ON s.cita_id = c.id
+JOIN pacientes p ON c.paciente_id = p.id
+JOIN users u ON s.psicologo_id = u.id
+ORDER BY s.fecha DESC;
+
+CREATE VIEW vista_estadisticas_psicologos AS
+SELECT 
+    u.id,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    COUNT(DISTINCT a.paciente_id) AS pacientes_asignados,
+    COUNT(c.id) AS total_citas,
+    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS citas_completadas,
+    ROUND(AVG(CASE WHEN c.estado = 'completada' THEN c.duracion END), 1) AS duracion_promedio,
+    COUNT(DISTINCT a.becario_id) AS becarios_supervisados
+FROM users u
+LEFT JOIN asignaciones a ON u.id = a.psicologo_id AND a.estado = 'activa'
+LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+WHERE u.rol = 'psicologo' AND u.activo = TRUE
+GROUP BY u.id, u.nombre, u.apellido;
+
+CREATE VIEW vista_disponibilidad_semanal AS
+SELECT 
+    u.id,
+    CONCAT(u.nombre, ' ', u.apellido) AS profesional,
+    u.rol,
+    d.dia_semana,
+    TIME_FORMAT(d.hora_inicio, '%H:%i') AS hora_inicio,
+    TIME_FORMAT(d.hora_fin, '%H:%i') AS hora_fin,
+    d.max_citas_dia,
+    (SELECT COUNT(*) FROM citas c 
+     WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
+     AND c.fecha = CURDATE()
+     AND c.estado IN ('programada', 'confirmada')) AS citas_hoy
+FROM users u
+LEFT JOIN disponibilidades d ON u.id = d.usuario_id AND d.activo = TRUE
+WHERE u.rol IN ('psicologo', 'becario') AND u.activo = TRUE
+ORDER BY u.rol, u.apellido, FIELD(d.dia_semana, 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo');
+
+DELIMITER $$
+CREATE PROCEDURE sp_obtener_citas_por_fecha_becario(
+    IN p_fecha DATE,
+    IN p_becario_id INT
+)
+BEGIN
+    SELECT 
+        c.*,
+        CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+        p.telefono AS paciente_telefono,
+        p.email AS paciente_email,
+        u_psi.nombre AS psicologo_nombre,
+        u_bec.nombre AS becario_nombre,
+        c.duracion AS duracion_minutos,
+        c.notas AS motivo
+    FROM citas c
+    JOIN pacientes p ON c.paciente_id = p.id
+    LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
+    LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+    WHERE c.fecha = p_fecha
+    AND (c.becario_id = p_becario_id OR p_becario_id IS NULL)
+    ORDER BY c.hora;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE sp_generar_reporte_mensual(
+    IN p_mes INT,
+    IN p_anio INT,
+    IN p_psicologo_id INT
+)
+BEGIN
+    SELECT 
+        p.id,
+        CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+        COUNT(c.id) AS total_sesiones,
+        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS sesiones_completadas,
+        SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) AS sesiones_canceladas,
+        SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) AS sesiones_programadas,
+        MIN(c.fecha) AS primera_sesion_mes,
+        MAX(c.fecha) AS ultima_sesion_mes
+    FROM pacientes p
+    LEFT JOIN citas c ON p.id = c.paciente_id 
+        AND MONTH(c.fecha) = p_mes 
+        AND YEAR(c.fecha) = p_anio
+        AND (c.psicologo_id = p_psicologo_id OR p_psicologo_id IS NULL)
+    WHERE p.activo = TRUE
+    GROUP BY p.id, p.nombre, p.apellido
+    ORDER BY p.apellido, p.nombre;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_insert_alta
+AFTER INSERT ON altas
+FOR EACH ROW
+BEGIN
+    UPDATE pacientes 
+    SET estado = CONCAT('alta_', NEW.tipo_alta),
+        activo = FALSE,
+        updated_at = NOW()
+    WHERE id = NEW.paciente_id;
+    
+    UPDATE citas 
+    SET estado = 'cancelada',
+        motivo_cancelacion = CONCAT('Paciente dado de alta (', NEW.tipo_alta, ')'),
+        updated_at = NOW()
+    WHERE paciente_id = NEW.paciente_id 
+    AND fecha >= CURDATE()
+    AND estado IN ('programada', 'confirmada');
+    
+    UPDATE asignaciones 
+    SET estado = 'finalizada',
+        fecha_fin = CURDATE(),
+        motivo_fin = CONCAT('Paciente dado de alta (', NEW.tipo_alta, ')')
+    WHERE paciente_id = NEW.paciente_id 
+    AND estado = 'activa';
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_update_cita
+AFTER UPDATE ON citas
+FOR EACH ROW
+BEGIN
+    DECLARE paciente_nombre VARCHAR(200);
+    DECLARE paciente_email VARCHAR(255);
+    
+    IF OLD.fecha != NEW.fecha OR OLD.hora != NEW.hora OR OLD.tipo_consulta != NEW.tipo_consulta THEN
+        
+        SELECT CONCAT(nombre, ' ', apellido), email INTO paciente_nombre, paciente_email
+        FROM pacientes WHERE id = NEW.paciente_id;
+        
+        IF NEW.psicologo_id IS NOT NULL THEN
+            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+            VALUES (
+                NEW.psicologo_id,
+                'cita_modificada',
+                'Cita modificada',
+                CONCAT('La cita con ', paciente_nombre, ' ha sido modificada. Nueva fecha: ', NEW.fecha, ' ', TIME_FORMAT(NEW.hora, '%H:%i')),
+                NOW()
+            );
+        END IF;
+        
+        IF NEW.becario_id IS NOT NULL THEN
+            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+            VALUES (
+                NEW.becario_id,
+                'cita_modificada',
+                'Cita modificada',
+                CONCAT('La cita con ', paciente_nombre, ' ha sido modificada. Nueva fecha: ', NEW.fecha, ' ', TIME_FORMAT(NEW.hora, '%H:%i')),
+                NOW()
+            );
+        END IF;
+        
+        INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
+        VALUES (
+            NEW.psicologo_id,
+            'modificacion',
+            'citas',
+            'Actualizar cita',
+            CONCAT('Cita ', NEW.id, ' modificada para paciente ', paciente_nombre),
+            NOW()
+        );
+    END IF;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_insert_sesion
+AFTER INSERT ON sesiones
+FOR EACH ROW
+BEGIN
+    UPDATE expedientes 
+    SET riesgo_suicida = NEW.riesgo_suicida,
+        updated_at = NOW()
+    WHERE paciente_id = (SELECT paciente_id FROM citas WHERE id = NEW.cita_id);
+END$$
+DELIMITER ;
+
+CREATE INDEX idx_pacientes_activo ON pacientes(activo);
+CREATE INDEX idx_citas_psicologo_fecha ON citas(psicologo_id, fecha, estado);
+CREATE INDEX idx_sesiones_cita ON sesiones(cita_id);
+CREATE INDEX idx_asignaciones_psicologo ON asignaciones(psicologo_id, fecha_fin);
+CREATE INDEX idx_users_rol_activo ON users(rol, activo);
+CREATE INDEX idx_expediente_paciente ON expedientes(paciente_id);
+CREATE INDEX idx_expediente_psicologo ON expedientes(psicologo_id);
+CREATE INDEX idx_reportes_usuario ON reportes(usuario_id, estado);
+CREATE INDEX idx_reportes_tipo ON reportes(tipo_reporte, created_at);
+CREATE INDEX idx_disponibilidades_vigencia ON disponibilidades(fecha_inicio_vigencia, fecha_fin_vigencia);
+CREATE INDEX idx_logs_severidad ON logs_sistema(severidad, resuelto);
+CREATE INDEX idx_observaciones_fecha_seguimiento ON observaciones_becarios(fecha_seguimiento);
+
+CREATE USER IF NOT EXISTS 'psicogestion_user'@'localhost' IDENTIFIED BY 'SecurePass123!';
+GRANT ALL PRIVILEGES ON psicogestion_db.* TO 'psicogestion_user'@'localhost';
+GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_obtener_citas_por_fecha_becario TO 'psicogestion_user'@'localhost';
+GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicogestion_user'@'localhost';
+FLUSH PRIVILEGES;
+
+
+/backend/src/models/logSistemaModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const User = require('./userModel');
+
+const LogSistema = sequelize.define('LogSistema', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    usuario_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    tipo_log: {
+        type: DataTypes.ENUM(
+            'login',
+            'logout',
+            'creacion',
+            'modificacion',
+            'eliminacion',
+            'error',
+            'seguridad',
+            'backup',
+            'reporte',
+            'sistema'
+        ),
+        allowNull: false
+    },
+    modulo: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    accion: {
+        type: DataTypes.STRING(255),
+        allowNull: false
+    },
+    descripcion: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    datos_antes: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    datos_despues: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    ip_address: {
+        type: DataTypes.STRING(45),
+        allowNull: true
+    },
+    user_agent: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    severidad: {
+        type: DataTypes.ENUM('info', 'advertencia', 'error', 'critico'),
+        defaultValue: 'info'
+    },
+    resuelto: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    }
+}, {
+    tableName: 'logs_sistema',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['tipo_log', 'created_at']
+        },
+        {
+            fields: ['usuario_id']
+        },
+        {
+            fields: ['modulo']
+        },
+        {
+            fields: ['severidad', 'resuelto']
+        }
+    ]
+});
+
+LogSistema.belongsTo(User, { foreignKey: 'usuario_id' });
+
+module.exports = LogSistema;
+
+
+/frontend/src/index.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
+
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
+
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+/backend/src/routes/configuracionRoutes.js:
+--------------------------------------------------------------------------------
+ARCHIVO NO ENCONTRADO
+
+
+/backend/src/services/backupService.js:
+--------------------------------------------------------------------------------
+const fs = require('fs').promises;
+const path = require('path');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+class BackupService {
+    
+    static async realizarBackupCompleto() {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupDir = path.join(__dirname, '..', '..', 'backups', timestamp);
+            
+            // Crear directorio de backup
+            await fs.mkdir(backupDir, { recursive: true });
+            
+            console.log(`🔄 Iniciando backup completo: ${timestamp}`);
+            
+            // 1. Backup de base de datos
+            const dbBackup = await this.realizarBackupBaseDatos(backupDir);
+            
+            // 2. Backup de archivos subidos
+            const filesBackup = await this.realizarBackupArchivos(backupDir);
+            
+            // 3. Backup de configuración
+            const configBackup = await this.realizarBackupConfiguracion(backupDir);
+            
+            // 4. Generar archivo de metadatos
+            await this.generarMetadataBackup(backupDir, {
+                timestamp,
+                dbBackup,
+                filesBackup,
+                configBackup,
+                sistema: 'PsicoGestión',
+                version: '1.0.0'
+            });
+            
+            // 5. Comprimir backup
+            const compressedPath = await this.comprimirBackup(backupDir);
+            
+            // 6. Limpiar backup sin comprimir
+            await fs.rm(backupDir, { recursive: true, force: true });
+            
+            // 7. Registrar en base de datos
+            await this.registrarBackupEnBD({
+                tipo: 'completo',
+                ruta: compressedPath,
+                tamano: (await fs.stat(compressedPath)).size,
+                estado: 'completado'
+            });
+            
+            console.log(`✅ Backup completado: ${compressedPath}`);
+            return {
+                success: true,
+                ruta: compressedPath,
+                tamano: (await fs.stat(compressedPath)).size
+            };
+            
+        } catch (error) {
+            console.error('❌ Error en backup completo:', error);
+            throw error;
+        }
+    }
+    
+    static async realizarBackupBaseDatos(backupDir) {
+        try {
+            const dbConfig = {
+                host: process.env.DB_HOST,
+                user: process.env.DB_USER,
+                password: process.env.DB_PASSWORD,
+                database: process.env.DB_NAME
+            };
+            
+            const dumpFile = path.join(backupDir, 'database.sql');
+            
+            // Comando mysqldump
+            const command = `mysqldump --host=${dbConfig.host} --user=${dbConfig.user} --password=${dbConfig.password} ${dbConfig.database} > "${dumpFile}"`;
+            
+            await execPromise(command);
+            
+            // Verificar que el archivo se creó
+            const stats = await fs.stat(dumpFile);
+            
+            console.log(`✅ Backup de base de datos creado: ${dumpFile} (${stats.size} bytes)`);
+            
+            return {
+                archivo: dumpFile,
+                tamano: stats.size,
+                tablas: await this.obtenerInfoTablas()
+            };
+            
+        } catch (error) {
+            console.error('❌ Error en backup de base de datos:', error);
+            throw error;
+        }
+    }
+    
+    static async realizarBackupArchivos(backupDir) {
+        try {
+            const archivosDir = path.join(__dirname, '..', '..', 'uploads');
+            const backupArchivosDir = path.join(backupDir, 'archivos');
+            
+            // Verificar si existe el directorio de archivos
+            try {
+                await fs.access(archivosDir);
+            } catch {
+                console.log('⚠️  No hay archivos subidos para backup');
+                return { archivos: 0, tamano: 0 };
+            }
+            
+            // Copiar archivos recursivamente
+            await this.copiarDirectorioRecursivo(archivosDir, backupArchivosDir);
+            
+            // Calcular estadísticas
+            const { totalArchivos, totalTamano } = await this.calcularEstadisticasArchivos(backupArchivosDir);
+            
+            console.log(`✅ Backup de archivos creado: ${totalArchivos} archivos (${totalTamano} bytes)`);
+            
+            return {
+                directorio: backupArchivosDir,
+                archivos: totalArchivos,
+                tamano: totalTamano
+            };
+            
+        } catch (error) {
+            console.error('❌ Error en backup de archivos:', error);
+            throw error;
+        }
+    }
+    
+    static async realizarBackupConfiguracion(backupDir) {
+        try {
+            const configDir = path.join(backupDir, 'configuracion');
+            await fs.mkdir(configDir, { recursive: true });
+            
+            // Archivos de configuración importantes
+            const archivosConfig = [
+                '.env',
+                'package.json',
+                'package-lock.json',
+                'server.js'
+            ];
+            
+            let archivosCopiados = 0;
+            
+            for (const archivo of archivosConfig) {
+                const sourcePath = path.join(__dirname, '..', '..', archivo);
+                const destPath = path.join(configDir, archivo);
+                
+                try {
+                    await fs.copyFile(sourcePath, destPath);
+                    archivosCopiados++;
+                } catch (error) {
+                    console.warn(`⚠️  No se pudo copiar ${archivo}: ${error.message}`);
+                }
+            }
+            
+            // Crear archivo con información del sistema
+            const systemInfo = {
+                node_version: process.version,
+                platform: process.platform,
+                arch: process.arch,
+                memory: process.memoryUsage(),
+                uptime: process.uptime(),
+                fecha: new Date().toISOString()
+            };
+            
+            await fs.writeFile(
+                path.join(configDir, 'system-info.json'),
+                JSON.stringify(systemInfo, null, 2)
+            );
+            
+            console.log(`✅ Backup de configuración creado: ${archivosCopiados} archivos`);
+            
+            return {
+                directorio: configDir,
+                archivos: archivosCopiados + 1, // +1 por system-info.json
+                tamano: await this.calcularTamanoDirectorio(configDir)
+            };
+            
+        } catch (error) {
+            console.error('❌ Error en backup de configuración:', error);
+            throw error;
+        }
+    }
+    
+    static async realizarBackupIncremental() {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupDir = path.join(__dirname, '..', '..', 'backups', `incremental-${timestamp}`);
+            
+            await fs.mkdir(backupDir, { recursive: true });
+            
+            console.log(`🔄 Iniciando backup incremental: ${timestamp}`);
+            
+            // Obtener último backup completo
+            const ultimoBackup = await this.obtenerUltimoBackup('completo');
+            
+            // Backup solo de cambios desde el último backup completo
+            const cambios = await this.obtenerCambiosDesdeUltimoBackup(ultimoBackup?.fecha);
+            
+            // Guardar cambios
+            const cambiosFile = path.join(backupDir, 'cambios.json');
+            await fs.writeFile(cambiosFile, JSON.stringify(cambios, null, 2));
+            
+            // Backup de nuevos archivos
+            const nuevosArchivos = await this.realizarBackupArchivosNuevos(backupDir, cambios.archivos_nuevos);
+            
+            // Comprimir backup incremental
+            const compressedPath = await this.comprimirBackup(backupDir);
+            
+            // Limpiar
+            await fs.rm(backupDir, { recursive: true, force: true });
+            
+            // Registrar en BD
+            await this.registrarBackupEnBD({
+                tipo: 'incremental',
+                ruta: compressedPath,
+                tamano: (await fs.stat(compressedPath)).size,
+                base_backup_id: ultimoBackup?.id,
+                cambios: cambios.cantidad_cambios,
+                estado: 'completado'
+            });
+            
+            console.log(`✅ Backup incremental completado: ${compressedPath}`);
+            return {
+                success: true,
+                ruta: compressedPath,
+                cambios: cambios.cantidad_cambios
+            };
+            
+        } catch (error) {
+            console.error('❌ Error en backup incremental:', error);
+            throw error;
+        }
+    }
+    
+    static async restaurarBackup(backupId) {
+        try {
+            // Obtener información del backup
+            const [backupInfo] = await sequelize.query(
+                'SELECT * FROM backups WHERE id = ? AND estado = "completado"',
+                { replacements: [backupId], type: QueryTypes.SELECT }
+            );
+            
+            if (!backupInfo) {
+                throw new Error('Backup no encontrado o incompleto');
+            }
+            
+            console.log(`🔄 Iniciando restauración del backup: ${backupInfo.ruta}`);
+            
+            // 1. Descomprimir backup
+            const tempDir = await this.descomprimirBackup(backupInfo.ruta);
+            
+            // 2. Verificar integridad
+            await this.verificarIntegridadBackup(tempDir);
+            
+            // 3. Restaurar base de datos
+            if (backupInfo.tipo === 'completo') {
+                await this.restaurarBaseDatosCompleta(tempDir);
+                await this.restaurarArchivosCompletos(tempDir);
+                await this.restaurarConfiguracion(tempDir);
+            } else {
+                // Restaurar incremental sobre último backup completo
+                await this.restaurarBackupIncremental(tempDir, backupInfo.base_backup_id);
+            }
+            
+            // 4. Limpiar directorio temporal
+            await fs.rm(tempDir, { recursive: true, force: true });
+            
+            // 5. Actualizar estado del backup
+            await sequelize.query(
+                'UPDATE backups SET ultima_restauracion = NOW() WHERE id = ?',
+                { replacements: [backupId] }
+            );
+            
+            console.log('✅ Restauración completada exitosamente');
+            return { success: true };
+            
+        } catch (error) {
+            console.error('❌ Error en restauración:', error);
+            throw error;
+        }
+    }
+    
+    static async verificarBackups() {
+        try {
+            const backupsDir = path.join(__dirname, '..', '..', 'backups');
+            
+            // Verificar que exista el directorio
+            await fs.access(backupsDir);
+            
+            // Obtener lista de backups
+            const archivos = await fs.readdir(backupsDir);
+            const backups = archivos.filter(archivo => archivo.endsWith('.zip'));
+            
+            // Verificar integridad de cada backup
+            const resultados = [];
+            
+            for (const backup of backups) {
+                const backupPath = path.join(backupsDir, backup);
+                const stats = await fs.stat(backupPath);
+                
+                const resultado = {
+                    archivo: backup,
+                    tamano: stats.size,
+                    modificado: stats.mtime,
+                    valido: await this.verificarIntegridadArchivo(backupPath)
+                };
+                
+                resultados.push(resultado);
+            }
+            
+            // Verificar en base de datos
+            const [backupsDB] = await sequelize.query(
+                'SELECT COUNT(*) as total, SUM(tamano) as total_tamano FROM backups WHERE estado = "completado"',
+                { type: QueryTypes.SELECT }
+            );
+            
+            return {
+                backups_fs: resultados,
+                backups_db: backupsDB,
+                espacio_total: await this.calcularEspacioDisco(backupsDir),
+                recomendaciones: this.generarRecomendacionesBackup(resultados)
+            };
+            
+        } catch (error) {
+            console.error('❌ Error al verificar backups:', error);
+            throw error;
+        }
+    }
+    
+    static async limpiarBackupsAntiguos(dias = 30) {
+        try {
+            const backupsDir = path.join(__dirname, '..', '..', 'backups');
+            const fechaLimite = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+            
+            const archivos = await fs.readdir(backupsDir);
+            let eliminados = 0;
+            let espacioLiberado = 0;
+            
+            for (const archivo of archivos) {
+                if (archivo.endsWith('.zip')) {
+                    const archivoPath = path.join(backupsDir, archivo);
+                    const stats = await fs.stat(archivoPath);
+                    
+                    if (stats.mtime < fechaLimite) {
+                        await fs.unlink(archivoPath);
+                        eliminados++;
+                        espacioLiberado += stats.size;
+                        
+                        // Actualizar estado en BD
+                        await sequelize.query(
+                            'UPDATE backups SET estado = "eliminado" WHERE ruta LIKE ?',
+                            { replacements: [`%${archivo}%`] }
+                        );
+                    }
+                }
+            }
+            
+            console.log(`🧹 Limpieza de backups: ${eliminados} eliminados, ${this.formatearBytes(espacioLiberado)} liberados`);
+            
+            return {
+                eliminados,
+                espacio_liberado: espacioLiberado,
+                espacio_formateado: this.formatearBytes(espacioLiberado)
+            };
+            
+        } catch (error) {
+            console.error('❌ Error al limpiar backups antiguos:', error);
+            throw error;
+        }
+    }
+    
+    // Métodos auxiliares
+    static async obtenerInfoTablas() {
+        const [tablas] = await sequelize.query(`
+            SELECT 
+                TABLE_NAME as tabla,
+                TABLE_ROWS as filas,
+                DATA_LENGTH as tamano_datos,
+                INDEX_LENGTH as tamano_indices,
+                CREATE_TIME as creada,
+                UPDATE_TIME as actualizada
+            FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = ?
+            ORDER BY TABLE_NAME
+        `, {
+            replacements: [process.env.DB_NAME],
+            type: QueryTypes.SELECT
+        });
+        
+        return tablas;
+    }
+    
+    static async copiarDirectorioRecursivo(origen, destino) {
+        await fs.mkdir(destino, { recursive: true });
+        
+        const elementos = await fs.readdir(origen, { withFileTypes: true });
+        
+        for (const elemento of elementos) {
+            const sourcePath = path.join(origen, elemento.name);
+            const destPath = path.join(destino, elemento.name);
+            
+            if (elemento.isDirectory()) {
+                await this.copiarDirectorioRecursivo(sourcePath, destPath);
+            } else {
+                await fs.copyFile(sourcePath, destPath);
+            }
+        }
+    }
+    
+    static async calcularEstadisticasArchivos(directorio) {
+        let totalArchivos = 0;
+        let totalTamano = 0;
+        
+        async function calcularRecursivo(dir) {
+            const elementos = await fs.readdir(dir, { withFileTypes: true });
+            
+            for (const elemento of elementos) {
+                const elementoPath = path.join(dir, elemento.name);
+                
+                if (elemento.isDirectory()) {
+                    await calcularRecursivo(elementoPath);
+                } else {
+                    const stats = await fs.stat(elementoPath);
+                    totalArchivos++;
+                    totalTamano += stats.size;
+                }
+            }
+        }
+        
+        await calcularRecursivo(directorio);
+        return { totalArchivos, totalTamano };
+    }
+    
+    static async calcularTamanoDirectorio(directorio) {
+        const { totalTamano } = await this.calcularEstadisticasArchivos(directorio);
+        return totalTamano;
+    }
+    
+    static async generarMetadataBackup(backupDir, metadata) {
+        const metadataFile = path.join(backupDir, 'metadata.json');
+        await fs.writeFile(metadataFile, JSON.stringify(metadata, null, 2));
+    }
+    
+    static async comprimirBackup(directorio) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const zipFile = path.join(path.dirname(directorio), `backup-${timestamp}.zip`);
+        
+        const command = `cd "${path.dirname(directorio)}" && zip -r "${zipFile}" "${path.basename(directorio)}"`;
+        
+        await execPromise(command);
+        return zipFile;
+    }
+    
+    static async registrarBackupEnBD(datos) {
+        await sequelize.query(`
+            INSERT INTO backups (tipo, ruta, tamano, base_backup_id, cambios, estado, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, NOW())
+        `, {
+            replacements: [
+                datos.tipo,
+                datos.ruta,
+                datos.tamano,
+                datos.base_backup_id || null,
+                datos.cambios || 0,
+                datos.estado
+            ]
+        });
+    }
+    
+    static async obtenerUltimoBackup(tipo) {
+        const [backup] = await sequelize.query(`
+            SELECT * FROM backups 
+            WHERE tipo = ? AND estado = 'completado'
+            ORDER BY created_at DESC 
+            LIMIT 1
+        `, {
+            replacements: [tipo],
+            type: QueryTypes.SELECT
+        });
+        
+        return backup;
+    }
+    
+    static async obtenerCambiosDesdeUltimoBackup(fechaUltimoBackup) {
+        if (!fechaUltimoBackup) {
+            return { cantidad_cambios: 0, archivos_nuevos: [] };
+        }
+        
+        // Obtener citas nuevas/modificadas
+        const [citasCambiadas] = await sequelize.query(`
+            SELECT COUNT(*) as cantidad FROM citas 
+            WHERE created_at > ? OR updated_at > ?
+        `, {
+            replacements: [fechaUltimoBackup, fechaUltimoBackup],
+            type: QueryTypes.SELECT
+        });
+        
+        // Obtener pacientes nuevos/modificados
+        const [pacientesCambiados] = await sequelize.query(`
+            SELECT COUNT(*) as cantidad FROM pacientes 
+            WHERE created_at > ? OR updated_at > ?
+        `, {
+            replacements: [fechaUltimoBackup, fechaUltimoBackup],
+            type: QueryTypes.SELECT
+        });
+        
+        // Obtener archivos nuevos (simplificado)
+        const archivosNuevos = await this.obtenerArchivosNuevosDesde(fechaUltimoBackup);
+        
+        return {
+            cantidad_cambios: (citasCambiadas?.cantidad || 0) + (pacientesCambiados?.cantidad || 0),
+            citas_nuevas: citasCambiadas?.cantidad || 0,
+            pacientes_nuevos: pacientesCambiados?.cantidad || 0,
+            archivos_nuevos: archivosNuevos
+        };
+    }
+    
+    static async obtenerArchivosNuevosDesde(fecha) {
+        // Esta función necesitaría un sistema de tracking de archivos
+        // Por ahora retorna array vacío
+        return [];
+    }
+    
+    static async realizarBackupArchivosNuevos(backupDir, archivosNuevos) {
+        if (!archivosNuevos || archivosNuevos.length === 0) {
+            return { archivos: 0, tamano: 0 };
+        }
+        
+        const archivosDir = path.join(backupDir, 'archivos_nuevos');
+        await fs.mkdir(archivosDir, { recursive: true });
+        
+        let totalCopiados = 0;
+        
+        for (const archivo of archivosNuevos) {
+            try {
+                const sourcePath = path.join(__dirname, '..', '..', 'uploads', archivo);
+                const destPath = path.join(archivosDir, archivo);
+                
+                await fs.copyFile(sourcePath, destPath);
+                totalCopiados++;
+            } catch (error) {
+                console.warn(`⚠️  No se pudo copiar archivo ${archivo}: ${error.message}`);
+            }
+        }
+        
+        return {
+            directorio: archivosDir,
+            archivos: totalCopiados,
+            tamano: await this.calcularTamanoDirectorio(archivosDir)
+        };
+    }
+    
+    static async descomprimirBackup(backupPath) {
+        const tempDir = path.join(__dirname, '..', '..', 'temp-restore', Date.now().toString());
+        await fs.mkdir(tempDir, { recursive: true });
+        
+        const command = `unzip "${backupPath}" -d "${tempDir}"`;
+        await execPromise(command);
+        
+        // Buscar el directorio descomprimido
+        const elementos = await fs.readdir(tempDir, { withFileTypes: true });
+        const directorioDescomprimido = elementos.find(e => e.isDirectory())?.name;
+        
+        if (!directorioDescomprimido) {
+            throw new Error('No se encontró directorio descomprimido');
+        }
+        
+        return path.join(tempDir, directorioDescomprimido);
+    }
+    
+    static async verificarIntegridadBackup(directorio) {
+        // Verificar archivos esenciales
+        const archivosEsenciales = ['database.sql', 'metadata.json'];
+        
+        for (const archivo of archivosEsenciales) {
+            const archivoPath = path.join(directorio, archivo);
+            try {
+                await fs.access(archivoPath);
+            } catch {
+                throw new Error(`Archivo esencial faltante: ${archivo}`);
+            }
+        }
+        
+        // Verificar metadata
+        const metadataPath = path.join(directorio, 'metadata.json');
+        const metadataContent = await fs.readFile(metadataPath, 'utf8');
+        const metadata = JSON.parse(metadataContent);
+        
+        if (!metadata.sistema || !metadata.version) {
+            throw new Error('Metadata inválida');
+        }
+        
+        console.log('✅ Integridad del backup verificada');
+        return true;
+    }
+    
+    static async verificarIntegridadArchivo(backupPath) {
+        try {
+            // Verificar que el archivo existe y es legible
+            await fs.access(backupPath);
+            
+            // Verificar estructura ZIP básica
+            const command = `unzip -t "${backupPath}"`;
+            await execPromise(command);
+            
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+    
+    static async restaurarBaseDatosCompleta(directorioBackup) {
+        const dbFile = path.join(directorioBackup, 'database.sql');
+        
+        if (!await fs.access(dbFile).then(() => true).catch(() => false)) {
+            throw new Error('Archivo de base de datos no encontrado en backup');
+        }
+        
+        const dbConfig = {
+            host: process.env.DB_HOST,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_NAME
+        };
+        
+        // Primero crear una copia de seguridad actual (por si acaso)
+        const backupActual = await this.realizarBackupBaseDatos(path.join(__dirname, '..', '..', 'temp'));
+        
+        try {
+            // Restaurar base de datos
+            const command = `mysql --host=${dbConfig.host} --user=${dbConfig.user} --password=${dbConfig.password} ${dbConfig.database} < "${dbFile}"`;
+            await execPromise(command);
+            
+            console.log('✅ Base de datos restaurada');
+        } catch (error) {
+            // Restaurar backup actual en caso de error
+            console.error('❌ Error al restaurar base de datos, restaurando backup anterior...');
+            const restoreCommand = `mysql --host=${dbConfig.host} --user=${dbConfig.user} --password=${dbConfig.password} ${dbConfig.database} < "${backupActual.archivo}"`;
+            await execPromise(restoreCommand);
+            throw error;
+        }
+    }
+    
+    static async restaurarArchivosCompletos(directorioBackup) {
+        const archivosDir = path.join(directorioBackup, 'archivos');
+        
+        if (await fs.access(archivosDir).then(() => true).catch(() => false)) {
+            const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+            
+            // Crear backup de archivos actuales
+            await fs.rename(uploadsDir, `${uploadsDir}.backup.${Date.now()}`);
+            
+            // Restaurar archivos del backup
+            await this.copiarDirectorioRecursivo(archivosDir, uploadsDir);
+            
+            console.log('✅ Archivos restaurados');
+        }
+    }
+    
+    static async restaurarConfiguracion(directorioBackup) {
+        const configDir = path.join(directorioBackup, 'configuracion');
+        
+        if (await fs.access(configDir).then(() => true).catch(() => false)) {
+            // Solo restaurar archivos específicos si es necesario
+            console.log('⚠️  Configuración disponible para restauración manual');
+        }
+    }
+    
+    static async restaurarBackupIncremental(directorioBackup, baseBackupId) {
+        // Implementación de restauración incremental
+        // Requiere lógica más compleja de aplicación de cambios
+        console.log('🔄 Restaurando backup incremental...');
+        // Por ahora, solo log
+    }
+    
+    static async calcularEspacioDisco(directorio) {
+        const command = `df -h "${directorio}" | tail -1 | awk '{print $4}'`;
+        try {
+            const { stdout } = await execPromise(command);
+            return stdout.trim();
+        } catch {
+            return 'Desconocido';
+        }
+    }
+    
+    static generarRecomendacionesBackup(backups) {
+        const recomendaciones = [];
+        
+        if (backups.length === 0) {
+            recomendaciones.push('No hay backups existentes. Se recomienda crear un backup completo inmediatamente.');
+        }
+        
+        if (backups.length > 10) {
+            recomendaciones.push('Muchos backups almacenados. Considere eliminar los más antiguos.');
+        }
+        
+        const backupsInvalidos = backups.filter(b => !b.valido);
+        if (backupsInvalidos.length > 0) {
+            recomendaciones.push(`Hay ${backupsInvalidos.length} backups inválidos. Considere eliminarlos.`);
+        }
+        
+        return recomendaciones;
+    }
+    
+    static formatearBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+}
+
+module.exports = BackupService;
+
+
+/backend/src/controllers/configuracionController.js:
+--------------------------------------------------------------------------------
+ARCHIVO NO ENCONTRADO
+
+
+/backend/server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
+
+const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes');
+const roleRoutes = require('./src/routes/roleRoutes');
+const fundacionRoutes = require('./src/routes/fundacionRoutes');
+const asignacionRoutes = require('./src/routes/asignacionRoutes');
+const sesionRoutes = require('./src/routes/sesionRoutes');
+const notificacionRoutes = require('./src/routes/notificacionRoutes');
+const altaRoutes = require('./src/routes/altaRoutes');
+const reporteRoutes = require('./src/routes/reporteRoutes');
+const observacionRoutes = require('./src/routes/observacionRoutes');
+const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
+const expedienteRoutes = require('./src/routes/expedienteRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const agendaRoutes = require('./src/routes/agendaRoutes');
+const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
+app.use('/api/fundaciones', fundacionRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/sesiones', sesionRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/altas', altaRoutes);
+app.use('/api/reportes', reporteRoutes);
+app.use('/api/observaciones', observacionRoutes);
+app.use('/api/disponibilidad', disponibilidadRoutes);
+app.use('/api/expedientes', expedienteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agenda', agendaRoutes);
+app.use('/api/estadisticas', estadisticaRoutes);
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
+
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
+
+
+/frontend/src/services/api.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
+
+  static async get(url) {
+    return this.request(url);
+  }
+
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+    // Primero verificar si hay contenido
+    if (response.status === 204 || response.status === 205) {
+      return {};
+    }
+    
+    const contentType = response.headers.get('content-type');
+    
+    // Si no es JSON, manejar como texto
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      
+      if (!response.ok) {
+        throw new Error(text || `HTTP error! status: ${response.status}`);
+      }
+      
+      return text ? JSON.parse(text) : {};
+    }
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+    
+    return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
+}
+
+export default ApiService;
+
+
+/frontend/src/App.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Login from './components/Auth/Login';
+import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
+
+// Páginas para Becarios
+import BecarioDashboard from './pages/becario/DashboardPage';
+import BecarioCitas from './pages/becario/CitasPage';
+import BecarioPacientes from './pages/becario/PacientesPage';
+import BecarioNotificaciones from './pages/becario/NotificacionesPage';
+import BecarioObservaciones from './pages/becario/ObservacionesPage';
+
+// Páginas para Psicólogos
+import PsicologoDashboard from './pages/psicologo/DashboardPage';
+import PsicologoPacientes from './pages/psicologo/PacientesPage';
+import PsicologoCitas from './pages/psicologo/CitasPage';
+import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
+import PsicologoSesiones from './pages/psicologo/SesionesPage';
+import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+
+// Páginas para Coordinadores
+import CoordinadorDashboard from './pages/coordinador/DashboardPage';
+import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
+import CoordinadorPacientes from './pages/coordinador/PacientesPage';
+import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
+import CoordinadorAgenda from './pages/coordinador/AgendaPage';
+import CoordinadorReportes from './pages/coordinador/ReportesPage';
+import CoordinadorAltas from './pages/coordinador/AltasPage';
+import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          {/* Rutas de Becario */}
+          <Route path="/" element={<RoleRouter />}>
+            <Route index element={<BecarioDashboard />} />
+            
+            {/* Becario */}
+            <Route path="becario/dashboard" element={<BecarioDashboard />} />
+            <Route path="becario/citas" element={<BecarioCitas />} />
+            <Route path="becario/pacientes" element={<BecarioPacientes />} />
+            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
+            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
+            
+            {/* Psicólogo */}
+            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
+            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
+            <Route path="psicologo/citas" element={<PsicologoCitas />} />
+            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
+            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
+            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
+            
+            {/* Coordinador */}
+            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
+            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
+            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
+            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
+            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
+            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
+            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
+            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
+          </Route>
+          
+          {/* Redirección por defecto */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;
+
+
+================================================================================
+RESUMEN PARA COORDINADOR_CONFIGURACION:
+----------------------------------------
+Archivos necesarios: 10
+Archivos encontrados: 8
+Archivos no encontrados: 2
+
+Archivos faltantes:
+  - backend/src/routes/configuracionRoutes.js
+  - backend/src/controllers/configuracionController.js

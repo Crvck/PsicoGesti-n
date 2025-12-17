@@ -8,12 +8,6 @@ class DashboardController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
             
-            if (usuarioRol !== 'coordinador') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Acceso solo para coordinadores'
-                });
-            }
             
             // Estadísticas generales
             const [estadisticas] = await sequelize.query(`
@@ -143,12 +137,6 @@ class DashboardController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
             
-            if (usuarioRol !== 'psicologo') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Acceso solo para psicólogos'
-                });
-            }
             
             // Estadísticas del psicólogo
             const [estadisticas] = await sequelize.query(`
@@ -292,12 +280,6 @@ class DashboardController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
             
-            if (usuarioRol !== 'becario') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Acceso solo para becarios'
-                });
-            }
             
             // Estadísticas del becario
             const [estadisticas] = await sequelize.query(`

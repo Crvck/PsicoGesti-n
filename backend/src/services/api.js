@@ -53,6 +53,17 @@ class ApiService {
     }
     return response.json();
   }
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
 }
 
 export default ApiService;

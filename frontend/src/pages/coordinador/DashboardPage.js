@@ -1,14 +1,20 @@
+// frontend/src/pages/coordinador/DashboardPage.js
 import React, { useState, useEffect } from 'react';
 import { 
   FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
   FiUserCheck, FiClock, FiAlertCircle, FiRefreshCw,
-  FiDollarSign, FiActivity
+  FiDollarSign, FiActivity, FiInfo, FiUser, FiFileText,
+  FiCheckCircle, FiList, FiUserPlus, FiTarget, FiClipboard,
+  FiUsers as FiUsersGroup, FiCalendar as FiCalendarGlobal
 } from 'react-icons/fi';
 import './coordinador.css';
+import { useNavigate } from 'react-router-dom'; // Importamos useNavigate
 import notifications from '../../utils/notifications';
-import confirmations from '../../utils/confirmations';
+import DashboardService from '../../services/dashboardService';
 
 const CoordinadorDashboard = () => {
+  const navigate = useNavigate(); // Para navegación
+  
   const [estadisticas, setEstadisticas] = useState({
     becariosActivos: 0,
     psicologosActivos: 0,
@@ -17,39 +23,78 @@ const CoordinadorDashboard = () => {
     citasCompletadasHoy: 0,
     altasMesActual: 0
   });
+  
   const [actividadReciente, setActividadReciente] = useState([]);
+  const [distribucionPsicologos, setDistribucionPsicologos] = useState([]);
+  const [alertas, setAlertas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
   const fetchDashboardData = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setEstadisticas({
-          becariosActivos: 4,
-          psicologosActivos: 2,
-          pacientesActivos: 25,
-          citasHoy: 12,
-          citasCompletadasHoy: 6,
-          altasMesActual: 3
-        });
-        
-        setActividadReciente([
-          { id: 1, tipo: 'nueva_cita', descripcion: 'Nueva cita agendada para Carlos Gómez', fecha: '2024-01-10 09:30:00', usuario: 'Juan Pérez' },
-          { id: 2, tipo: 'alta_paciente', descripcion: 'Ana Rodríguez dada de alta terapéutica', fecha: '2024-01-10 08:15:00', usuario: 'Lic. Luis Fernández' },
-          { id: 3, tipo: 'nuevo_usuario', descripcion: 'Nuevo becario registrado: Pedro Hernández', fecha: '2024-01-09 16:45:00', usuario: 'Coordinador' },
-          { id: 4, tipo: 'asignacion', descripcion: 'Paciente asignado a becario Sofía Ramírez', fecha: '2024-01-09 14:20:00', usuario: 'Coordinador' }
-        ]);
-        
-        setLoading(false);
-      }, 1000);
+      console.log('Cargando dashboard...');
+      const response = await DashboardService.obtenerDashboardCoordinador();
+      
+      const datosTransformados = DashboardService.transformarDatosCoordinador(response);
+      
+      setEstadisticas(datosTransformados.estadisticas);
+      setActividadReciente(datosTransformados.actividadReciente);
+      setDistribucionPsicologos(datosTransformados.distribucionPsicologos);
+      setAlertas(datosTransformados.alertas);
+      
+      
     } catch (error) {
       console.error('Error cargando dashboard:', error);
+      setError(`Error al cargar datos: ${error.message}`);
+      notifications.error('Error', 'No se pudieron cargar los datos del dashboard');
+    } finally {
       setLoading(false);
     }
+  };
+
+  // Función para manejar "Ver todo" en Actividad Reciente
+  const handleVerTodaActividad = () => {
+    navigate('/coordinador/agenda'); // Redirige a la agenda
+  };
+
+  // Funciones para las Acciones de Coordinación
+  const handleGestionarUsuarios = () => {
+    navigate('/coordinador/usuarios');
+  };
+
+  const handleAsignarPacientes = () => {
+    navigate('/coordinador/asignaciones');
+  };
+
+  const handleGenerarReporteMensual = () => {
+    navigate('/coordinador/reportes');
+  };
+
+  const handleRevisarAltas = () => {
+    navigate('/coordinador/altas');
+  };
+
+  const handleVerAgendaGlobal = () => {
+    navigate('/coordinador/agenda');
+  };
+
+  // Función para manejar "Reasignar" en Carga de Pacientes
+  const handleReasignar = () => {
+    navigate('/coordinador/asignaciones');
+  };
+
+  // Función para manejar "Resolver" en Alertas
+  const handleResolverAlertas = () => {
+    // Aquí puedes implementar lógica para marcar alertas como resueltas
+    setAlertas([]);
+    notifications.success('Alertas resueltas', 'Las alertas han sido marcadas como resueltas');
   };
 
   const statCards = [
@@ -96,18 +141,18 @@ const CoordinadorDashboard = () => {
       change: 'Por paciente/mes'
     },
     {
+      title: 'Alertas Pendientes',
+      value: alertas.reduce((total, alerta) => total + (alerta.cantidad || 0), 0),
+      icon: <FiAlertCircle />,
+      color: 'var(--rl)',
+      change: 'Requieren atención'
+    },
+    {
       title: 'Ingresos Estimados',
       value: '$24,500',
       icon: <FiDollarSign />,
       color: 'var(--grnb)',
       change: 'Este mes'
-    },
-    {
-      title: 'Alertas Pendientes',
-      value: '3',
-      icon: <FiAlertCircle />,
-      color: 'var(--rl)',
-      change: 'Requieren atención'
     }
   ];
 
@@ -126,9 +171,14 @@ const CoordinadorDashboard = () => {
         <div>
           <h1>Panel de Coordinación</h1>
           <p>Vista general del sistema y gestión administrativa</p>
+          {error && (
+            <div className="alert alert-warning mt-10">
+              <FiAlertCircle /> {error}
+            </div>
+          )}
         </div>
-        <button className="btn-secondary" onClick={fetchDashboardData}>
-          <FiRefreshCw /> Actualizar
+        <button className="btn-secondary" onClick={fetchDashboardData} disabled={loading}>
+          <FiRefreshCw /> {loading ? 'Cargando...' : 'Actualizar'}
         </button>
       </div>
 
@@ -154,25 +204,41 @@ const CoordinadorDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Actividad Reciente del Sistema</h3>
-            <button className="btn-text">Ver todo</button>
+            <button className="btn-text" onClick={handleVerTodaActividad}>
+              Ver todo
+            </button>
           </div>
           
           <div className="timeline">
-            {actividadReciente.map((actividad) => (
-              <div key={actividad.id} className="timeline-item">
+            {actividadReciente.length > 0 ? (
+              actividadReciente.map((actividad) => (
+                <div key={actividad.id} className="timeline-item">
+                  <div className="timeline-content">
+                    <div className="flex-row justify-between">
+                      <strong>{actividad.descripcion}</strong>
+                      <span className="text-small">
+                        {new Date(actividad.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </span>
+                    </div>
+                    <div className="text-small mt-5">
+                      Por: {actividad.usuario} • {new Date(actividad.fecha).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="timeline-item">
                 <div className="timeline-content">
                   <div className="flex-row justify-between">
-                    <strong>{actividad.descripcion}</strong>
-                    <span className="text-small">
-                      {new Date(actividad.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                    </span>
+                    <strong>No hay actividad reciente</strong>
+                    <FiClock className="text-small" />
                   </div>
                   <div className="text-small mt-5">
-                    Por: {actividad.usuario} • {new Date(actividad.fecha).toLocaleDateString()}
+                    El sistema no registra actividad en este momento
                   </div>
                 </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -182,27 +248,45 @@ const CoordinadorDashboard = () => {
             <h3>Distribución de Citas por Psicólogo</h3>
           </div>
           
-          <div className="activity-chart">
-            <div className="chart-placeholder">
-              <div className="chart-bars">
-                {[
-                  { nombre: 'Luis Fernández', citas: 8, color: 'var(--grnb)' },
-                  { nombre: 'Laura Gutiérrez', citas: 4, color: 'var(--blu)' }
-                ].map((psicologo, index) => (
-                  <div key={index} className="chart-bar" style={{ flex: psicologo.citas }}>
-                    <div 
-                      className="bar-fill"
-                      style={{ 
-                        height: `${(psicologo.citas / 12) * 100}%`,
-                        background: psicologo.color
-                      }}
-                    ></div>
-                    <div className="bar-label">{psicologo.nombre.split(' ')[1]}</div>
-                    <div className="bar-value">{psicologo.citas} citas</div>
-                  </div>
-                ))}
+          <div className="distribution-chart">
+            {distribucionPsicologos.length > 0 ? (
+              <div className="distribution-bars">
+                {distribucionPsicologos.map((psicologo, index) => {
+                  // Calcular altura máxima basada en el máximo de citas
+                  const maxCitas = Math.max(...distribucionPsicologos.map(p => p.citas || 0), 1);
+                  const porcentaje = ((psicologo.citas || 0) / maxCitas) * 100;
+                  
+                  return (
+                    <div key={index} className="distribution-bar-container">
+                      <div className="distribution-bar-wrapper">
+                        <div 
+                          className="distribution-bar"
+                          style={{ 
+                            height: `${porcentaje}%`,
+                            backgroundColor: psicologo.color || 'var(--grnb)'
+                          }}
+                        >
+                          <div className="bar-value-inside">{psicologo.citas || 0}</div>
+                        </div>
+                      </div>
+                      <div className="distribution-label">
+                        <div className="psychologist-name">
+                          {psicologo.nombre || 'Sin nombre'}
+                        </div>
+                        <div className="psychologist-sessions">
+                          {psicologo.citas || 0} citas
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            ) : (
+              <div className="no-data-message">
+                <FiBarChart2 size={40} />
+                <p>No hay datos de distribución disponibles</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -210,61 +294,59 @@ const CoordinadorDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Carga de Pacientes por Becario</h3>
-            <button className="btn-text">Reasignar</button>
+            <button className="btn-text" onClick={handleReasignar}>
+              Reasignar
+            </button>
           </div>
           
           <div className="pacientes-list">
-            {[
-              { id: 1, nombre: 'Juan Pérez', pacientes: 3, capacidad: 5, porcentaje: 60 },
-              { id: 2, nombre: 'Sofía Ramírez', pacientes: 2, capacidad: 4, porcentaje: 50 },
-              { id: 3, nombre: 'Pedro Hernández', pacientes: 1, capacidad: 3, porcentaje: 33 },
-              { id: 4, nombre: 'Nuevo Becario', pacientes: 0, capacidad: 3, porcentaje: 0 }
-            ].map((becario) => (
-              <div key={becario.id} className="paciente-item">
-                <div className="paciente-info">
-                  <div className="paciente-nombre">{becario.nombre}</div>
-                  <div className="paciente-fecha">
-                    {becario.pacientes} / {becario.capacidad} pacientes
-                  </div>
-                </div>
-                <div className="paciente-progreso">
-                  <div className="progress-container">
-                    <div 
-                      className="progress-bar"
-                      style={{ width: `${becario.porcentaje}%` }}
-                    ></div>
-                  </div>
-                  <span className="progreso-text">{becario.porcentaje}%</span>
-                </div>
-              </div>
-            ))}
+            {/* Aquí puedes obtener datos reales de becarios */}
+            <div className="no-data-message">
+              <FiUser size={40} />
+              <p>Los datos de becarios se cargarán próximamente</p>
+            </div>
           </div>
         </div>
 
-        {/* Quick Actions */}
+        {/* Alertas Pendientes */}
         <div className="dashboard-section">
           <div className="section-header">
-            <h3>Acciones de Coordinación</h3>
+            <h3>Alertas Pendientes</h3>
+            <button className="btn-text" onClick={handleResolverAlertas}>
+              Resolver
+            </button>
           </div>
           
-          <div className="quick-actions">
-            <button className="btn-primary w-100 mb-10">
-              Gestionar Usuarios
-            </button>
-            <button className="btn-secondary w-100 mb-10">
-              Asignar Pacientes
-            </button>
-            <button className="btn-warning w-100 mb-10">
-              Generar Reporte Mensual
-            </button>
-            <button className="btn-danger w-100">
-              Revisar Altas
-            </button>
-            <button className="btn-text w-100 mt-10">
-              Ver Agenda Global
-            </button>
+          <div className="alertas-list">
+            {alertas.length > 0 ? (
+              alertas.map((alerta, index) => (
+                <div key={index} className="alerta-item">
+                  <div className="alerta-icon">
+                    <FiAlertCircle style={{ color: 'var(--rl)' }} />
+                  </div>
+                  <div className="alerta-content">
+                    <div className="alerta-titulo">{alerta.descripcion}</div>
+                    <div className="alerta-subtitulo">
+                      {alerta.cantidad} {alerta.cantidad === 1 ? 'elemento' : 'elementos'} pendientes
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="alerta-item alerta-item-success">
+                <div className="alerta-icon">
+                  <FiCheckCircle style={{ color: 'var(--grnb)' }} />
+                </div>
+                <div className="alerta-content">
+                  <div className="alerta-titulo">Sin alertas pendientes</div>
+                  <div className="alerta-subtitulo">Todo está al día en el sistema</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        
       </div>
     </div>
   );

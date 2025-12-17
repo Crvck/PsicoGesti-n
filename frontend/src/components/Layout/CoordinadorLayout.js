@@ -1,16 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  FiMenu, FiX, FiHome, FiUsers, FiCalendar, FiBarChart2,
-  FiUserPlus, FiFileText, FiSettings, FiLogOut, FiClock,
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBarChart2,
+  FiUserPlus, FiFileText, FiSettings, FiLogOut, FiClock,FiSun, FiMoon,
   FiTrendingUp, FiUserCheck
 } from 'react-icons/fi';
 
 const CoordinadorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Inicializar el tema desde localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    
+    if (newDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -36,12 +62,41 @@ const CoordinadorLayout = () => {
             className="control-btn"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            {sidebarOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
-          <h2 className="app-name">PsicoGestión - Coordinación</h2>
+              <img 
+                src="/images/logoCESUN2wide.png" 
+                alt="PsicoGestión" 
+                className="dashboard-logo"
+              />
+          <h2 className="app-name">- Coordinación</h2>
         </div>
-        
+
         <div className="flex-row align-center gap-20">
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
+          
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
             <span className="user-rol">Coordinador</span>

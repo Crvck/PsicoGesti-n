@@ -1,26 +1,3 @@
-:root {
-  /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
-  --blub: #2c3138;   /* Azul claro */
-  --blud: #1B1E23;   /* Azul oscuro */
-  --white: #ffffff;
-  --gray-light: #f8f9fa;
-  --gray: #6c757d;
-  --gray-dark: #343a40;
-  
-  /* Colores adicionales */
-  --blu: #1F85BA;      /* GRNB - Azul */
-  --bludd: #1B6DA7;
-  --blub-dark: #131923; /* BLUD - Azul más oscuro */
-  --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
-  --rr: #fa3144;       /* RR - Rojo */
-  --yy: #ffa631;       /* YY - Amarillo */
-  --rl: #ff5363;       /* RL - Rojo claro */
-  --yl: #ffdd55;       /* YL - Amarillo claro */
-  --wt: #ffffff;       /* WT - Blanco */
-}
 
 .login-page {
   position: relative;

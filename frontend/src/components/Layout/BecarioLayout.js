@@ -2,15 +2,40 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  FiMenu, FiX, FiHome, FiUsers, FiCalendar, FiBell, 
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell,FiSun, FiMoon,
   FiFileText, FiLogOut, FiClock
 } from 'react-icons/fi';
 
 const BecarioLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout } = useAuth();
+  const [darkMode, setDarkMode] = useState(false);
   const navigate = useNavigate();
   const [notificaciones, setNotificaciones] = useState([]);
+
+  useEffect(() => {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark') {
+        setDarkMode(true);
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        setDarkMode(false);
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    }, []);
+  
+    const toggleDarkMode = () => {
+      const newDarkMode = !darkMode;
+      setDarkMode(newDarkMode);
+      
+      if (newDarkMode) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'light');
+        localStorage.setItem('theme', 'light');
+      }
+    };
 
   const handleLogout = () => {
     logout();
@@ -59,9 +84,14 @@ const BecarioLayout = () => {
             className="control-btn"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            {sidebarOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
-          <h2 className="app-name">PsicoGestión - Becario</h2>
+          <img 
+                src="/images/logoCESUN2wide.png" 
+                alt="PsicoGestión" 
+                className="dashboard-logo"
+              />
+          <h2 className="app-name">- Becario</h2>
         </div>
         
         <div className="flex-row align-center gap-20">
@@ -74,6 +104,30 @@ const BecarioLayout = () => {
                 </span>
               )}
             </button>
+          </div>
+
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
           </div>
           
           <div className="user-info">

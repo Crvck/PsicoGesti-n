@@ -131,7 +131,7 @@ const expedienteRoutes = require('./src/routes/expedienteRoutes');
 const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const agendaRoutes = require('./src/routes/agendaRoutes');
 const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
-
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -170,6 +170,7 @@ app.use('/api/estadisticas', estadisticaRoutes);
 const userRoutes = require('./src/routes/userRoutes');
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
 
 // Sincronizar modelos
 sequelize.sync({ force: false, alter: false })
@@ -8576,6 +8577,146 @@ router.delete('/:id', requireRole(['psicologo', 'coordinador']), ObservacionCont
 
 module.exports = router;
 
+/backend\src\routes\pacienteRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const verifyToken = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
+const Paciente = require('../models/pacienteModel');
+
+// Listar pacientes (solo coordinadores)
+router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const pacientes = await Paciente.findAll({
+      order: [['apellido', 'ASC'], ['nombre', 'ASC']]
+    });
+
+    const mapped = pacientes.map(p => ({
+      id: p.id,
+      nombre: p.nombre,
+      apellido: p.apellido,
+      email: p.email,
+      telefono: p.telefono,
+      fecha_nacimiento: p.fecha_nacimiento,
+      genero: p.genero,
+      direccion: p.direccion,
+      estado: p.estado,
+      activo: p.activo,
+      notas: p.notas,
+      fundacion_id: p.fundacion_id,
+      fecha_ingreso: p.created_at,
+      fecha_alta: p.deleted_at || null // placeholder if needed
+    }));
+
+    res.json(mapped);
+  } catch (error) {
+    console.error('Error al listar pacientes:', error);
+    res.status(500).json({ message: 'Error al obtener pacientes' });
+  }
+});
+
+// Crear paciente (solo coordinadores)
+router.post('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data.nombre || !data.apellido || !data.motivo_consulta) {
+      return res.status(400).json({ message: 'Faltan datos requeridos' });
+    }
+
+    const paciente = await Paciente.create({
+      nombre: data.nombre,
+      apellido: data.apellido,
+      email: data.email || null,
+      telefono: data.telefono || null,
+      fecha_nacimiento: data.fecha_nacimiento || null,
+      genero: data.genero || null,
+      direccion: data.direccion || null,
+      estado: data.estado || 'activo',
+      activo: typeof data.activo === 'boolean' ? data.activo : true,
+      notas: data.antecedentes || null,
+      fundacion_id: data.fundacion_id || null
+    });
+
+    res.status(201).json({
+      id: paciente.id,
+      nombre: paciente.nombre,
+      apellido: paciente.apellido,
+      email: paciente.email,
+      telefono: paciente.telefono,
+      fecha_nacimiento: paciente.fecha_nacimiento,
+      genero: paciente.genero,
+      direccion: paciente.direccion,
+      estado: paciente.estado,
+      activo: paciente.activo,
+      fecha_ingreso: paciente.created_at,
+      sesiones_completadas: 0
+    });
+  } catch (error) {
+    console.error('Error al crear paciente:', error);
+    res.status(500).json({ message: 'Error al crear paciente' });
+  }
+});
+
+// Actualizar paciente (solo coordinadores)
+router.put('/:id', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const paciente = await Paciente.findByPk(id);
+    if (!paciente) return res.status(404).json({ message: 'Paciente no encontrado' });
+
+    const data = req.body;
+    const updated = await paciente.update({
+      nombre: data.nombre ?? paciente.nombre,
+      apellido: data.apellido ?? paciente.apellido,
+      email: data.email ?? paciente.email,
+      telefono: data.telefono ?? paciente.telefono,
+      fecha_nacimiento: data.fecha_nacimiento ?? paciente.fecha_nacimiento,
+      genero: data.genero ?? paciente.genero,
+      direccion: data.direccion ?? paciente.direccion,
+      estado: data.estado ?? paciente.estado,
+      activo: typeof data.activo === 'boolean' ? data.activo : paciente.activo,
+      notas: data.antecedentes ?? paciente.notas,
+      fundacion_id: data.fundacion_id ?? paciente.fundacion_id
+    });
+
+    res.json({
+      id: updated.id,
+      nombre: updated.nombre,
+      apellido: updated.apellido,
+      email: updated.email,
+      telefono: updated.telefono,
+      fecha_nacimiento: updated.fecha_nacimiento,
+      genero: updated.genero,
+      direccion: updated.direccion,
+      estado: updated.estado,
+      activo: updated.activo,
+      fecha_ingreso: updated.created_at
+    });
+  } catch (error) {
+    console.error('Error al actualizar paciente:', error);
+    res.status(500).json({ message: 'Error al actualizar paciente' });
+  }
+});
+
+// Eliminar paciente (soft-delete) (solo coordinadores)
+router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const paciente = await Paciente.findByPk(id);
+    if (!paciente) return res.status(404).json({ message: 'Paciente no encontrado' });
+
+    await paciente.update({ activo: false, estado: 'alta_terapeutica' });
+
+    res.json({ message: 'Paciente inactivado correctamente', id: paciente.id });
+  } catch (error) {
+    console.error('Error al eliminar paciente:', error);
+    res.status(500).json({ message: 'Error al eliminar paciente' });
+  }
+});
+
+module.exports = router;
+
 /backend\src\routes\reporteRoutes.js:
 --------------------------------------------------------------------------------
 const express = require('express');
@@ -8647,6 +8788,8 @@ module.exports = router;
 const express = require('express');
 const router = express.Router();
 const verifyToken = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
+const bcrypt = require('bcryptjs');
 const User = require('../models/userModel');
 
 // Obtener todos los becarios
@@ -8661,6 +8804,152 @@ router.get('/becarios', verifyToken, async (req, res) => {
     res.json(becarios);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener becarios' });
+  }
+});
+
+// Obtener todos los usuarios (coordinadores pueden acceder)
+router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: ['id', 'nombre', 'apellido', 'email', 'telefono', 'rol', 'especialidad', 'fundacion_id', 'activo', 'created_at'],
+      order: [['apellido', 'ASC'], ['nombre', 'ASC']]
+    });
+
+    // Mapear created_at a fecha_registro para compatibilidad con frontend
+    const mapped = users.map(u => ({
+      id: u.id,
+      nombre: u.nombre,
+      apellido: u.apellido,
+      email: u.email,
+      telefono: u.telefono,
+      rol: u.rol,
+      especialidad: u.especialidad,
+      fundacion_id: u.fundacion_id,
+      activo: u.activo,
+      fecha_registro: u.created_at
+    }));
+
+    res.json(mapped);
+  } catch (error) {
+    console.error('Error al listar usuarios:', error);
+    res.status(500).json({ message: 'Error al obtener usuarios' });
+  }
+});
+
+// Crear nuevo usuario (solo coordinadores)
+router.post('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const { nombre, apellido, email, telefono, rol, especialidad, fundacion_id, activo, password } = req.body;
+
+    if (!nombre || !apellido || !email || !password) {
+      return res.status(400).json({ message: 'Faltan datos requeridos' });
+    }
+
+    // Hashear contraseña
+    const salt = await bcrypt.genSalt(10);
+    const hashed = await bcrypt.hash(password, salt);
+
+    const newUser = await User.create({
+      nombre,
+      apellido,
+      email,
+      telefono,
+      rol: rol || 'becario',
+      especialidad,
+      fundacion_id: fundacion_id || null,
+      activo: typeof activo === 'boolean' ? activo : true,
+      password: hashed
+    });
+
+    res.status(201).json({
+      id: newUser.id,
+      nombre: newUser.nombre,
+      apellido: newUser.apellido,
+      email: newUser.email,
+      telefono: newUser.telefono,
+      rol: newUser.rol,
+      especialidad: newUser.especialidad,
+      fundacion_id: newUser.fundacion_id,
+      activo: newUser.activo,
+      fecha_registro: newUser.created_at
+    });
+
+  } catch (error) {
+    console.error('Error al crear usuario:', error);
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ message: 'El correo ya está registrado' });
+    }
+    res.status(500).json({ message: 'Error al crear usuario' });
+  }
+});
+
+// Actualizar usuario (solo coordinadores)
+router.put('/:id', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { nombre, apellido, email, telefono, rol, especialidad, fundacion_id, activo, password } = req.body;
+
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    const updatedFields = {
+      nombre: nombre ?? user.nombre,
+      apellido: apellido ?? user.apellido,
+      email: email ?? user.email,
+      telefono: telefono ?? user.telefono,
+      rol: rol ?? user.rol,
+      especialidad: especialidad ?? user.especialidad,
+      fundacion_id: fundacion_id ?? user.fundacion_id,
+      activo: typeof activo === 'boolean' ? activo : user.activo
+    };
+
+    // Si envían password, hashearla
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      updatedFields.password = await bcrypt.hash(password, salt);
+    }
+
+    await user.update(updatedFields);
+
+    res.json({
+      id: user.id,
+      nombre: user.nombre,
+      apellido: user.apellido,
+      email: user.email,
+      telefono: user.telefono,
+      rol: user.rol,
+      especialidad: user.especialidad,
+      fundacion_id: user.fundacion_id,
+      activo: user.activo,
+      fecha_registro: user.created_at
+    });
+  } catch (error) {
+    console.error('Error al actualizar usuario:', error);
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ message: 'El correo ya está registrado' });
+    }
+    res.status(500).json({ message: 'Error al actualizar usuario' });
+  }
+});
+
+// Eliminar usuario (soft-delete colocando activo=false) (solo coordinadores)
+router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const id = req.params.id;
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    // Soft-delete
+    await user.update({ activo: false });
+
+    res.json({ message: 'Usuario eliminado (inactivado) correctamente', id: user.id });
+  } catch (error) {
+    console.error('Error al eliminar usuario:', error);
+    res.status(500).json({ message: 'Error al eliminar usuario' });
   }
 });
 
@@ -11609,62 +11898,113 @@ const Login = () => {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <div className="login-header">
-          <h1 className="login-title">PsicoGestión</h1>
-          <p className="login-subtitle">Consultorio Psicológico</p>
-        </div>
+    <div className="login-page">
+      {/* Video de fondo */}
+      <video 
+        autoPlay 
+        loop 
+        muted 
+        className="background-video"
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <source src="/images/banner.mp4" type="video/mp4" />
+        Tu navegador no soporta videos HTML5.
+      </video>
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <input
-              type="email"
-              className="input-field"
-              placeholder="Correo electrónico"
-              value={credentials.email}
-              onChange={(e) => setCredentials({...credentials, email: e.target.value})}
-              onKeyDown={handleKeyDown}
-              autoFocus
-            />
-          </div>
-
-          <div className="form-group">
-            <input
-              type="password"
-              className="input-field"
-              placeholder="Contraseña"
-              value={credentials.password}
-              onChange={(e) => setCredentials({...credentials, password: e.target.value})}
-              onKeyDown={handleKeyDown}
-            />
-          </div>
-
-          {error && (
-            <div className="error-message">
-              {error}
+      {/* Contenedor del login */}
+      <div className="login-container">
+        <div className="login-card">
+          <div className="login-header">
+            {/* Logo en lugar del texto */}
+            <div className="logo-container">
+              <img 
+                src="/images/logoCESUN2.png" 
+                alt="PsicoGestión" 
+                className="login-logo"
+              />
             </div>
-          )}
-
-          <button
-            type="submit"
-            className="btn-primary w-100"
-            disabled={loading}
-          >
-            {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
-          </button>
-
-          <div className="login-footer">
-            <p className="instructions">
-              <span>Enter: Acceder</span>
-              <span>ESC: Salir</span>
-            </p>
+            <p className="login-subtitle">Consultorio Psicológico</p>
           </div>
-        </form>
 
-        <div className="app-info">
-          <p>Versión 1.0.0</p>
-          <p>Sistema de Gestión de Consultorio Psicológico</p>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <input
+                type="email"
+                className="input-field"
+                placeholder="Correo electrónico"
+                value={credentials.email}
+                onChange={(e) => setCredentials({...credentials, email: e.target.value})}
+                onKeyDown={handleKeyDown}
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <div className="password-input-container">
+                <input
+                  type="password"
+                  className="input-field"
+                  placeholder="Contraseña"
+                  value={credentials.password}
+                  onChange={(e) => setCredentials({...credentials, password: e.target.value})}
+                  onKeyDown={handleKeyDown}
+                  id="password-field"
+                  // Añade este atributo para deshabilitar el ícono nativo
+                  autoComplete="current-password"
+                />
+                <button 
+                  type="button" 
+                  className="password-toggle"
+                  onClick={() => {
+                    const input = document.getElementById('password-field');
+                    const icon = document.querySelector('.password-toggle svg');
+                    
+                    if (input.type === 'password') {
+                      input.type = 'text';
+                      // Cambiar al ícono de ojo tachado cuando se muestra la contraseña
+                      icon.innerHTML = '<path d="M12 6.5c2.76 0 5 2.24 5 5 0 .51-.1 1-.24 1.46l3.06 3.06c1.39-1.23 2.49-2.77 3.18-4.53C21.27 7.11 17 4 12 4c-1.27 0-2.49.2-3.64.57l2.17 2.17c.47-.14.96-.24 1.47-.24zM2.71 3.16c-.39.39-.39 1.02 0 1.41l1.97 1.97C3.06 7.83 1.77 9.53 1 11.5 2.73 15.89 7 19 12 19c1.52 0 2.97-.3 4.31-.82l2.72 2.72c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41L4.13 3.16c-.39-.39-1.02-.39-1.42 0zM12 16.5c-2.76 0-5-2.24-5-5 0-.77.18-1.5.49-2.14l1.57 1.57c-.03.18-.06.37-.06.57 0 1.66 1.34 3 3 3 .2 0 .38-.03.57-.07L14.14 16c-.64.32-1.37.5-2.14.5zm2.97-5.33c-.15-1.4-1.25-2.49-2.64-2.64l2.64 2.64z"/>';
+                    } else {
+                      input.type = 'password';
+                      // Cambiar al ícono de ojo normal cuando se oculta la contraseña
+                      icon.innerHTML = '<path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>';
+                    }
+                  }}
+                >
+                  <svg 
+                    width="20" 
+                    height="20" 
+                    viewBox="0 0 24 24" 
+                    fill="currentColor"
+                  >
+                    <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="error-message">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn-primary-login w-100"
+              disabled={loading}
+            >
+              {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+            </button>
+
+            <div className="login-footer">
+
+            </div>
+          </form>
+
+          <div className="app-info">
+            <p>Versión 1.0.0</p>
+            <p>Sistema de Gestión de Consultorio Psicológico</p>
+          </div>
         </div>
       </div>
     </div>
@@ -11751,7 +12091,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  FiMenu, FiX, FiHome, FiUsers, FiCalendar, FiBell, 
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell, 
   FiFileText, FiLogOut, FiClock
 } from 'react-icons/fi';
 
@@ -11808,9 +12148,14 @@ const BecarioLayout = () => {
             className="control-btn"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            {sidebarOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
-          <h2 className="app-name">PsicoGestión - Becario</h2>
+          <img 
+                src="/images/logoCESUN2wide.png" 
+                alt="PsicoGestión" 
+                className="dashboard-logo"
+              />
+          <h2 className="app-name">- Becario</h2>
         </div>
         
         <div className="flex-row align-center gap-20">
@@ -11877,7 +12222,7 @@ const BecarioLayout = () => {
         {/* Main Content */}
         <main className="main-content">
           <div className="content-area">
-            <Outlet />
+            {children}
           </div>
         </main>
       </div>
@@ -11902,7 +12247,7 @@ import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  FiMenu, FiX, FiHome, FiUsers, FiCalendar, FiBarChart2,
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBarChart2,
   FiUserPlus, FiFileText, FiSettings, FiLogOut, FiClock,
   FiTrendingUp, FiUserCheck
 } from 'react-icons/fi';
@@ -11936,9 +12281,14 @@ const CoordinadorLayout = () => {
             className="control-btn"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            {sidebarOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
-          <h2 className="app-name">PsicoGestión - Coordinación</h2>
+              <img 
+                src="/images/logoCESUN2wide.png" 
+                alt="PsicoGestión" 
+                className="dashboard-logo"
+              />
+          <h2 className="app-name">- Coordinación</h2>
         </div>
         
         <div className="flex-row align-center gap-20">
@@ -11998,7 +12348,7 @@ const CoordinadorLayout = () => {
 
         <main className="main-content">
           <div className="content-area">
-            <Outlet />
+            {children}
           </div>
         </main>
       </div>
@@ -12021,7 +12371,7 @@ export default CoordinadorLayout;
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { FiMenu, FiX, FiHome, FiUsers, FiCalendar, FiSettings, FiLogOut } from 'react-icons/fi';
+import { FiMenu, FiChevronLeft,FiChevronLeft, FiHome, FiUsers, FiCalendar, FiSettings, FiLogOut } from 'react-icons/fi';
 
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -12049,9 +12399,13 @@ const MainLayout = () => {
             className="control-btn"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            {sidebarOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
-          <h2 className="app-name">PsicoGestión</h2>
+          <img 
+                src="/images/logoCESUN2wide.png" 
+                alt="PsicoGestión" 
+                className="dashboard-logo"
+              />
         </div>
         
         <div className="flex-row align-center gap-20">
@@ -12091,7 +12445,7 @@ const MainLayout = () => {
         {/* Main Content */}
         <main className="main-content">
           <div className="content-area">
-            <Outlet />
+            {children}
           </div>
         </main>
       </div>
@@ -12115,7 +12469,7 @@ import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  FiMenu, FiX, FiHome, FiUsers, FiCalendar, FiFileText,
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiFileText,
   FiBarChart2, FiUserCheck, FiLogOut, FiClock
 } from 'react-icons/fi';
 
@@ -12146,9 +12500,14 @@ const PsicologoLayout = () => {
             className="control-btn"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            {sidebarOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
-          <h2 className="app-name">PsicoGestión - Psicólogo</h2>
+          <img 
+                src="/images/logoCESUN2wide.png" 
+                alt="PsicoGestión" 
+                className="dashboard-logo"
+              />
+          <h2 className="app-name">- Psicólogo</h2>
         </div>
         
         <div className="flex-row align-center gap-20">
@@ -12204,7 +12563,7 @@ const PsicologoLayout = () => {
 
         <main className="main-content">
           <div className="content-area">
-            <Outlet />
+            {children}
           </div>
         </main>
       </div>
@@ -18331,7 +18690,7 @@ export default CoordinadorDashboard;
 /frontend\src\pages\coordinador\PacientesPage.js:
 --------------------------------------------------------------------------------
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, FiPhone, FiMail, FiFileText } from 'react-icons/fi';
+import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiXCircle, FiCheckCircle } from 'react-icons/fi';
 import './coordinador.css';
 
 const CoordinadorPacientes = () => {
@@ -18339,6 +18698,7 @@ const CoordinadorPacientes = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
+  const [includeInactivos, setIncludeInactivos] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('nuevo');
   const [formData, setFormData] = useState({
@@ -18366,90 +18726,26 @@ const CoordinadorPacientes = () => {
 
   const fetchPacientes = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setPacientes([
-          {
-            id: 1,
-            nombre: 'Carlos',
-            apellido: 'Gómez',
-            fecha_nacimiento: '1998-05-15',
-            genero: 'masculino',
-            telefono: '555-1234',
-            email: 'carlos@gmail.com',
-            es_estudiante: true,
-            matricula: 'A123456',
-            institucion_educativa: 'Universidad Nacional',
-            motivo_consulta: 'Ansiedad académica',
-            antecedentes: 'No significativos',
-            activo: true,
-            estado: 'activo',
-            psicologo_asignado: 'Lic. Luis Fernández',
-            becario_asignado: 'Juan Pérez',
-            fecha_ingreso: '2023-10-15',
-            sesiones_completadas: 8
-          },
-          {
-            id: 2,
-            nombre: 'Mariana',
-            apellido: 'López',
-            fecha_nacimiento: '1995-08-22',
-            genero: 'femenino',
-            telefono: '555-5678',
-            email: 'mariana@hotmail.com',
-            es_estudiante: false,
-            motivo_consulta: 'Estrés laboral',
-            antecedentes: 'Antecedentes familiares de ansiedad',
-            activo: true,
-            estado: 'activo',
-            psicologo_asignado: 'Lic. Luis Fernández',
-            becario_asignado: 'Sofía Ramírez',
-            fecha_ingreso: '2023-09-20',
-            sesiones_completadas: 12
-          },
-          {
-            id: 3,
-            nombre: 'Roberto',
-            apellido: 'Sánchez',
-            fecha_nacimiento: '2000-02-10',
-            genero: 'masculino',
-            telefono: '555-9012',
-            email: 'roberto@yahoo.com',
-            es_estudiante: true,
-            matricula: 'B789012',
-            institucion_educativa: 'Instituto Tecnológico',
-            motivo_consulta: 'Problemas de adaptación',
-            antecedentes: 'No significativos',
-            activo: true,
-            estado: 'activo',
-            psicologo_asignado: 'Lic. Luis Fernández',
-            becario_asignado: null,
-            fecha_ingreso: '2023-11-05',
-            sesiones_completadas: 5
-          },
-          {
-            id: 4,
-            nombre: 'Ana',
-            apellido: 'Rodríguez',
-            fecha_nacimiento: '1988-03-30',
-            genero: 'femenino',
-            telefono: '555-3456',
-            email: 'ana@email.com',
-            motivo_consulta: 'Depresión',
-            antecedentes: 'Tratamiento previo en 2020',
-            activo: false,
-            estado: 'alta_terapeutica',
-            psicologo_asignado: 'Lic. Luis Fernández',
-            becario_asignado: 'Juan Pérez',
-            fecha_ingreso: '2023-06-10',
-            fecha_alta: '2024-01-05',
-            sesiones_completadas: 20
-          }
-        ]);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/pacientes', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        console.error('Error fetching pacientes:', res.status);
         setLoading(false);
-      }, 1000);
+        return;
+      }
+
+      const data = await res.json();
+      setPacientes(data);
     } catch (error) {
       console.error('Error al obtener pacientes:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -18457,12 +18753,13 @@ const CoordinadorPacientes = () => {
   const filteredPacientes = pacientes.filter(paciente => {
     const matchesSearch = 
       `${paciente.nombre} ${paciente.apellido}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paciente.motivo_consulta.toLowerCase().includes(searchTerm.toLowerCase());
+      (paciente.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (paciente.motivo_consulta || paciente.notas || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesEstado = !filterEstado || paciente.estado === filterEstado;
+    const matchesActivo = includeInactivos ? true : paciente.activo;
     
-    return matchesSearch && matchesEstado;
+    return matchesSearch && matchesEstado && matchesActivo;
   });
 
   const handleInputChange = (e) => {
@@ -18473,26 +18770,60 @@ const CoordinadorPacientes = () => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (modalType === 'nuevo') {
-      const nuevoPaciente = {
-        id: pacientes.length + 1,
-        ...formData,
-        fecha_ingreso: new Date().toISOString().split('T')[0],
-        psicologo_asignado: 'Por asignar',
-        becario_asignado: null,
-        sesiones_completadas: 0
-      };
-      setPacientes([...pacientes, nuevoPaciente]);
-      alert('Paciente creado exitosamente');
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:3000/api/pacientes', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || 'Error creando paciente');
+          return;
+        }
+
+        const created = await res.json();
+        setPacientes(prev => [...prev, created]);
+        alert('Paciente creado exitosamente');
+      } catch (error) {
+        console.error('Error creando paciente:', error);
+        alert('Error creando paciente');
+      }
     } else {
-      // Editar paciente
-      setPacientes(pacientes.map(p => 
-        p.id === formData.id ? { ...p, ...formData } : p
-      ));
-      alert('Paciente actualizado exitosamente');
+      // Editar paciente: enviar al backend
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`http://localhost:3000/api/pacientes/${formData.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || 'Error actualizando paciente');
+          return;
+        }
+
+        const updated = await res.json();
+        setPacientes(prev => prev.map(p => p.id === updated.id ? updated : p));
+        alert('Paciente actualizado exitosamente');
+      } catch (error) {
+        console.error('Error actualizando paciente:', error);
+        alert('Error actualizando paciente');
+      }
     }
     
     setShowModal(false);
@@ -18500,9 +18831,63 @@ const CoordinadorPacientes = () => {
   };
 
   const editarPaciente = (paciente) => {
-    setFormData(paciente);
+    setFormData({ ...paciente });
     setModalType('editar');
     setShowModal(true);
+  };
+
+  const toggleActivoPaciente = async (id) => {
+    try {
+      const paciente = pacientes.find(p => p.id === id);
+      if (!paciente) return;
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/pacientes/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ activo: !paciente.activo })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error cambiando estado');
+        return;
+      }
+
+      const updated = await res.json();
+      setPacientes(prev => prev.map(p => p.id === id ? updated : p));
+    } catch (error) {
+      console.error('Error toggling paciente activo:', error);
+      alert('Error cambiando estado del paciente');
+    }
+  };
+
+  const deletePaciente = async (id) => {
+    if (!confirm('¿Seguro que desea eliminar (inactivar) este paciente?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/pacientes/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error eliminando paciente');
+        return;
+      }
+
+      setPacientes(prev => prev.filter(p => p.id !== id));
+      alert('Paciente eliminado (inactivado) correctamente');
+    } catch (error) {
+      console.error('Error eliminando paciente:', error);
+      alert('Error eliminando paciente');
+    }
   };
 
   const getEstadoLabel = (estado) => {
@@ -18607,6 +18992,31 @@ const CoordinadorPacientes = () => {
             <option value="abandono">Abandonos</option>
             <option value="traslado">Traslados</option>
           </select>
+
+          <label className="ml-10 flex-row align-center">
+            <input
+              type="checkbox"
+              checked={includeInactivos}
+              onChange={(e) => setIncludeInactivos(e.target.checked)}
+            />
+            <span className="ml-5">Incluir inactivos</span>
+          </label>
+
+          <button
+            className="btn-secondary ml-10"
+            onClick={() => { setFilterEstado(''); setSearchTerm(''); setIncludeInactivos(true); fetchPacientes(); }}
+            title="Mostrar todos"
+          >
+            Mostrar todos
+          </button>
+
+          <button
+            className="btn-secondary ml-10"
+            onClick={() => fetchPacientes()}
+            title="Refrescar"
+          >
+            Actualizar
+          </button>
         </div>
       </div>
 
@@ -18679,6 +19089,23 @@ const CoordinadorPacientes = () => {
                       >
                         <FiEdit2 />
                       </button>
+
+                      <button 
+                        className={`btn-text ${paciente.activo ? 'text-danger' : 'text-success'}`}
+                        onClick={() => toggleActivoPaciente(paciente.id)}
+                        title={paciente.activo ? 'Desactivar' : 'Activar'}
+                      >
+                        {paciente.activo ? <FiXCircle /> : <FiCheckCircle />}
+                      </button>
+
+                      <button
+                        className="btn-text text-danger"
+                        onClick={() => deletePaciente(paciente.id)}
+                        title="Eliminar"
+                      >
+                        <FiTrash2 />
+                      </button>
+
                       <button 
                         className="btn-text"
                         title="Ver expediente"
@@ -18709,9 +19136,9 @@ const CoordinadorPacientes = () => {
         <div className="card">
           <h4>Estadísticas</h4>
           <div className="mt-10">
-            <p>Sesiones totales: {pacientes.reduce((sum, p) => sum + p.sesiones_completadas, 0)}</p>
+            <p>Sesiones totales: {pacientes.reduce((sum, p) => sum + (p.sesiones_completadas || 0), 0)}</p>
             <p>Promedio por paciente: {
-              Math.round(pacientes.reduce((sum, p) => sum + p.sesiones_completadas, 0) / pacientes.length)
+              Math.round(pacientes.reduce((sum, p) => sum + (p.sesiones_completadas || 0), 0) / Math.max(pacientes.length, 1))
             }</p>
             <p>Altas este mes: {pacientes.filter(p => p.estado === 'alta_terapeutica').length}</p>
           </div>
@@ -19395,6 +19822,7 @@ const CoordinadorUsuarios = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRol, setFilterRol] = useState('');
+  const [includeInactivos, setIncludeInactivos] = useState(true); // mostrar inactivos por defecto
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('nuevo');
   const [formData, setFormData] = useState({
@@ -19405,7 +19833,8 @@ const CoordinadorUsuarios = () => {
     rol: 'becario',
     especialidad: '',
     fundacion_id: '',
-    activo: true
+    activo: true,
+    password: 'P@ssw0rd123' // contraseña temporal por defecto
   });
 
   useEffect(() => {
@@ -19414,69 +19843,27 @@ const CoordinadorUsuarios = () => {
 
   const fetchUsuarios = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setUsuarios([
-          {
-            id: 1,
-            nombre: 'Ana',
-            apellido: 'Martínez',
-            email: 'coordinador@psicogestion.com',
-            telefono: '555-1111',
-            rol: 'coordinador',
-            especialidad: 'Coordinación Clínica',
-            activo: true,
-            fecha_registro: '2023-01-15'
-          },
-          {
-            id: 2,
-            nombre: 'Luis',
-            apellido: 'Fernández',
-            email: 'psicologo1@psicogestion.com',
-            telefono: '555-2222',
-            rol: 'psicologo',
-            especialidad: 'Terapia Cognitivo-Conductual',
-            activo: true,
-            fecha_registro: '2023-02-20'
-          },
-          {
-            id: 3,
-            nombre: 'Laura',
-            apellido: 'Gutiérrez',
-            email: 'psicologo2@psicogestion.com',
-            telefono: '555-5555',
-            rol: 'psicologo',
-            especialidad: 'Terapia Familiar',
-            activo: true,
-            fecha_registro: '2023-03-10'
-          },
-          {
-            id: 4,
-            nombre: 'Juan',
-            apellido: 'Pérez',
-            email: 'becario1@psicogestion.com',
-            telefono: '555-3333',
-            rol: 'becario',
-            especialidad: 'Practicante de Psicología',
-            activo: true,
-            fecha_registro: '2023-09-01'
-          },
-          {
-            id: 5,
-            nombre: 'Sofía',
-            apellido: 'Ramírez',
-            email: 'becario2@psicogestion.com',
-            telefono: '555-4444',
-            rol: 'becario',
-            especialidad: 'Practicante de Psicología',
-            activo: false,
-            fecha_registro: '2023-10-15'
-          }
-        ]);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/users', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        // Si no es coordinador o token inválido, podemos mostrar un mensaje y seguir
+        console.error('Error fetching users:', res.status);
         setLoading(false);
-      }, 1000);
+        return;
+      }
+
+      const data = await res.json();
+      setUsuarios(data);
     } catch (error) {
       console.error('Error al obtener usuarios:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -19487,51 +19874,156 @@ const CoordinadorUsuarios = () => {
       usuario.email.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesRol = !filterRol || usuario.rol === filterRol;
+    const matchesActivo = includeInactivos ? true : usuario.activo;
     
-    return matchesSearch && matchesRol;
+    return matchesSearch && matchesRol && matchesActivo;
   });
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value
+    // Si cambia el rol y estamos creando un nuevo usuario, establecer contraseña temporal por defecto
+    setFormData(prev => {
+      const next = {
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      };
+
+      if (name === 'rol' && modalType === 'nuevo') {
+        // Mantener la contraseña temporal por defecto
+        next.password = 'P@ssw0rd123';
+      }
+
+      return next;
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (modalType === 'nuevo') {
-      const nuevoUsuario = {
-        id: usuarios.length + 1,
-        ...formData,
-        fecha_registro: new Date().toISOString().split('T')[0]
-      };
-      setUsuarios([...usuarios, nuevoUsuario]);
-      alert('Usuario creado exitosamente');
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:3000/api/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || 'Error creando usuario');
+          return;
+        }
+
+        const created = await res.json();
+        // Añadir a la lista local (asegura compatibilidad de campos)
+        setUsuarios(prev => [...prev, created]);
+        alert('Usuario creado exitosamente');
+      } catch (error) {
+        console.error('Error creando usuario:', error);
+        alert('Error creando usuario');
+      }
     } else {
-      // Editar usuario
-      setUsuarios(usuarios.map(u => 
-        u.id === formData.id ? { ...u, ...formData } : u
-      ));
-      alert('Usuario actualizado exitosamente');
+      // Editar usuario: enviar al backend
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`http://localhost:3000/api/users/${formData.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || 'Error actualizando usuario');
+          return;
+        }
+
+        const updated = await res.json();
+        setUsuarios(prev => prev.map(u => u.id === updated.id ? updated : u));
+        alert('Usuario actualizado exitosamente');
+      } catch (error) {
+        console.error('Error actualizando usuario:', error);
+        alert('Error actualizando usuario');
+      }
     }
     
     setShowModal(false);
     resetForm();
   };
 
+  const deleteUsuario = async (id) => {
+    if (!confirm('¿Seguro que desea eliminar (inactivar) este usuario?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/users/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error eliminando usuario');
+        return;
+      }
+
+      // remover de la lista local
+      setUsuarios(prev => prev.filter(u => u.id !== id));
+      alert('Usuario eliminado (inactivado) correctamente');
+    } catch (error) {
+      console.error('Error eliminando usuario:', error);
+      alert('Error eliminando usuario');
+    }
+  };
+
   const editarUsuario = (usuario) => {
-    setFormData(usuario);
+    // Mapear fecha si es string
+    const mapped = {
+      ...usuario,
+      password: 'P@ssw0rd123'
+    };
+    setFormData(mapped);
     setModalType('editar');
     setShowModal(true);
   };
 
-  const toggleEstadoUsuario = (id) => {
-    setUsuarios(usuarios.map(u => 
-      u.id === id ? { ...u, activo: !u.activo } : u
-    ));
+  const toggleEstadoUsuario = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      // Encontrar usuario actual
+      const usuario = usuarios.find(u => u.id === id);
+      if (!usuario) return;
+
+      const res = await fetch(`http://localhost:3000/api/users/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ activo: !usuario.activo })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Error al cambiar estado');
+        return;
+      }
+
+      const updated = await res.json();
+      setUsuarios(prev => prev.map(u => u.id === id ? updated : u));
+    } catch (error) {
+      console.error('Error toggling activo:', error);
+      alert('Error cambiando estado de usuario');
+    }
   };
 
   const resetForm = () => {
@@ -19543,7 +20035,8 @@ const CoordinadorUsuarios = () => {
       rol: 'becario',
       especialidad: '',
       fundacion_id: '',
-      activo: true
+      activo: true,
+      password: 'P@ssw0rd123'
     });
   };
 
@@ -19613,6 +20106,31 @@ const CoordinadorUsuarios = () => {
             <option value="psicologo">Psicólogos</option>
             <option value="becario">Becarios</option>
           </select>
+
+          <label className="ml-10 flex-row align-center">
+            <input
+              type="checkbox"
+              checked={includeInactivos}
+              onChange={(e) => setIncludeInactivos(e.target.checked)}
+            />
+            <span className="ml-5">Incluir inactivos</span>
+          </label>
+
+          <button
+            className="btn-secondary ml-10"
+            onClick={() => { setFilterRol(''); setSearchTerm(''); setIncludeInactivos(true); fetchUsuarios(); }}
+            title="Mostrar todos"
+          >
+            Mostrar todos
+          </button>
+
+          <button
+            className="btn-secondary ml-10"
+            onClick={() => fetchUsuarios()}
+            title="Refrescar"
+          >
+            Actualizar
+          </button>
         </div>
       </div>
 
@@ -19682,6 +20200,13 @@ const CoordinadorUsuarios = () => {
                         title={usuario.activo ? 'Desactivar' : 'Activar'}
                       >
                         {usuario.activo ? <FiXCircle /> : <FiCheckCircle />}
+                      </button>
+                      <button
+                        className="btn-text text-danger"
+                        onClick={() => deleteUsuario(usuario.id)}
+                        title="Eliminar"
+                      >
+                        <FiTrash2 />
                       </button>
                     </div>
                   </td>
@@ -19824,7 +20349,8 @@ const CoordinadorUsuarios = () => {
                     <label>Contraseña Temporal</label>
                     <input
                       type="text"
-                      value="P@ssw0rd123"
+                      name="password"
+                      value={formData.password}
                       className="input-field"
                       readOnly
                     />

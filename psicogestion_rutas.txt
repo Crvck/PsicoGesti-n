@@ -83,6 +83,7 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\fundacionRoutes.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\notificacionRoutes.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\observacionRoutes.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\pacienteRoutes.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\reporteRoutes.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\roleRoutes.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\backend\src\routes\sesionRoutes.js

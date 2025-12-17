@@ -50,17 +50,17 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--blud);
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--grnb);
+  background: var(--white);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--grnd);
+  background: var(--white);
 }
 
 /* Estados de hover para elementos interactivos */

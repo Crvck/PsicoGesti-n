@@ -28,7 +28,7 @@
 }
 
 .data-table tr:hover {
-  background: rgba(41, 206, 155, 0.1);
+  background: rgba(31, 133, 186, 0.1);
 }
 
 .data-table tr:last-child td {
@@ -47,7 +47,7 @@
 }
 
 .badge-success {
-  background: rgba(41, 206, 155, 0.2);
+  background: rgba(31, 133, 186, 0.2);
   color: var(--grnb);
   border: 1px solid var(--grnb);
 }
@@ -355,32 +355,15 @@ input:checked + .slider:before {
 }
 
 .scrollable::-webkit-scrollbar-thumb {
-  background: var(--grnd);
+  background: var(--white);
   border-radius: 3px;
 }
 
 .scrollable::-webkit-scrollbar-thumb:hover {
-  background: var(--grnb);
+  background: var(--gray);
 }
 
-/* Estados de carga */
-.loading-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 300px;
-}
 
-.loading-spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 255, 255, 0.1);
-  border-top: 4px solid var(--grnd);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 20px;
-}
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
@@ -397,7 +380,7 @@ input:checked + .slider:before {
 }
 
 .alert-message.success {
-  background: rgba(41, 206, 155, 0.1);
+  background: rgba(31, 133, 186, 0.1);
   border-color: var(--grnb);
   color: var(--grnb);
 }
@@ -491,45 +474,7 @@ input:checked + .slider:before {
   color: var(--blud);
 }
 
-/* Timeline para actividad reciente */
-.timeline {
-  position: relative;
-  padding-left: 30px;
-}
 
-.timeline::before {
-  content: '';
-  position: absolute;
-  left: 15px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--blu);
-}
-
-.timeline-item {
-  position: relative;
-  margin-bottom: 20px;
-}
-
-.timeline-item::before {
-  content: '';
-  position: absolute;
-  left: -20px;
-  top: 5px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--grnd);
-  border: 2px solid var(--blud);
-}
-
-.timeline-content {
-  background: var(--blud);
-  padding: 15px;
-  border-radius: 8px;
-  border: 1px solid var(--blub);
-}
 
 /* Mejoras para tabs */
 .config-tabs {
@@ -560,7 +505,7 @@ input:checked + .slider:before {
 }
 
 .config-tab.active {
-  background: rgba(41, 206, 155, 0.1);
+  background: rgba(31, 133, 186, 0.1);
   color: var(--grnb);
   border-left: 3px solid var(--grnb);
 }
@@ -576,32 +521,7 @@ input:checked + .slider:before {
   max-height: 90vh;
 }
 
-/* Cards con estadísticas */
-.stat-card {
-  background: linear-gradient(135deg, var(--blud) 0%, var(--blub) 100%);
-  border: 1px solid var(--blub);
-  border-radius: 10px;
-  padding: 20px;
-  transition: all 0.3s ease;
-}
 
-.stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
-  border-color: var(--grnd);
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: bold;
-  color: var(--white);
-  margin: 10px 0 5px 0;
-}
-
-.stat-change {
-  font-size: 12px;
-  color: var(--grnd);
-}
 
 /* Grid responsive mejorado */
 .grid-responsive {

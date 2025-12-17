@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import Login from './components/Auth/Login';
 import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
 
 // Páginas para Becarios
 import BecarioDashboard from './pages/becario/DashboardPage';

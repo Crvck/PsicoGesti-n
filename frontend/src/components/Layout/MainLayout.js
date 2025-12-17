@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { FiMenu, FiX, FiHome, FiUsers, FiCalendar, FiSettings, FiLogOut } from 'react-icons/fi';
+import { FiMenu, FiChevronLeft,FiChevronLeft, FiHome, FiUsers, FiCalendar, FiSettings, FiLogOut } from 'react-icons/fi';
 
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -29,9 +29,13 @@ const MainLayout = () => {
             className="control-btn"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            {sidebarOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
-          <h2 className="app-name">PsicoGestión</h2>
+          <img 
+                src="/images/logoCESUN2wide.png" 
+                alt="PsicoGestión" 
+                className="dashboard-logo"
+              />
         </div>
         
         <div className="flex-row align-center gap-20">

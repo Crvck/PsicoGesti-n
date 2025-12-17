@@ -5,6 +5,8 @@ import {
   FiDollarSign, FiActivity
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({

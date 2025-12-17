@@ -10,6 +10,7 @@
 
   --whiteSET: #ffffff;
   --bludSET: #1B1E23;
+  --blubSET: #2c3138;
   
   /* Colores adicionales */
   --blu: #1F85BA;      /* GRNB - Azul */
@@ -819,11 +820,11 @@ body {
 }
 
 .data-table th {
-  background: var(--blub);
+  background: var(--bluDSET);
   padding: 12px 15px;
   text-align: left;
   font-weight: bold;
-  border-bottom: 2px solid var(--grnb);
+  border-bottom: 2px solid var(--blu);
 }
 
 .data-table td {
@@ -1715,7 +1716,7 @@ input:checked + .slider:before {
 }
 
 .alert-message.success {
-  background: rgba(31, 133, 186, 0.2);
+  background: rgba(31, 186, 101, 0.2);
   border-color: var(--grnb);
   color: var(--grnb);
 }

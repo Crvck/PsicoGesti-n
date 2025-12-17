@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiFileText, FiPlus, FiEdit2, FiTrash2, FiCalendar, FiUser, FiSave } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
+
 
 const BecarioObservaciones = () => {
   const [observaciones, setObservaciones] = useState([]);
@@ -87,11 +90,13 @@ const BecarioObservaciones = () => {
       preguntas_supervisor: ''
     });
     
-    alert('Observación registrada exitosamente');
+    notifications.success('Observación registrada exitosamente');
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('¿Estás seguro de eliminar esta observación?')) {
+  const handleDelete = async (id) => {
+    const confirmado = await confirmations.danger('¿Estás seguro de eliminar esta observación?');
+    
+    if (confirmado) {
       setObservaciones(observaciones.filter(o => o.id !== id));
     }
   };

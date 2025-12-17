@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUser, FiCalendar, FiPhone, FiMail, FiFileText } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const BecarioPacientes = () => {
   const [pacientes, setPacientes] = useState([]);

@@ -4,6 +4,8 @@ import {
   FiSearch, FiCalendar, FiUser, FiFileText, FiDownload
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorAltas = () => {
   const [altas, setAltas] = useState([]);
@@ -147,16 +149,27 @@ const CoordinadorAltas = () => {
     return matchesEstado && matchesMes;
   });
 
-  const procesarAlta = (pacienteId, decision) => {
-    if (decision === 'aprobar') {
-      if (window.confirm('¿Estás seguro de aprobar el alta terapéutica de este paciente?')) {
-        alert('Alta aprobada exitosamente');
-        setCandidatosAlta(candidatosAlta.filter(p => p.id !== pacienteId));
+  const procesarAlta = async (pacienteId, decision) => {
+    try {
+      if (decision === 'aprobar') {
+        // Para aprobar - usar warning (amarillo) o info (azul)
+        const confirmado = await confirmations.warning('¿Estás seguro de aprobar el alta terapéutica de este paciente?');
+        
+        if (confirmado) {
+          notifications.success('Alta aprobada exitosamente');
+          setCandidatosAlta(candidatosAlta.filter(p => p.id !== pacienteId));
+        }
+      } else {
+        // Para rechazar - usar danger (rojo)
+        const confirmado = await confirmations.danger('¿Estás seguro de rechazar el alta de este paciente?');
+        
+        if (confirmado) {
+          notifications.error('Alta rechazada. Se notificará al psicólogo.');
+        }
       }
-    } else {
-      if (window.confirm('¿Estás seguro de rechazar el alta de este paciente?')) {
-        alert('Alta rechazada. Se notificará al psicólogo.');
-      }
+    } catch (error) {
+      console.error('Error en el proceso de alta:', error);
+      notifications.error('Ocurrió un error al procesar la solicitud');
     }
   };
 
@@ -174,7 +187,7 @@ const CoordinadorAltas = () => {
   };
 
   const exportarReporteAltas = () => {
-    alert('Generando reporte de altas...');
+    notifications.success('Generando reporte de altas...');
     // En una implementación real, aquí se generaría el archivo de exportación
   };
 

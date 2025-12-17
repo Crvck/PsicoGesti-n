@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiBell, FiCheckCircle, FiClock, FiCalendar, FiMessageSquare } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const BecarioNotificaciones = () => {
   const [notificaciones, setNotificaciones] = useState([]);

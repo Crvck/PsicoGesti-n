@@ -3,6 +3,8 @@ import {
   FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
   FiUserCheck, FiClock, FiRefreshCw
 } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({

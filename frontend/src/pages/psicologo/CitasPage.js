@@ -6,6 +6,8 @@ import {
 } from 'react-icons/fi';
 import { format, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoCitas = () => {
   const [citas, setCitas] = useState([]);
@@ -102,7 +104,7 @@ const PsicologoCitas = () => {
         cita.id === citaId ? { ...cita, estado: nuevoEstado } : cita
       )
     );
-    alert(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
+    notifications.success(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
   };
 
   if (loading) {

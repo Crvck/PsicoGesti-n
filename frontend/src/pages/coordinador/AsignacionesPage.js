@@ -4,6 +4,8 @@ import {
   FiRefreshCw, FiSearch, FiFilter, FiEdit2
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorAsignaciones = () => {
   const [becarios, setBecarios] = useState([]);
@@ -60,19 +62,25 @@ const CoordinadorAsignaciones = () => {
 
   const handleAsignarPaciente = (pacienteId, becarioId) => {
     // Lógica para asignar paciente
-    alert(`Paciente asignado exitosamente al becario`);
+    notifications.success(`Paciente asignado exitosamente al becario`);
     setShowModal(false);
   };
 
   const handleReasignar = (asignacionId, nuevoBecarioId) => {
     // Lógica para reasignar
-    alert(`Paciente reasignado exitosamente`);
+    notifications.success(`Paciente reasignado exitosamente`);
   };
 
-  const handleFinalizarAsignacion = (asignacionId) => {
-    // Lógica para finalizar asignación
-    if (window.confirm('¿Estás seguro de finalizar esta asignación?')) {
-      alert('Asignación finalizada exitosamente');
+  const handleFinalizarAsignacion = async (asignacionId) => {
+    try {
+      const confirmado = await confirmations.warning('¿Estás seguro de finalizar esta asignación?');
+      
+      if (confirmado) {
+        notifications.success('Asignación finalizada exitosamente');
+      }
+    } catch (error) {
+      console.error('Error al finalizar asignación:', error);
+      notifications.error('No se pudo finalizar la asignación');
     }
   };
 

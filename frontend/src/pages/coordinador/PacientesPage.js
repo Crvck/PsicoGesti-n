@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiXCircle, FiCheckCircle } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorPacientes = () => {
   const [pacientes, setPacientes] = useState([]);
@@ -96,16 +98,16 @@ const CoordinadorPacientes = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error creando paciente');
+          notifications.error(err.message || 'Error creando paciente');
           return;
         }
 
         const created = await res.json();
         setPacientes(prev => [...prev, created]);
-        alert('Paciente creado exitosamente');
+        notifications.success('Paciente creado exitosamente');
       } catch (error) {
         console.error('Error creando paciente:', error);
-        alert('Error creando paciente');
+        notifications.error('Error creando paciente');
       }
     } else {
       // Editar paciente: enviar al backend
@@ -122,16 +124,16 @@ const CoordinadorPacientes = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error actualizando paciente');
+          notifications.error(err.message || 'Error actualizando paciente');
           return;
         }
 
         const updated = await res.json();
         setPacientes(prev => prev.map(p => p.id === updated.id ? updated : p));
-        alert('Paciente actualizado exitosamente');
+        notifications.success('Paciente actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando paciente:', error);
-        alert('Error actualizando paciente');
+        notifications.error('Error actualizando paciente');
       }
     }
     
@@ -161,7 +163,7 @@ const CoordinadorPacientes = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error cambiando estado');
+        notifications.error(err.message || 'Error cambiando estado');
         return;
       }
 
@@ -169,7 +171,7 @@ const CoordinadorPacientes = () => {
       setPacientes(prev => prev.map(p => p.id === id ? updated : p));
     } catch (error) {
       console.error('Error toggling paciente activo:', error);
-      alert('Error cambiando estado del paciente');
+      notifications.error('Error cambiando estado del paciente');
     }
   };
 
@@ -187,15 +189,15 @@ const CoordinadorPacientes = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error eliminando paciente');
+        notifications.error(err.message || 'Error eliminando paciente');
         return;
       }
 
       setPacientes(prev => prev.filter(p => p.id !== id));
-      alert('Paciente eliminado (inactivado) correctamente');
+      notifications.success('Paciente eliminado (inactivado) correctamente');
     } catch (error) {
       console.error('Error eliminando paciente:', error);
-      alert('Error eliminando paciente');
+      notifications.error('Error eliminando paciente');
     }
   };
 

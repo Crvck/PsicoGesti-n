@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiCalendar, FiUser, FiFileText, FiPlus, FiEdit2, FiSave } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoSesiones = () => {
   const [sesiones, setSesiones] = useState([]);
@@ -88,7 +90,7 @@ const PsicologoSesiones = () => {
     setShowForm(false);
     resetForm();
     
-    alert('Sesión registrada exitosamente');
+    notifications.success('Sesión registrada exitosamente');
   };
 
   const resetForm = () => {

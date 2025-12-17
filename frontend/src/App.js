@@ -5,6 +5,10 @@ import Login from './components/Auth/Login';
 import RoleRouter from './components/Auth/RoleRouter';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
+
 // Páginas para Becarios
 import BecarioDashboard from './pages/becario/DashboardPage';
 import BecarioCitas from './pages/becario/CitasPage';
@@ -34,6 +38,10 @@ function App() {
   return (
     <Router>
       <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
         <Routes>
           <Route path="/login" element={<Login />} />
           

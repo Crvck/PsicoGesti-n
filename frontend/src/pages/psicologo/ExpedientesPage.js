@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiFileText, FiCalendar, FiUser, FiPhone, FiMail, FiDownload } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoExpedientes = () => {
   const [expedientes, setExpedientes] = useState([]);
@@ -68,7 +70,7 @@ const PsicologoExpedientes = () => {
 
   const exportarExpediente = (expediente) => {
     // Simulación de exportación
-    alert(`Exportando expediente de ${expediente.paciente_nombre}...`);
+    notifications.success(`Exportando expediente de ${expediente.paciente_nombre}...`);
   };
 
   if (loading) {

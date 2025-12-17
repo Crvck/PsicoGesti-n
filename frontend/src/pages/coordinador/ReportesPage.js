@@ -4,6 +4,9 @@ import {
   FiTrendingUp, FiFilter, FiRefreshCw, FiPrinter
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
+
 
 const CoordinadorReportes = () => {
   const [reportes, setReportes] = useState([]);
@@ -73,14 +76,14 @@ const CoordinadorReportes = () => {
       setReportes([nuevoReporte, ...reportes]);
       setReporteGenerado(nuevoReporte);
       setLoading(false);
-      alert('Reporte generado exitosamente');
+      notifications.success('Reporte generado exitosamente');
     }, 1500);
   };
 
   const descargarReporte = (reporteId) => {
     const reporte = reportes.find(r => r.id === reporteId);
     if (reporte) {
-      alert(`Descargando reporte: ${reporte.nombre}`);
+      notifications.success(`Descargando reporte: ${reporte.nombre}`);
       // En una implementación real, aquí se generaría y descargaría el archivo
     }
   };
@@ -88,7 +91,7 @@ const CoordinadorReportes = () => {
   const imprimirReporte = (reporteId) => {
     const reporte = reportes.find(r => r.id === reporteId);
     if (reporte) {
-      alert(`Imprimiendo reporte: ${reporte.nombre}`);
+      notifications.success(`Imprimiendo reporte: ${reporte.nombre}`);
       // En una implementación real, aquí se abriría el diálogo de impresión
     }
   };

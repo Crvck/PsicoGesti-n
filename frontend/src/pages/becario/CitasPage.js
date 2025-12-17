@@ -6,6 +6,8 @@ import {
 } from 'react-icons/fi';
 import { format, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const BecarioCitas = () => {
   const [citas, setCitas] = useState([]);
@@ -79,11 +81,11 @@ const BecarioCitas = () => {
       
       if (response.ok) {
         fetchCitas();
-        alert(`Cita ${nuevoEstado === 'completada' ? 'completada' : 'cancelada'} exitosamente`);
+        notifications.success(`Cita ${nuevoEstado === 'completada' ? 'completada' : 'cancelada'} exitosamente`);
       }
     } catch (error) {
       console.error('Error al actualizar cita:', error);
-      alert('Error al actualizar la cita');
+      notifications.error('Error al actualizar la cita');
     }
   };
 

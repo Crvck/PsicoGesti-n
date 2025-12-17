@@ -5,6 +5,8 @@ import {
   FiShield, FiGlobe, FiMail, FiLock
 } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorConfiguracion = () => {
   const [activeTab, setActiveTab] = useState('general');
@@ -163,18 +165,21 @@ const CoordinadorConfiguracion = () => {
     reader.readAsText(file);
   };
 
-  const restaurarValoresPredeterminados = (categoria) => {
-    if (window.confirm('¿Estás seguro de restaurar los valores predeterminados?')) {
-      // Aquí se restaurarían los valores predeterminados
-      alert('Valores predeterminados restaurados');
+  const restaurarValoresPredeterminados = async (categoria) => {
+    const confirmado = await confirmations.warning('¿Estás seguro de restaurar los valores predeterminados?');
+    
+    if (confirmado) {
+      notifications.success('Valores predeterminados restaurados');
     }
   };
 
-  const toggleModoMantenimiento = () => {
+  const toggleModoMantenimiento = async () => {
     const nuevoValor = !configuraciones.avanzada?.modoMantenimiento;
-    if (window.confirm(`¿${nuevoValor ? 'Activar' : 'Desactivar'} modo mantenimiento? Esto afectará a todos los usuarios.`)) {
+    const confirmado = await confirmations.danger(`¿${nuevoValor ? 'Activar' : 'Desactivar'} modo mantenimiento? Esto afectará a todos los usuarios.`);
+    
+    if (confirmado) {
       handleInputChange('avanzada', 'modoMantenimiento', nuevoValor);
-      alert(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
+      notifications.warning(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
     }
   };
 

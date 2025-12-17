@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiUser, FiFileText, FiCalendar, FiMessageSquare, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const PsicologoSupervision = () => {
   const [becarios, setBecarios] = useState([]);
@@ -73,12 +75,12 @@ const PsicologoSupervision = () => {
 
   const enviarFeedback = (becarioId) => {
     if (!feedback.trim()) {
-      alert('Por favor, escribe algún feedback');
+      notifications.success('Por favor, escribe algún feedback');
       return;
     }
     
     // Aquí se enviaría al backend
-    alert(`Feedback enviado a ${becarios.find(b => b.id === becarioId)?.nombre}`);
+    notifications.success(`Feedback enviado a ${becarios.find(b => b.id === becarioId)?.nombre}`);
     setFeedback('');
     setShowFeedback(false);
   };

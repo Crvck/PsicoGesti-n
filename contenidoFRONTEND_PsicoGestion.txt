@@ -1329,7 +1329,7 @@ const CitasPage = () => {
         });
         
         // Mostrar mensaje de éxito
-        alert('✅ Cita creada exitosamente');
+        notifications.success('✅ Cita creada exitosamente');
         
         // Recargar las citas
         if (view === 'day') {
@@ -2979,11 +2979,11 @@ const BecarioCitas = () => {
       
       if (response.ok) {
         fetchCitas();
-        alert(`Cita ${nuevoEstado === 'completada' ? 'completada' : 'cancelada'} exitosamente`);
+        notifications.success(`Cita ${nuevoEstado === 'completada' ? 'completada' : 'cancelada'} exitosamente`);
       }
     } catch (error) {
       console.error('Error al actualizar cita:', error);
-      alert('Error al actualizar la cita');
+      notifications.success('Error al actualizar la cita');
     }
   };
 
@@ -3779,7 +3779,7 @@ const BecarioObservaciones = () => {
       preguntas_supervisor: ''
     });
     
-    alert('Observación registrada exitosamente');
+    notifications.success('Observación registrada exitosamente');
   };
 
   const handleDelete = (id) => {
@@ -4871,12 +4871,12 @@ const CoordinadorAltas = () => {
   const procesarAlta = (pacienteId, decision) => {
     if (decision === 'aprobar') {
       if (window.confirm('¿Estás seguro de aprobar el alta terapéutica de este paciente?')) {
-        alert('Alta aprobada exitosamente');
+        notifications.success('Alta aprobada exitosamente');
         setCandidatosAlta(candidatosAlta.filter(p => p.id !== pacienteId));
       }
     } else {
       if (window.confirm('¿Estás seguro de rechazar el alta de este paciente?')) {
-        alert('Alta rechazada. Se notificará al psicólogo.');
+        notifications.success('Alta rechazada. Se notificará al psicólogo.');
       }
     }
   };
@@ -4895,7 +4895,7 @@ const CoordinadorAltas = () => {
   };
 
   const exportarReporteAltas = () => {
-    alert('Generando reporte de altas...');
+    notifications.success('Generando reporte de altas...');
     // En una implementación real, aquí se generaría el archivo de exportación
   };
 
@@ -5356,19 +5356,19 @@ const CoordinadorAsignaciones = () => {
 
   const handleAsignarPaciente = (pacienteId, becarioId) => {
     // Lógica para asignar paciente
-    alert(`Paciente asignado exitosamente al becario`);
+    notifications.success(`Paciente asignado exitosamente al becario`);
     setShowModal(false);
   };
 
   const handleReasignar = (asignacionId, nuevoBecarioId) => {
     // Lógica para reasignar
-    alert(`Paciente reasignado exitosamente`);
+    notifications.success(`Paciente reasignado exitosamente`);
   };
 
   const handleFinalizarAsignacion = (asignacionId) => {
     // Lógica para finalizar asignación
     if (window.confirm('¿Estás seguro de finalizar esta asignación?')) {
-      alert('Asignación finalizada exitosamente');
+      notifications.success('Asignación finalizada exitosamente');
     }
   };
 
@@ -5848,7 +5848,7 @@ const CoordinadorConfiguracion = () => {
   const restaurarValoresPredeterminados = (categoria) => {
     if (window.confirm('¿Estás seguro de restaurar los valores predeterminados?')) {
       // Aquí se restaurarían los valores predeterminados
-      alert('Valores predeterminados restaurados');
+      notifications.success('Valores predeterminados restaurados');
     }
   };
 
@@ -5856,7 +5856,7 @@ const CoordinadorConfiguracion = () => {
     const nuevoValor = !configuraciones.avanzada?.modoMantenimiento;
     if (window.confirm(`¿${nuevoValor ? 'Activar' : 'Desactivar'} modo mantenimiento? Esto afectará a todos los usuarios.`)) {
       handleInputChange('avanzada', 'modoMantenimiento', nuevoValor);
-      alert(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
+      notifications.success(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
     }
   };
 
@@ -7075,16 +7075,16 @@ const CoordinadorPacientes = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error creando paciente');
+          notifications.success(err.message || 'Error creando paciente');
           return;
         }
 
         const created = await res.json();
         setPacientes(prev => [...prev, created]);
-        alert('Paciente creado exitosamente');
+        notifications.success('Paciente creado exitosamente');
       } catch (error) {
         console.error('Error creando paciente:', error);
-        alert('Error creando paciente');
+        notifications.success('Error creando paciente');
       }
     } else {
       // Editar paciente: enviar al backend
@@ -7101,16 +7101,16 @@ const CoordinadorPacientes = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error actualizando paciente');
+          notifications.success(err.message || 'Error actualizando paciente');
           return;
         }
 
         const updated = await res.json();
         setPacientes(prev => prev.map(p => p.id === updated.id ? updated : p));
-        alert('Paciente actualizado exitosamente');
+        notifications.success('Paciente actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando paciente:', error);
-        alert('Error actualizando paciente');
+        notifications.success('Error actualizando paciente');
       }
     }
     
@@ -7140,7 +7140,7 @@ const CoordinadorPacientes = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error cambiando estado');
+        notifications.success(err.message || 'Error cambiando estado');
         return;
       }
 
@@ -7148,7 +7148,7 @@ const CoordinadorPacientes = () => {
       setPacientes(prev => prev.map(p => p.id === id ? updated : p));
     } catch (error) {
       console.error('Error toggling paciente activo:', error);
-      alert('Error cambiando estado del paciente');
+      notifications.success('Error cambiando estado del paciente');
     }
   };
 
@@ -7166,15 +7166,15 @@ const CoordinadorPacientes = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error eliminando paciente');
+        notifications.success(err.message || 'Error eliminando paciente');
         return;
       }
 
       setPacientes(prev => prev.filter(p => p.id !== id));
-      alert('Paciente eliminado (inactivado) correctamente');
+      notifications.success('Paciente eliminado (inactivado) correctamente');
     } catch (error) {
       console.error('Error eliminando paciente:', error);
-      alert('Error eliminando paciente');
+      notifications.success('Error eliminando paciente');
     }
   };
 
@@ -7755,14 +7755,14 @@ const CoordinadorReportes = () => {
       setReportes([nuevoReporte, ...reportes]);
       setReporteGenerado(nuevoReporte);
       setLoading(false);
-      alert('Reporte generado exitosamente');
+      notifications.success('Reporte generado exitosamente');
     }, 1500);
   };
 
   const descargarReporte = (reporteId) => {
     const reporte = reportes.find(r => r.id === reporteId);
     if (reporte) {
-      alert(`Descargando reporte: ${reporte.nombre}`);
+      notifications.success(`Descargando reporte: ${reporte.nombre}`);
       // En una implementación real, aquí se generaría y descargaría el archivo
     }
   };
@@ -7770,7 +7770,7 @@ const CoordinadorReportes = () => {
   const imprimirReporte = (reporteId) => {
     const reporte = reportes.find(r => r.id === reporteId);
     if (reporte) {
-      alert(`Imprimiendo reporte: ${reporte.nombre}`);
+      notifications.success(`Imprimiendo reporte: ${reporte.nombre}`);
       // En una implementación real, aquí se abriría el diálogo de impresión
     }
   };
@@ -8202,17 +8202,17 @@ const CoordinadorUsuarios = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error creando usuario');
+          notifications.success(err.message || 'Error creando usuario');
           return;
         }
 
         const created = await res.json();
         // Añadir a la lista local (asegura compatibilidad de campos)
         setUsuarios(prev => [...prev, created]);
-        alert('Usuario creado exitosamente');
+        notifications.success('Usuario creado exitosamente');
       } catch (error) {
         console.error('Error creando usuario:', error);
-        alert('Error creando usuario');
+        notifications.success('Error creando usuario');
       }
     } else {
       // Editar usuario: enviar al backend
@@ -8229,16 +8229,16 @@ const CoordinadorUsuarios = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error actualizando usuario');
+          notifications.success(err.message || 'Error actualizando usuario');
           return;
         }
 
         const updated = await res.json();
         setUsuarios(prev => prev.map(u => u.id === updated.id ? updated : u));
-        alert('Usuario actualizado exitosamente');
+        notifications.success('Usuario actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando usuario:', error);
-        alert('Error actualizando usuario');
+        notifications.success('Error actualizando usuario');
       }
     }
     
@@ -8260,16 +8260,16 @@ const CoordinadorUsuarios = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error eliminando usuario');
+        notifications.success(err.message || 'Error eliminando usuario');
         return;
       }
 
       // remover de la lista local
       setUsuarios(prev => prev.filter(u => u.id !== id));
-      alert('Usuario eliminado (inactivado) correctamente');
+      notifications.success('Usuario eliminado (inactivado) correctamente');
     } catch (error) {
       console.error('Error eliminando usuario:', error);
-      alert('Error eliminando usuario');
+      notifications.success('Error eliminando usuario');
     }
   };
 
@@ -8302,7 +8302,7 @@ const CoordinadorUsuarios = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error al cambiar estado');
+        notifications.success(err.message || 'Error al cambiar estado');
         return;
       }
 
@@ -8310,7 +8310,7 @@ const CoordinadorUsuarios = () => {
       setUsuarios(prev => prev.map(u => u.id === id ? updated : u));
     } catch (error) {
       console.error('Error toggling activo:', error);
-      alert('Error cambiando estado de usuario');
+      notifications.success('Error cambiando estado de usuario');
     }
   };
 
@@ -8787,7 +8787,7 @@ const PsicologoCitas = () => {
         cita.id === citaId ? { ...cita, estado: nuevoEstado } : cita
       )
     );
-    alert(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
+    notifications.success(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
   };
 
   if (loading) {
@@ -9370,7 +9370,7 @@ const PsicologoExpedientes = () => {
 
   const exportarExpediente = (expediente) => {
     // Simulación de exportación
-    alert(`Exportando expediente de ${expediente.paciente_nombre}...`);
+    notifications.success(`Exportando expediente de ${expediente.paciente_nombre}...`);
   };
 
   if (loading) {
@@ -10008,7 +10008,7 @@ const PsicologoSesiones = () => {
     setShowForm(false);
     resetForm();
     
-    alert('Sesión registrada exitosamente');
+    notifications.success('Sesión registrada exitosamente');
   };
 
   const resetForm = () => {
@@ -10345,12 +10345,12 @@ const PsicologoSupervision = () => {
 
   const enviarFeedback = (becarioId) => {
     if (!feedback.trim()) {
-      alert('Por favor, escribe algún feedback');
+      notifications.success('Por favor, escribe algún feedback');
       return;
     }
     
     // Aquí se enviaría al backend
-    alert(`Feedback enviado a ${becarios.find(b => b.id === becarioId)?.nombre}`);
+    notifications.success(`Feedback enviado a ${becarios.find(b => b.id === becarioId)?.nombre}`);
     setFeedback('');
     setShowFeedback(false);
   };

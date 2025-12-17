@@ -10716,7 +10716,7 @@ class EmailService {
                 <style>
                     body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
                     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #4a6fa5; color: white; padding: 20px; text-align: center; }
+                    .header { background-color: #4a6fa5; color: var(--white); padding: 20px; text-align: center; }
                     .content { padding: 20px; background-color: #f9f9f9; }
                     .footer { padding: 10px; text-align: center; font-size: 12px; color: #666; }
                     .details { margin: 20px 0; padding: 15px; background-color: #fff; border-left: 4px solid #4a6fa5; }
@@ -10772,7 +10772,7 @@ class EmailService {
                 <style>
                     body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
                     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #28a745; color: white; padding: 20px; text-align: center; }
+                    .header { background-color: #28a745; color: var(--white); padding: 20px; text-align: center; }
                     .content { padding: 20px; background-color: #f9f9f9; }
                     .footer { padding: 10px; text-align: center; font-size: 12px; color: #666; }
                     .details { margin: 20px 0; padding: 15px; background-color: #fff; border-left: 4px solid #28a745; }
@@ -11762,6 +11762,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import Login from './components/Auth/Login';
 import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
 
 // Páginas para Becarios
 import BecarioDashboard from './pages/becario/DashboardPage';
@@ -11792,6 +11797,10 @@ function App() {
   return (
     <Router>
       <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
         <Routes>
           <Route path="/login" element={<Login />} />
           
@@ -11841,6 +11850,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './global.css';
 import './App.css';
+
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
+
 import App from './App';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
@@ -12042,10 +12056,55 @@ const PrivateRoute = ({ children }) => {
 
 export default PrivateRoute;
 
+/frontend\src\components\Auth\ProtectedRoute.js:
+--------------------------------------------------------------------------------
+// src/components/Auth/ProtectedRoute.js
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+
+const ProtectedRoute = ({ children, allowedRoles }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="global-loader">
+        <div className="global-loader-content">
+          <div className="global-loader-spinner"></div>
+          <div className="global-loader-text">Cargando...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  // Verificar si el usuario tiene un rol permitido
+  if (!allowedRoles.includes(user.rol)) {
+    // Redirigir al dashboard correspondiente según el rol
+    switch (user.rol) {
+      case 'becario':
+        return <Navigate to="/becario/dashboard" replace />;
+      case 'psicologo':
+        return <Navigate to="/psicologo/dashboard" replace />;
+      case 'coordinador':
+        return <Navigate to="/coordinador/dashboard" replace />;
+      default:
+        return <Navigate to="/login" />;
+    }
+  }
+
+  return children;
+};
+
+export default ProtectedRoute;
+
 /frontend\src\components\Auth\RoleRouter.js:
 --------------------------------------------------------------------------------
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import BecarioLayout from '../Layout/BecarioLayout';
 import PsicologoLayout from '../Layout/PsicologoLayout';
@@ -12053,6 +12112,7 @@ import CoordinadorLayout from '../Layout/CoordinadorLayout';
 
 const RoleRouter = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -12069,6 +12129,21 @@ const RoleRouter = ({ children }) => {
     return <Navigate to="/login" />;
   }
 
+  // Verificar si la ruta actual corresponde al rol del usuario
+  const path = location.pathname;
+  
+  if (user.rol === 'becario' && !path.startsWith('/becario')) {
+    return <Navigate to="/becario/dashboard" replace />;
+  }
+  
+  if (user.rol === 'psicologo' && !path.startsWith('/psicologo')) {
+    return <Navigate to="/psicologo/dashboard" replace />;
+  }
+  
+  if (user.rol === 'coordinador' && !path.startsWith('/coordinador')) {
+    return <Navigate to="/coordinador/dashboard" replace />;
+  }
+
   // Determinar layout basado en el rol del usuario
   switch (user.rol) {
     case 'becario':
@@ -12078,12 +12153,224 @@ const RoleRouter = ({ children }) => {
     case 'coordinador':
       return <CoordinadorLayout>{children}</CoordinadorLayout>;
     default:
-      // Si el rol no está definido, redirigir a login
       return <Navigate to="/login" />;
   }
 };
 
 export default RoleRouter;
+
+/frontend\src\components\Common\ConfirmModal.jsx:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react'
+import './ConfirmModal.css'
+
+let showConfirmFunc = null
+
+const ConfirmModal = () => {
+  const [visible, setVisible] = useState(false)
+  const [message, setMessage] = useState('')
+  const [type, setType] = useState('warning') // 'warning', 'danger', 'info'
+  const [callback, setCallback] = useState(null)
+
+  const show = (msg, confirmCallback, msgType = 'warning') => {
+    setMessage(msg)
+    setType(msgType)
+    setCallback(() => confirmCallback)
+    setVisible(true)
+  }
+
+  const handleConfirm = () => {
+    if (callback) callback(true)
+    hide()
+  }
+
+  const handleCancel = () => {
+    if (callback) callback(false)
+    hide()
+  }
+
+  const hide = () => {
+    setVisible(false)
+    setMessage('')
+    setCallback(null)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleConfirm()
+    } else if (e.key === 'Escape') {
+      handleCancel()
+    }
+  }
+
+  const handleOverlayClick = (e) => {
+    if (e.target.classList.contains('confirm-overlay')) {
+      handleCancel()
+    }
+  }
+
+  // Exponer la función show al objeto global
+  useEffect(() => {
+    showConfirmFunc = show
+    
+    return () => {
+      showConfirmFunc = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (visible) {
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [visible])
+
+  if (!visible) return null
+
+  const getButtonTexts = () => {
+    switch (type) {
+      case 'danger': return { confirm: 'Sí, eliminar', cancel: 'Cancelar' }
+      case 'info': return { confirm: 'Sí', cancel: 'No' }
+      default: return { confirm: 'Sí', cancel: 'Cancelar' }
+    }
+  }
+
+  const buttonTexts = getButtonTexts()
+
+  return (
+    <div 
+      className="confirm-overlay" 
+      onClick={handleOverlayClick}
+    >
+      <div className={`modal-confirm modal-confirm-${type}`}>
+        <div className="confirm-message">
+          {message}
+        </div>
+        <div className="confirm-buttons-container">
+          <button 
+            className={`modal-button confirm-button-cancel confirm-button-${type}-cancel`}
+            onClick={handleCancel}
+          >
+            {buttonTexts.cancel}
+          </button>
+          <button 
+            className={`modal-button confirm-button-confirm confirm-button-${type}`}
+            onClick={handleConfirm}
+            autoFocus
+          >
+            {buttonTexts.confirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Función global para mostrar confirmaciones
+export const showConfirm = (message, type = 'warning') => {
+  return new Promise((resolve) => {
+    if (showConfirmFunc) {
+      showConfirmFunc(message, resolve, type)
+    } else {
+      console.error('ConfirmModal no está montado')
+      // Fallback al confirm nativo si no está disponible
+      const result = window.confirm(message)
+      resolve(result)
+    }
+  })
+}
+
+export default ConfirmModal
+
+/frontend\src\components\Common\NotificationModal.jsx:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react'
+import './NotificationModal.css'
+
+let showNotificationFunc = null
+
+const NotificationModal = () => {
+  const [visible, setVisible] = useState(false)
+  const [message, setMessage] = useState('')
+  const [type, setType] = useState('info') // 'info', 'success', 'error', 'warning'
+
+  const show = (msg, msgType = 'info') => {
+    setMessage(msg)
+    setType(msgType)
+    setVisible(true)
+  }
+
+  const hide = () => {
+    setVisible(false)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      hide()
+    }
+  }
+
+  const handleOverlayClick = (e) => {
+    if (e.target.classList.contains('notification-overlay')) {
+      hide()
+    }
+  }
+
+  // Exponer la función show al objeto global
+  useEffect(() => {
+    showNotificationFunc = show
+    
+    return () => {
+      showNotificationFunc = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (visible) {
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [visible])
+
+  if (!visible) return null
+
+  return (
+    <div 
+      className="notification-overlay" 
+      onClick={handleOverlayClick}
+    >
+      <div className={`modal-notification modal-notification-${type}`}>
+        <div className="notification-message">
+          {message}
+        </div>
+        <button 
+          className={`modal-button notification-close-button notification-button-${type}`}
+          onClick={hide}
+          autoFocus
+        >
+          Aceptar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Función global para mostrar notificaciones
+export const showNotification = (message, type = 'info') => {
+  if (showNotificationFunc) {
+    showNotificationFunc(message, type)
+  } else {
+    console.error('NotificationModal no está montado')
+    // Fallback al alert si no está disponible
+
+  }
+}
+
+export default NotificationModal
 
 /frontend\src\components\Layout\BecarioLayout.js:
 --------------------------------------------------------------------------------
@@ -12091,15 +12378,40 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell, 
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell,FiSun, FiMoon,
   FiFileText, FiLogOut, FiClock
 } from 'react-icons/fi';
 
 const BecarioLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout } = useAuth();
+  const [darkMode, setDarkMode] = useState(false);
   const navigate = useNavigate();
   const [notificaciones, setNotificaciones] = useState([]);
+
+  useEffect(() => {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark') {
+        setDarkMode(true);
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        setDarkMode(false);
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    }, []);
+  
+    const toggleDarkMode = () => {
+      const newDarkMode = !darkMode;
+      setDarkMode(newDarkMode);
+      
+      if (newDarkMode) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'light');
+        localStorage.setItem('theme', 'light');
+      }
+    };
 
   const handleLogout = () => {
     logout();
@@ -12169,6 +12481,30 @@ const BecarioLayout = () => {
               )}
             </button>
           </div>
+
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
           
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
@@ -12222,7 +12558,7 @@ const BecarioLayout = () => {
         {/* Main Content */}
         <main className="main-content">
           <div className="content-area">
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>
@@ -12243,19 +12579,45 @@ export default BecarioLayout;
 
 /frontend\src\components\Layout\CoordinadorLayout.js:
 --------------------------------------------------------------------------------
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBarChart2,
-  FiUserPlus, FiFileText, FiSettings, FiLogOut, FiClock,
+  FiUserPlus, FiFileText, FiSettings, FiLogOut, FiClock,FiSun, FiMoon,
   FiTrendingUp, FiUserCheck
 } from 'react-icons/fi';
 
 const CoordinadorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Inicializar el tema desde localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    
+    if (newDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -12290,8 +12652,32 @@ const CoordinadorLayout = () => {
               />
           <h2 className="app-name">- Coordinación</h2>
         </div>
-        
+
         <div className="flex-row align-center gap-20">
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
+          
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
             <span className="user-rol">Coordinador</span>
@@ -12348,7 +12734,7 @@ const CoordinadorLayout = () => {
 
         <main className="main-content">
           <div className="content-area">
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>
@@ -12445,7 +12831,7 @@ const MainLayout = () => {
         {/* Main Content */}
         <main className="main-content">
           <div className="content-area">
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>
@@ -12465,18 +12851,44 @@ export default MainLayout;
 
 /frontend\src\components\Layout\PsicologoLayout.js:
 --------------------------------------------------------------------------------
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiFileText,
-  FiBarChart2, FiUserCheck, FiLogOut, FiClock
+  FiBarChart2, FiUserCheck, FiLogOut, FiClock, FiSun, FiMoon
 } from 'react-icons/fi';
 
 const PsicologoLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Inicializar el tema desde localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    
+    if (newDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -12503,14 +12915,38 @@ const PsicologoLayout = () => {
             {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
           <img 
-                src="/images/logoCESUN2wide.png" 
-                alt="PsicoGestión" 
-                className="dashboard-logo"
-              />
+            src="/images/logoCESUN2wide.png" 
+            alt="PsicoGestión" 
+            className="dashboard-logo"
+          />
           <h2 className="app-name">- Psicólogo</h2>
         </div>
         
         <div className="flex-row align-center gap-20">
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
+          
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
             <span className="user-rol">Psicólogo</span>
@@ -12563,7 +12999,7 @@ const PsicologoLayout = () => {
 
         <main className="main-content">
           <div className="content-area">
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>
@@ -13041,7 +13477,7 @@ const CitasPage = () => {
         });
         
         // Mostrar mensaje de éxito
-        alert('✅ Cita creada exitosamente');
+        notifications.success('✅ Cita creada exitosamente');
         
         // Recargar las citas
         if (view === 'day') {
@@ -14691,11 +15127,11 @@ const BecarioCitas = () => {
       
       if (response.ok) {
         fetchCitas();
-        alert(`Cita ${nuevoEstado === 'completada' ? 'completada' : 'cancelada'} exitosamente`);
+        notifications.success(`Cita ${nuevoEstado === 'completada' ? 'completada' : 'cancelada'} exitosamente`);
       }
     } catch (error) {
       console.error('Error al actualizar cita:', error);
-      alert('Error al actualizar la cita');
+      notifications.success('Error al actualizar la cita');
     }
   };
 
@@ -15491,7 +15927,7 @@ const BecarioObservaciones = () => {
       preguntas_supervisor: ''
     });
     
-    alert('Observación registrada exitosamente');
+    notifications.success('Observación registrada exitosamente');
   };
 
   const handleDelete = (id) => {
@@ -16583,12 +17019,12 @@ const CoordinadorAltas = () => {
   const procesarAlta = (pacienteId, decision) => {
     if (decision === 'aprobar') {
       if (window.confirm('¿Estás seguro de aprobar el alta terapéutica de este paciente?')) {
-        alert('Alta aprobada exitosamente');
+        notifications.success('Alta aprobada exitosamente');
         setCandidatosAlta(candidatosAlta.filter(p => p.id !== pacienteId));
       }
     } else {
       if (window.confirm('¿Estás seguro de rechazar el alta de este paciente?')) {
-        alert('Alta rechazada. Se notificará al psicólogo.');
+        notifications.success('Alta rechazada. Se notificará al psicólogo.');
       }
     }
   };
@@ -16607,7 +17043,7 @@ const CoordinadorAltas = () => {
   };
 
   const exportarReporteAltas = () => {
-    alert('Generando reporte de altas...');
+    notifications.success('Generando reporte de altas...');
     // En una implementación real, aquí se generaría el archivo de exportación
   };
 
@@ -17068,19 +17504,19 @@ const CoordinadorAsignaciones = () => {
 
   const handleAsignarPaciente = (pacienteId, becarioId) => {
     // Lógica para asignar paciente
-    alert(`Paciente asignado exitosamente al becario`);
+    notifications.success(`Paciente asignado exitosamente al becario`);
     setShowModal(false);
   };
 
   const handleReasignar = (asignacionId, nuevoBecarioId) => {
     // Lógica para reasignar
-    alert(`Paciente reasignado exitosamente`);
+    notifications.success(`Paciente reasignado exitosamente`);
   };
 
   const handleFinalizarAsignacion = (asignacionId) => {
     // Lógica para finalizar asignación
     if (window.confirm('¿Estás seguro de finalizar esta asignación?')) {
-      alert('Asignación finalizada exitosamente');
+      notifications.success('Asignación finalizada exitosamente');
     }
   };
 
@@ -17560,7 +17996,7 @@ const CoordinadorConfiguracion = () => {
   const restaurarValoresPredeterminados = (categoria) => {
     if (window.confirm('¿Estás seguro de restaurar los valores predeterminados?')) {
       // Aquí se restaurarían los valores predeterminados
-      alert('Valores predeterminados restaurados');
+      notifications.success('Valores predeterminados restaurados');
     }
   };
 
@@ -17568,7 +18004,7 @@ const CoordinadorConfiguracion = () => {
     const nuevoValor = !configuraciones.avanzada?.modoMantenimiento;
     if (window.confirm(`¿${nuevoValor ? 'Activar' : 'Desactivar'} modo mantenimiento? Esto afectará a todos los usuarios.`)) {
       handleInputChange('avanzada', 'modoMantenimiento', nuevoValor);
-      alert(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
+      notifications.success(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
     }
   };
 
@@ -18787,16 +19223,16 @@ const CoordinadorPacientes = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error creando paciente');
+          notifications.success(err.message || 'Error creando paciente');
           return;
         }
 
         const created = await res.json();
         setPacientes(prev => [...prev, created]);
-        alert('Paciente creado exitosamente');
+        notifications.success('Paciente creado exitosamente');
       } catch (error) {
         console.error('Error creando paciente:', error);
-        alert('Error creando paciente');
+        notifications.success('Error creando paciente');
       }
     } else {
       // Editar paciente: enviar al backend
@@ -18813,16 +19249,16 @@ const CoordinadorPacientes = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error actualizando paciente');
+          notifications.success(err.message || 'Error actualizando paciente');
           return;
         }
 
         const updated = await res.json();
         setPacientes(prev => prev.map(p => p.id === updated.id ? updated : p));
-        alert('Paciente actualizado exitosamente');
+        notifications.success('Paciente actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando paciente:', error);
-        alert('Error actualizando paciente');
+        notifications.success('Error actualizando paciente');
       }
     }
     
@@ -18852,7 +19288,7 @@ const CoordinadorPacientes = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error cambiando estado');
+        notifications.success(err.message || 'Error cambiando estado');
         return;
       }
 
@@ -18860,7 +19296,7 @@ const CoordinadorPacientes = () => {
       setPacientes(prev => prev.map(p => p.id === id ? updated : p));
     } catch (error) {
       console.error('Error toggling paciente activo:', error);
-      alert('Error cambiando estado del paciente');
+      notifications.success('Error cambiando estado del paciente');
     }
   };
 
@@ -18878,15 +19314,15 @@ const CoordinadorPacientes = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error eliminando paciente');
+        notifications.success(err.message || 'Error eliminando paciente');
         return;
       }
 
       setPacientes(prev => prev.filter(p => p.id !== id));
-      alert('Paciente eliminado (inactivado) correctamente');
+      notifications.success('Paciente eliminado (inactivado) correctamente');
     } catch (error) {
       console.error('Error eliminando paciente:', error);
-      alert('Error eliminando paciente');
+      notifications.success('Error eliminando paciente');
     }
   };
 
@@ -19467,14 +19903,14 @@ const CoordinadorReportes = () => {
       setReportes([nuevoReporte, ...reportes]);
       setReporteGenerado(nuevoReporte);
       setLoading(false);
-      alert('Reporte generado exitosamente');
+      notifications.success('Reporte generado exitosamente');
     }, 1500);
   };
 
   const descargarReporte = (reporteId) => {
     const reporte = reportes.find(r => r.id === reporteId);
     if (reporte) {
-      alert(`Descargando reporte: ${reporte.nombre}`);
+      notifications.success(`Descargando reporte: ${reporte.nombre}`);
       // En una implementación real, aquí se generaría y descargaría el archivo
     }
   };
@@ -19482,7 +19918,7 @@ const CoordinadorReportes = () => {
   const imprimirReporte = (reporteId) => {
     const reporte = reportes.find(r => r.id === reporteId);
     if (reporte) {
-      alert(`Imprimiendo reporte: ${reporte.nombre}`);
+      notifications.success(`Imprimiendo reporte: ${reporte.nombre}`);
       // En una implementación real, aquí se abriría el diálogo de impresión
     }
   };
@@ -19816,6 +20252,7 @@ export default CoordinadorReportes;
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPhone, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../utils/notifications';
 
 const CoordinadorUsuarios = () => {
   const [usuarios, setUsuarios] = useState([]);
@@ -19914,17 +20351,17 @@ const CoordinadorUsuarios = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error creando usuario');
+          notifications.success(err.message || 'Error creando usuario');
           return;
         }
 
         const created = await res.json();
         // Añadir a la lista local (asegura compatibilidad de campos)
         setUsuarios(prev => [...prev, created]);
-        alert('Usuario creado exitosamente');
+        notifications.success('Usuario creado exitosamente');
       } catch (error) {
         console.error('Error creando usuario:', error);
-        alert('Error creando usuario');
+        notifications.success('Error creando usuario');
       }
     } else {
       // Editar usuario: enviar al backend
@@ -19941,16 +20378,16 @@ const CoordinadorUsuarios = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error actualizando usuario');
+          notifications.success(err.message || 'Error actualizando usuario');
           return;
         }
 
         const updated = await res.json();
         setUsuarios(prev => prev.map(u => u.id === updated.id ? updated : u));
-        alert('Usuario actualizado exitosamente');
+        notifications.success('Usuario actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando usuario:', error);
-        alert('Error actualizando usuario');
+        notifications.success('Error actualizando usuario');
       }
     }
     
@@ -19972,16 +20409,16 @@ const CoordinadorUsuarios = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error eliminando usuario');
+        notifications.success(err.message || 'Error eliminando usuario');
         return;
       }
 
       // remover de la lista local
       setUsuarios(prev => prev.filter(u => u.id !== id));
-      alert('Usuario eliminado (inactivado) correctamente');
+      notifications.success('Usuario eliminado (inactivado) correctamente');
     } catch (error) {
       console.error('Error eliminando usuario:', error);
-      alert('Error eliminando usuario');
+      notifications.success('Error eliminando usuario');
     }
   };
 
@@ -20014,7 +20451,7 @@ const CoordinadorUsuarios = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error al cambiar estado');
+        notifications.success(err.message || 'Error al cambiar estado');
         return;
       }
 
@@ -20022,7 +20459,7 @@ const CoordinadorUsuarios = () => {
       setUsuarios(prev => prev.map(u => u.id === id ? updated : u));
     } catch (error) {
       console.error('Error toggling activo:', error);
-      alert('Error cambiando estado de usuario');
+      notifications.success('Error cambiando estado de usuario');
     }
   };
 
@@ -20499,7 +20936,7 @@ const PsicologoCitas = () => {
         cita.id === citaId ? { ...cita, estado: nuevoEstado } : cita
       )
     );
-    alert(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
+    notifications.success(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
   };
 
   if (loading) {
@@ -21082,7 +21519,7 @@ const PsicologoExpedientes = () => {
 
   const exportarExpediente = (expediente) => {
     // Simulación de exportación
-    alert(`Exportando expediente de ${expediente.paciente_nombre}...`);
+    notifications.success(`Exportando expediente de ${expediente.paciente_nombre}...`);
   };
 
   if (loading) {
@@ -21720,7 +22157,7 @@ const PsicologoSesiones = () => {
     setShowForm(false);
     resetForm();
     
-    alert('Sesión registrada exitosamente');
+    notifications.success('Sesión registrada exitosamente');
   };
 
   const resetForm = () => {
@@ -22057,12 +22494,12 @@ const PsicologoSupervision = () => {
 
   const enviarFeedback = (becarioId) => {
     if (!feedback.trim()) {
-      alert('Por favor, escribe algún feedback');
+      notifications.success('Por favor, escribe algún feedback');
       return;
     }
     
     // Aquí se enviaría al backend
-    alert(`Feedback enviado a ${becarios.find(b => b.id === becarioId)?.nombre}`);
+    notifications.success(`Feedback enviado a ${becarios.find(b => b.id === becarioId)?.nombre}`);
     setFeedback('');
     setShowFeedback(false);
   };
@@ -22293,3 +22730,69 @@ const PsicologoSupervision = () => {
 };
 
 export default PsicologoSupervision;
+
+/frontend\src\utils\confirmations.js:
+--------------------------------------------------------------------------------
+import { showConfirm } from '../components/Common/ConfirmModal'
+
+// Función para confirmaciones de peligro (rojo - para eliminar)
+export const confirmDanger = (message) => {
+  return showConfirm(message, 'danger')
+}
+
+// Función para confirmaciones de advertencia (amarillo - estándar)
+export const confirmWarning = (message) => {
+  return showConfirm(message, 'warning')
+}
+
+// Función para confirmaciones de información (azul - neutral)
+export const confirmInfo = (message) => {
+  return showConfirm(message, 'info')
+}
+
+// Alias para la función principal
+export const confirm = showConfirm
+
+// Exporta como objeto global
+export default {
+  danger: confirmDanger,
+  warning: confirmWarning,
+  info: confirmInfo,
+  show: confirm
+}
+
+/frontend\src\utils\notifications.js:
+--------------------------------------------------------------------------------
+import { showNotification } from '../components/Common/NotificationModal'
+
+// Función para notificaciones de éxito (verde)
+export const notifySuccess = (message) => {
+  showNotification(message, 'success')
+}
+
+// Función para notificaciones de error (rojo)
+export const notifyError = (message) => {
+  showNotification(message, 'error')
+}
+
+// Función para notificaciones de advertencia (amarillo)
+export const notifyWarning = (message) => {
+  showNotification(message, 'warning')
+}
+
+// Función para notificaciones de información (azul)
+export const notifyInfo = (message) => {
+  showNotification(message, 'info')
+}
+
+// Alias para la función principal
+export const notify = showNotification
+
+// Exporta como objeto global
+export default {
+  success: notifySuccess,
+  error: notifyError,
+  warning: notifyWarning,
+  info: notifyInfo,
+  show: notify
+}

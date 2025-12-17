@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPhone, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 const CoordinadorUsuarios = () => {
   const [usuarios, setUsuarios] = useState([]);
@@ -99,17 +101,17 @@ const CoordinadorUsuarios = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error creando usuario');
+          notifications.error(err.message || 'Error creando usuario');
           return;
         }
 
         const created = await res.json();
         // Añadir a la lista local (asegura compatibilidad de campos)
         setUsuarios(prev => [...prev, created]);
-        alert('Usuario creado exitosamente');
+        notifications.success('Usuario creado exitosamente');
       } catch (error) {
         console.error('Error creando usuario:', error);
-        alert('Error creando usuario');
+        notifications.error('Error creando usuario');
       }
     } else {
       // Editar usuario: enviar al backend
@@ -126,16 +128,16 @@ const CoordinadorUsuarios = () => {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          alert(err.message || 'Error actualizando usuario');
+          notifications.error(err.message || 'Error actualizando usuario');
           return;
         }
 
         const updated = await res.json();
         setUsuarios(prev => prev.map(u => u.id === updated.id ? updated : u));
-        alert('Usuario actualizado exitosamente');
+        notifications.success('Usuario actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando usuario:', error);
-        alert('Error actualizando usuario');
+        notifications.error('Error actualizando usuario');
       }
     }
     
@@ -157,16 +159,16 @@ const CoordinadorUsuarios = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error eliminando usuario');
+        notifications.error(err.message || 'Error eliminando usuario');
         return;
       }
 
       // remover de la lista local
       setUsuarios(prev => prev.filter(u => u.id !== id));
-      alert('Usuario eliminado (inactivado) correctamente');
+      notifications.success('Usuario eliminado (inactivado) correctamente');
     } catch (error) {
       console.error('Error eliminando usuario:', error);
-      alert('Error eliminando usuario');
+      notifications.error('Error eliminando usuario');
     }
   };
 
@@ -199,7 +201,7 @@ const CoordinadorUsuarios = () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Error al cambiar estado');
+        notifications.error(err.message || 'Error al cambiar estado');
         return;
       }
 
@@ -207,7 +209,7 @@ const CoordinadorUsuarios = () => {
       setUsuarios(prev => prev.map(u => u.id === id ? updated : u));
     } catch (error) {
       console.error('Error toggling activo:', error);
-      alert('Error cambiando estado de usuario');
+      notifications.error('Error cambiando estado de usuario');
     }
   };
 

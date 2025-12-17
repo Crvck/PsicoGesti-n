@@ -120,7 +120,14 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\Login.css
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\Login.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\PrivateRoute.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\ProtectedRoute.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Auth\RoleRouter.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Common/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Common\ConfirmModal.css
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Common\ConfirmModal.jsx
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Common\NotificationModal.css
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Common\NotificationModal.jsx
 
 a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Layout/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\components\Layout\BecarioLayout.js
@@ -162,4 +169,8 @@ a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo/
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\PacientesPage.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\SesionesPage.js
   a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\pages\psicologo\SupervisionPage.js
+
+a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\utils/
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\utils\confirmations.js
+  a:\Users\emnlvega\Documents\GitHub\PsicoGesti-n\frontend\src\utils\notifications.js
 

@@ -438,7 +438,6 @@ body {
   border-radius: 10px;
   padding: 20px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 .card-primary {
@@ -486,7 +485,6 @@ body {
   border-radius: 10px;
   padding: 30px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   max-width: 500px;
   width: 90%;
@@ -1151,7 +1149,6 @@ body {
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   border-color: var(--blu);
 }
 
@@ -1370,7 +1367,6 @@ body {
 
 .event-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
 .event-confirmed {
@@ -1785,7 +1781,6 @@ input:checked + .slider:before {
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
   border: 2px solid var(--blu);
 }

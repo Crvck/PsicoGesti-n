@@ -181,7 +181,6 @@
 
 .week-event:hover {
   transform: scale(1.02);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
 }
 
 .week-event-time {
@@ -736,12 +735,10 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   min-height: 30px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .distribution-bar:hover {
   transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
 }
 
 .bar-value-inside {
@@ -829,7 +826,6 @@ input:checked + .slider:before {
 .quick-action-btn:hover {
   background: var(--blub);
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
 .quick-action-icon {

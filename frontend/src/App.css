@@ -97,7 +97,7 @@
   width: 60px;
   height: 60px;
   border: 4px solid var(--blub);
-  border-top: 4px solid var(--grnb);
+  border-top: 4px solid var(--blu);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }

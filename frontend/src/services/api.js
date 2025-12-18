@@ -58,35 +58,53 @@ class ApiService {
   }
 
   static async handleResponse(response) {
-    // Primero verificar si hay contenido
-    if (response.status === 204 || response.status === 205) {
-      return {};
-    }
-    
-    const contentType = response.headers.get('content-type');
-    
-    // Si no es JSON, manejar como texto
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text();
-      
-      if (!response.ok) {
-        throw new Error(text || `HTTP error! status: ${response.status}`);
+      // Primero verificar si hay contenido
+      if (response.status === 204 || response.status === 205) {
+          return {};
       }
       
-      return text ? JSON.parse(text) : {};
-    }
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
-      const error = new Error(errorMessage);
-      error.status = response.status;
-      error.data = data;
-      throw error;
-    }
-    
-    return data;
+      const contentType = response.headers.get('content-type');
+      
+      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
+      if (contentType && contentType.includes('text/csv')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Para CSV, devolvemos el texto directamente
+          return text;
+      }
+      
+      // Si no es CSV, verificar si es JSON
+      if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Intentar parsear como JSON si es posible
+          try {
+              return text ? JSON.parse(text) : {};
+          } catch {
+              return text;
+          }
+      }
+      
+      // Si es JSON, parsearlo normalmente
+      const data = await response.json();
+      
+      if (!response.ok) {
+          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+      }
+      
+      return data;
   }
 
   // Métodos específicos para el dashboard

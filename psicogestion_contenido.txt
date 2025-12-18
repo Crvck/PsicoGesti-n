@@ -168,7 +168,8 @@ ARCHIVOS_BASE = [
     "backend/src/services/api.js",
     "frontend/src/App.js",
     "frontend/src/index.js",
-    "frontend/src/services/api.js"
+    "frontend/src/services/api.js",
+    "frontend/src/global.css"
 ]
 
 def generar_txt_por_pagina(directorio_base, output_dir="paginas_backend"):
@@ -431,6 +432,7 @@ if __name__ == "__main__":
     "googleapis": "^128.0.0",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.15.3",
+    "json2csv": "^5.0.0",
     "nodemailer": "^6.9.7",
     "pdfkit": "^0.14.0",
     "sequelize": "^6.37.7",
@@ -475,7 +477,6 @@ const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const agendaRoutes = require('./src/routes/agendaRoutes');
 const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
 const pacienteRoutes = require('./src/routes/pacienteRoutes');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -514,7 +515,6 @@ const userRoutes = require('./src/routes/userRoutes');
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/pacientes', pacienteRoutes);
-
 // Sincronizar modelos
 sequelize.sync({ force: false, alter: false })
     .then(() => {
@@ -582,15 +582,15 @@ module.exports = sequelize;
 
 /backend\src\controllers\agendaController.js:
 --------------------------------------------------------------------------------
+// backend/src/controllers/agendaController.js - Versión simplificada sin verificación de roles
 const Cita = require('../models/citaModel');
 const Paciente = require('../models/pacienteModel');
 const User = require('../models/userModel');
-const Disponibilidad = require('../models/disponibilidadModel');
 const { QueryTypes, Op } = require('sequelize');
 const sequelize = require('../config/db');
 
 class AgendaController {
-    
+
     static async obtenerAgendaGlobal(req, res) {
         try {
             const { 
@@ -605,12 +605,8 @@ class AgendaController {
                 offset = 0
             } = req.query;
             
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
             // Construir condiciones de filtro
             const whereClause = {};
-            const includeConditions = [];
             
             if (fecha_inicio && fecha_fin) {
                 whereClause.fecha = {
@@ -631,12 +627,7 @@ class AgendaController {
             if (estado) whereClause.estado = estado;
             if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
             
-            // Para becarios y psicólogos, limitar a sus pacientes
-            if (usuarioRol === 'becario') {
-                whereClause.becario_id = usuarioId;
-            } else if (usuarioRol === 'psicologo') {
-                whereClause.psicologo_id = usuarioId;
-            }
+            console.log('Where clause:', whereClause);
             
             const citas = await Cita.findAll({
                 where: whereClause,
@@ -664,10 +655,37 @@ class AgendaController {
                 offset: parseInt(offset)
             });
             
-            // Para coordinador, incluir estadísticas
+            console.log('Citas encontradas:', citas.length);
+            
+            // Incluir estadísticas - consulta simplificada
             let estadisticas = null;
-            if (usuarioRol === 'coordinador') {
-                const [stats] = await sequelize.query(`
+            try {
+                // Construir condiciones WHERE para SQL
+                let whereSQL = '1=1';
+                const replacements = [];
+                
+                if (fecha_inicio && fecha_fin) {
+                    whereSQL += ' AND fecha BETWEEN ? AND ?';
+                    replacements.push(fecha_inicio, fecha_fin);
+                } else if (fecha_inicio) {
+                    whereSQL += ' AND fecha >= ?';
+                    replacements.push(fecha_inicio);
+                } else if (fecha_fin) {
+                    whereSQL += ' AND fecha <= ?';
+                    replacements.push(fecha_fin);
+                }
+                
+                if (psicologo_id) {
+                    whereSQL += ' AND psicologo_id = ?';
+                    replacements.push(psicologo_id);
+                }
+                
+                if (estado) {
+                    whereSQL += ' AND estado = ?';
+                    replacements.push(estado);
+                }
+                
+                const query = `
                     SELECT 
                         COUNT(*) as total_citas,
                         SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) as programadas,
@@ -678,11 +696,30 @@ class AgendaController {
                         COUNT(DISTINCT becario_id) as becarios_involucrados,
                         COUNT(DISTINCT paciente_id) as pacientes_atendidos
                     FROM citas
-                    WHERE ${Object.keys(whereClause).length > 0 ? 
-                        this.construirWhereSQL(whereClause) : '1=1'}
-                `, { type: QueryTypes.SELECT });
+                    WHERE ${whereSQL}
+                `;
+                
+                const [stats] = await sequelize.query(query, {
+                    replacements,
+                    type: QueryTypes.SELECT
+                });
                 
                 estadisticas = stats;
+                console.log('Estadísticas:', estadisticas);
+                
+            } catch (statsError) {
+                console.error('Error al obtener estadísticas:', statsError);
+                // Continuar sin estadísticas
+                estadisticas = {
+                    total_citas: citas.length,
+                    programadas: citas.filter(c => c.estado === 'programada').length,
+                    confirmadas: citas.filter(c => c.estado === 'confirmada').length,
+                    completadas: citas.filter(c => c.estado === 'completada').length,
+                    canceladas: citas.filter(c => c.estado === 'cancelada').length,
+                    psicologos_involucrados: new Set(citas.map(c => c.psicologo_id)).size,
+                    becarios_involucrados: new Set(citas.map(c => c.becario_id)).size - 1, // Restar null
+                    pacientes_atendidos: new Set(citas.map(c => c.paciente_id)).size
+                };
             }
             
             res.json({
@@ -704,10 +741,13 @@ class AgendaController {
             });
             
         } catch (error) {
-            console.error('Error en obtenerAgendaGlobal:', error);
+            console.error('Error detallado en obtenerAgendaGlobal:', error);
+            console.error('Stack trace:', error.stack);
             res.status(500).json({
                 success: false,
-                message: 'Error al obtener agenda global'
+                message: 'Error al obtener agenda global',
+                error: error.message,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
             });
         }
     }
@@ -715,19 +755,17 @@ class AgendaController {
     static async obtenerAgendaDiaria(req, res) {
         try {
             const { fecha } = req.query;
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
             
             const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
             
-            let query = `
+            const query = `
                 SELECT 
                     c.id,
                     c.fecha,
                     TIME_FORMAT(c.hora, '%H:%i') as hora,
                     c.estado,
                     c.tipo_consulta,
-                    c.duracion_minutos,
+                    c.duracion as duracion_minutos,
                     c.notas,
                     CONCAT(p.nombre, ' ', p.apellido) as paciente,
                     p.telefono as paciente_telefono,
@@ -740,20 +778,10 @@ class AgendaController {
                 JOIN users u_psi ON c.psicologo_id = u_psi.id
                 LEFT JOIN users u_bec ON c.becario_id = u_bec.id
                 WHERE c.fecha = ?
+                ORDER BY c.hora
             `;
             
             const replacements = [fechaConsulta];
-            
-            // Filtrar por rol
-            if (usuarioRol === 'psicologo') {
-                query += ` AND c.psicologo_id = ?`;
-                replacements.push(usuarioId);
-            } else if (usuarioRol === 'becario') {
-                query += ` AND c.becario_id = ?`;
-                replacements.push(usuarioId);
-            }
-            
-            query += ` ORDER BY c.hora`;
             
             const citas = await sequelize.query(query, {
                 replacements,
@@ -813,14 +841,12 @@ class AgendaController {
     static async obtenerCalendarioMensual(req, res) {
         try {
             const { mes, anio } = req.query;
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
             
             const mesActual = mes || new Date().getMonth() + 1;
             const anioActual = anio || new Date().getFullYear();
             
             // Obtener citas del mes
-            let query = `
+            const query = `
                 SELECT 
                     c.fecha,
                     COUNT(*) as total_citas,
@@ -839,20 +865,10 @@ class AgendaController {
                 FROM citas c
                 JOIN pacientes p ON c.paciente_id = p.id
                 WHERE MONTH(c.fecha) = ? AND YEAR(c.fecha) = ?
+                GROUP BY c.fecha ORDER BY c.fecha
             `;
             
             const replacements = [mesActual, anioActual];
-            
-            // Filtrar por rol
-            if (usuarioRol === 'psicologo') {
-                query += ` AND c.psicologo_id = ?`;
-                replacements.push(usuarioId);
-            } else if (usuarioRol === 'becario') {
-                query += ` AND c.becario_id = ?`;
-                replacements.push(usuarioId);
-            }
-            
-            query += ` GROUP BY c.fecha ORDER BY c.fecha`;
             
             const citasPorDia = await sequelize.query(query, {
                 replacements,
@@ -888,15 +904,11 @@ class AgendaController {
                     COUNT(DISTINCT psicologo_id) as psicologos_activos,
                     COUNT(DISTINCT becario_id) as becarios_activos,
                     SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    ROUND(AVG(duracion_minutos), 1) as duracion_promedio
+                    ROUND(AVG(duracion), 1) as duracion_promedio
                 FROM citas
                 WHERE MONTH(fecha) = ? AND YEAR(fecha) = ?
-                ${usuarioRol === 'psicologo' ? 'AND psicologo_id = ?' : ''}
-                ${usuarioRol === 'becario' ? 'AND becario_id = ?' : ''}
             `, {
-                replacements: usuarioRol === 'psicologo' ? [mesActual, anioActual, usuarioId] :
-                           usuarioRol === 'becario' ? [mesActual, anioActual, usuarioId] :
-                           [mesActual, anioActual],
+                replacements: [mesActual, anioActual],
                 type: QueryTypes.SELECT
             });
             
@@ -924,8 +936,6 @@ class AgendaController {
         try {
             const { id } = req.params;
             const { nueva_fecha, nueva_hora, motivo } = req.body;
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
             
             const cita = await Cita.findByPk(id);
             
@@ -933,21 +943,6 @@ class AgendaController {
                 return res.status(404).json({
                     success: false,
                     message: 'Cita no encontrada'
-                });
-            }
-            
-            // Verificar permisos
-            if (usuarioRol === 'becario' && cita.becario_id !== usuarioId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para reprogramar esta cita'
-                });
-            }
-            
-            if (usuarioRol === 'psicologo' && cita.psicologo_id !== usuarioId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para reprogramar esta cita'
                 });
             }
             
@@ -995,23 +990,10 @@ class AgendaController {
             });
             
             // Crear notificaciones
-            const notificaciones = [];
-            
-            // Notificar al paciente (si tiene email)
             const [paciente] = await sequelize.query(
                 'SELECT email, nombre, apellido FROM pacientes WHERE id = ?',
                 { replacements: [cita.paciente_id], type: QueryTypes.SELECT }
             );
-            
-            if (paciente && paciente.email) {
-                // Aquí se podría integrar con el servicio de email
-                notificaciones.push({
-                    tipo: 'email',
-                    destinatario: paciente.email,
-                    asunto: 'Cita reprogramada',
-                    mensaje: `Estimad@ ${paciente.nombre}, su cita ha sido reprogramada para el ${nueva_fecha} a las ${nueva_hora}.`
-                });
-            }
             
             // Notificar al psicólogo
             if (cita.psicologo_id) {
@@ -1045,23 +1027,6 @@ class AgendaController {
                 });
             }
             
-            // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'agenda', 'Reprogramar cita', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Cita ${id} reprogramada`,
-                    JSON.stringify(datosOriginales),
-                    JSON.stringify({
-                        fecha: nueva_fecha,
-                        hora: nueva_hora,
-                        estado: 'programada'
-                    })
-                ]
-            });
-            
             res.json({
                 success: true,
                 message: 'Cita reprogramada exitosamente',
@@ -1083,71 +1048,199 @@ class AgendaController {
         }
     }
     
+    
+
     static async obtenerDisponibilidadProfesionales(req, res) {
         try {
             const { fecha } = req.query;
             const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
-            const diaSemana = this.obtenerDiaSemana(fechaConsulta);
             
-            const disponibilidad = await sequelize.query(`
+            
+            // Función auxiliar para obtener día de la semana
+            const obtenerDiaSemana = (fechaStr) => {
+                try {
+                    const fechaObj = new Date(fechaStr);
+                    const dias = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+                    return dias[fechaObj.getDay()];
+                } catch (error) {
+                    console.error('Error parseando fecha:', fechaStr, error);
+                    return 'lunes';
+                }
+            };
+            
+            const diaSemana = obtenerDiaSemana(fechaConsulta);
+            
+            // CONSULTA PRINCIPAL: Obtener psicólogos y becarios activos
+            const psicologos = await sequelize.query(`
                 SELECT 
                     u.id,
                     CONCAT(u.nombre, ' ', u.apellido) as profesional,
                     u.rol,
                     u.especialidad,
-                    d.hora_inicio,
-                    d.hora_fin,
-                    d.max_citas_dia,
-                    d.intervalo_citas,
-                    (SELECT COUNT(*) FROM citas c 
-                     WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
-                     AND c.fecha = ?
-                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas,
-                    (d.max_citas_dia - 
-                     (SELECT COUNT(*) FROM citas c 
-                      WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
-                      AND c.fecha = ?
-                      AND c.estado IN ('programada', 'confirmada'))
-                    ) as cupos_disponibles
+                    u.email
                 FROM users u
-                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
-                    AND d.dia_semana = ?
-                    AND d.activo = TRUE
                 WHERE u.rol IN ('psicologo', 'becario')
-                AND u.activo = TRUE
-                AND d.id IS NOT NULL
-                ORDER BY u.rol, u.apellido, u.nombre
+                    AND u.activo = TRUE
+                ORDER BY 
+                    CASE u.rol 
+                        WHEN 'psicologo' THEN 1
+                        WHEN 'becario' THEN 2
+                        ELSE 3
+                    END,
+                    u.apellido, u.nombre
             `, {
-                replacements: [fechaConsulta, fechaConsulta, diaSemana],
                 type: QueryTypes.SELECT
             });
+            
+            
+            // Para cada profesional, obtener su disponibilidad y citas programadas
+            const disponibilidadDetallada = [];
+            
+            for (const psicologo of psicologos) {
+                try {
+                    // 1. Obtener disponibilidad del día
+                    const [disponibilidad] = await sequelize.query(`
+                        SELECT 
+                            TIME_FORMAT(hora_inicio, '%H:%i') as hora_inicio,
+                            TIME_FORMAT(hora_fin, '%H:%i') as hora_fin,
+                            COALESCE(max_citas_dia, 8) as max_citas_dia,
+                            intervalo_citas
+                        FROM disponibilidades
+                        WHERE usuario_id = ?
+                            AND dia_semana = ?
+                            AND activo = TRUE
+                            AND (? BETWEEN fecha_inicio_vigencia AND COALESCE(fecha_fin_vigencia, '2099-12-31'))
+                        LIMIT 1
+                    `, {
+                        replacements: [psicologo.id, diaSemana, fechaConsulta],
+                        type: QueryTypes.SELECT
+                    });
+                    
+                    // 2. Obtener citas programadas para la fecha
+                    const [citasCount] = await sequelize.query(`
+                        SELECT COUNT(*) as citas_programadas
+                        FROM citas 
+                        WHERE (psicologo_id = ? OR becario_id = ?)
+                            AND fecha = ?
+                            AND estado IN ('programada', 'confirmada')
+                    `, {
+                        replacements: [psicologo.id, psicologo.id, fechaConsulta],
+                        type: QueryTypes.SELECT
+                    });
+                    
+                    const citasProgramadas = citasCount ? parseInt(citasCount.citas_programadas) : 0;
+                    const maxCitas = disponibilidad ? parseInt(disponibilidad.max_citas_dia) : 8;
+                    const cuposDisponibles = Math.max(0, maxCitas - citasProgramadas);
+                    const porcentajeOcupacion = maxCitas > 0 ? Math.round((citasProgramadas / maxCitas) * 100) : 0;
+                    
+                    // Determinar estado de disponibilidad
+                    let estado = 'disponible';
+                    if (cuposDisponibles === 0) estado = 'completo';
+                    else if (cuposDisponibles <= 2) estado = 'limitado';
+                    
+                    disponibilidadDetallada.push({
+                        id: psicologo.id,
+                        profesional: psicologo.profesional,
+                        rol: psicologo.rol,
+                        especialidad: psicologo.especialidad || (psicologo.rol === 'becario' ? 'Becario' : 'Psicología General'),
+                        email: psicologo.email,
+                        hora_inicio: disponibilidad ? disponibilidad.hora_inicio : '09:00',
+                        hora_fin: disponibilidad ? disponibilidad.hora_fin : '18:00',
+                        max_citas_dia: maxCitas,
+                        citas_programadas: citasProgramadas,
+                        cupos_disponibles: cuposDisponibles,
+                        porcentaje_ocupacion: porcentajeOcupacion,
+                        estado: estado,
+                        intervalo_citas: disponibilidad ? disponibilidad.intervalo_citas : 50
+                    });
+                    
+                    
+                } catch (error) {
+                    console.error(`⚠️ Error procesando ${psicologo.profesional}:`, error.message);
+                    // Datos de respaldo
+                    disponibilidadDetallada.push({
+                        id: psicologo.id,
+                        profesional: psicologo.profesional,
+                        rol: psicologo.rol,
+                        especialidad: psicologo.especialidad || 'Psicología General',
+                        email: psicologo.email,
+                        hora_inicio: '09:00',
+                        hora_fin: '18:00',
+                        max_citas_dia: 8,
+                        citas_programadas: 0,
+                        cupos_disponibles: 8,
+                        porcentaje_ocupacion: 0,
+                        estado: 'disponible',
+                        intervalo_citas: 50
+                    });
+                }
+            }
+            
+            // Estadísticas generales
+            const totalProfesionales = disponibilidadDetallada.length;
+            const totalCupos = disponibilidadDetallada.reduce((sum, p) => sum + p.max_citas_dia, 0);
+            const totalCitasProgramadas = disponibilidadDetallada.reduce((sum, p) => sum + p.citas_programadas, 0);
+            const totalCuposDisponibles = disponibilidadDetallada.reduce((sum, p) => sum + p.cupos_disponibles, 0);
+            const porcentajeTotalOcupacion = totalCupos > 0 ? Math.round((totalCitasProgramadas / totalCupos) * 100) : 0;
+            
+            console.log(`📊 Estadísticas: ${totalCitasProgramadas}/${totalCupos} citas (${porcentajeTotalOcupacion}% ocupado)`);
             
             res.json({
                 success: true,
                 data: {
                     fecha: fechaConsulta,
                     dia_semana: diaSemana,
-                    disponibilidad,
-                    total_profesionales: disponibilidad.length
+                    disponibilidad: disponibilidadDetallada,
+                    total_profesionales: totalProfesionales,
+                    estadisticas: {
+                        total_cupos: totalCupos,
+                        total_citas_programadas: totalCitasProgramadas,
+                        total_cupos_disponibles: totalCuposDisponibles,
+                        porcentaje_ocupacion_total: porcentajeTotalOcupacion,
+                        profesionales_disponibles: disponibilidadDetallada.filter(p => p.estado === 'disponible').length,
+                        profesionales_limitados: disponibilidadDetallada.filter(p => p.estado === 'limitado').length,
+                        profesionales_completos: disponibilidadDetallada.filter(p => p.estado === 'completo').length
+                    }
                 }
             });
             
         } catch (error) {
-            console.error('Error en obtenerDisponibilidadProfesionales:', error);
+            console.error('❌ Error CRÍTICO en obtenerDisponibilidadProfesionales:', error);
+            console.error('Stack trace:', error.stack);
+            
+            // Respuesta de error controlada
             res.status(500).json({
                 success: false,
-                message: 'Error al obtener disponibilidad de profesionales'
+                message: 'Error al obtener disponibilidad de profesionales',
+                error: process.env.NODE_ENV === 'development' ? error.message : 'Error interno del servidor',
+                data: {
+                    fecha: req.query.fecha || new Date().toISOString().split('T')[0],
+                    dia_semana: 'lunes',
+                    disponibilidad: [],
+                    total_profesionales: 0,
+                    estadisticas: {
+                        total_cupos: 0,
+                        total_citas_programadas: 0,
+                        total_cupos_disponibles: 0,
+                        porcentaje_ocupacion_total: 0,
+                        profesionales_disponibles: 0,
+                        profesionales_limitados: 0,
+                        profesionales_completos: 0
+                    }
+                }
             });
         }
     }
-    
-    // Métodos auxiliares
+
+    // Método auxiliar para obtener día de la semana
     static obtenerDiaSemana(fecha) {
-        const dias = [
-            'domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'
-        ];
-        const fechaObj = new Date(fecha);
-        return dias[fechaObj.getDay()];
+        try {
+            const fechaObj = new Date(fecha);
+            const dias = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+            return dias[fechaObj.getDay()];
+        } catch (error) {
+            return 'lunes'; // Valor por defecto
+        }
     }
     
     static construirWhereSQL(whereClause) {
@@ -1167,6 +1260,7 @@ class AgendaController {
         
         return condiciones.join(' AND ');
     }
+    
 }
 
 module.exports = AgendaController;
@@ -5564,426 +5658,238 @@ module.exports = ObservacionController;
 
 /backend\src\controllers\reporteController.js:
 --------------------------------------------------------------------------------
-const Reporte = require('../models/reporteModel');
-const ReporteService = require('../services/reporteService');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
+// backend/src/controllers/reporteController.js - Añade este método
+const { Parser } = require('json2csv');
+const fs = require('fs');
 const path = require('path');
-const fs = require('fs').promises;
+const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
+const User = require('../models/userModel');
+const { Op } = require('sequelize');
+const sequelize = require('../config/db');
 
 class ReporteController {
-    
-    static async generarReporteMensual(req, res) {
+    // Método para exportar agenda a CSV
+    static async exportarAgendaCSV(req, res) {
         try {
-            const { mes, anio, formato = 'excel' } = req.query;
-            const usuarioId = req.user.id;
+            const { 
+                fecha_inicio, 
+                fecha_fin, 
+                psicologo_id, 
+                tipo_consulta 
+            } = req.body;
+
+            // Construir condiciones de filtro
+            const whereClause = {};
             
-            if (!mes || !anio) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Los parámetros mes y anio son requeridos'
-                });
+            if (fecha_inicio && fecha_fin) {
+                whereClause.fecha = {
+                    [Op.between]: [fecha_inicio, fecha_fin]
+                };
             }
             
-            // Crear registro de reporte
-            const reporte = await Reporte.create({
-                usuario_id: usuarioId,
-                tipo_reporte: 'mensual',
-                nombre: `Reporte Mensual ${mes}/${anio}`,
-                descripcion: `Reporte de actividades del mes ${mes} del año ${anio}`,
-                parametros: { mes, anio, formato },
-                fecha_inicio: `${anio}-${mes.padStart(2, '0')}-01`,
-                fecha_fin: this.obtenerUltimoDiaMes(anio, mes),
-                formato,
-                estado: 'generando'
+            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
+            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
+
+            // Obtener citas con información relacionada
+            const citas = await Cita.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: Paciente,
+                        attributes: ['nombre', 'apellido', 'telefono', 'email']
+                    },
+                    {
+                        model: User,
+                        as: 'Psicologo',
+                        attributes: ['nombre', 'apellido', 'especialidad']
+                    },
+                    {
+                        model: User,
+                        as: 'Becario',
+                        attributes: ['nombre', 'apellido']
+                    }
+                ],
+                order: [
+                    ['fecha', 'ASC'],
+                    ['hora', 'ASC']
+                ]
             });
+
+            // Preparar datos para CSV
+            const datosCSV = citas.map(cita => ({
+                Fecha: cita.fecha,
+                Hora: cita.hora,
+                'Duración (min)': cita.duracion,
+                Paciente: cita.Paciente ? `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : '',
+                'Teléfono Paciente': cita.Paciente?.telefono || '',
+                'Email Paciente': cita.Paciente?.email || '',
+                Psicólogo: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : '',
+                Especialidad: cita.Psicologo?.especialidad || '',
+                Becario: cita.Becario ? `${cita.Becario.nombre} ${cita.Becario.apellido}` : '',
+                'Tipo Consulta': cita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual',
+                Estado: cita.estado,
+                Notas: cita.notas || '',
+                'Motivo Cancelación': cita.motivo_cancelacion || ''
+            }));
+
+            // Convertir a CSV
+            const json2csvParser = new Parser();
+            const csv = json2csvParser.parse(datosCSV);
+
+            // Crear nombre de archivo
+            const fechaActual = new Date().toISOString().split('T')[0];
+            const nombreArchivo = `agenda_${fecha_inicio || fechaActual}_a_${fecha_fin || fechaActual}.csv`;
+
+            // Configurar headers para descarga
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
             
-            // Generar reporte en segundo plano
-            this.generarReporteEnSegundoPlano(reporte.id, { mes, anio, formato, usuarioId });
-            
-            res.json({
-                success: true,
-                message: 'Reporte en proceso de generación',
-                data: {
-                    reporteId: reporte.id,
-                    estado: 'generando',
-                    formatoSolicitado: formato
-                }
-            });
-            
+            res.send(csv);
+
         } catch (error) {
-            console.error('Error en generarReporteMensual:', error);
+            console.error('Error exportando agenda a CSV:', error);
             res.status(500).json({
                 success: false,
-                message: 'Error al generar reporte mensual',
+                message: 'Error al exportar agenda',
                 error: error.message
             });
         }
     }
-    
-    static async generarReportePaciente(req, res) {
+
+    // Método para exportar disponibilidad a CSV
+    static async exportarDisponibilidadCSV(req, res) {
         try {
-            const { paciente_id, fecha_inicio, fecha_fin, formato = 'pdf' } = req.body;
-            const usuarioId = req.user.id;
+            const { fecha } = req.body;
+            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
             
-            // Verificar que el paciente existe
-            const [paciente] = await sequelize.query(
-                'SELECT id, nombre, apellido FROM pacientes WHERE id = ?',
-                { replacements: [paciente_id], type: QueryTypes.SELECT }
-            );
-            
-            if (!paciente) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Paciente no encontrado'
-                });
-            }
-            
-            // Crear registro de reporte
-            const reporte = await Reporte.create({
-                usuario_id: usuarioId,
-                tipo_reporte: 'paciente',
-                nombre: `Reporte Paciente ${paciente.nombre} ${paciente.apellido}`,
-                descripcion: `Reporte completo del paciente ${paciente.nombre} ${paciente.apellido}`,
-                parametros: { paciente_id, fecha_inicio, fecha_fin, formato },
-                fecha_inicio: fecha_inicio || null,
-                fecha_fin: fecha_fin || null,
-                formato,
-                estado: 'generando'
+            // Consulta de disponibilidad
+            const disponibilidad = await sequelize.query(`
+                SELECT 
+                    u.id,
+                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
+                    u.rol,
+                    u.especialidad,
+                    d.dia_semana,
+                    TIME_FORMAT(d.hora_inicio, '%H:%i') as hora_inicio,
+                    TIME_FORMAT(d.hora_fin, '%H:%i') as hora_fin,
+                    d.max_citas_dia,
+                    (SELECT COUNT(*) FROM citas c 
+                     WHERE c.psicologo_id = u.id 
+                     AND c.fecha = ? 
+                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas
+                FROM users u
+                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
+                    AND d.activo = TRUE
+                WHERE u.rol IN ('psicologo', 'becario')
+                AND u.activo = TRUE
+                ORDER BY u.rol, u.apellido, u.nombre, d.dia_semana
+            `, {
+                replacements: [fechaConsulta],
+                type: QueryTypes.SELECT
             });
+
+            // Preparar datos para CSV
+            const datosCSV = disponibilidad.map(item => ({
+                Profesional: item.profesional,
+                Rol: item.rol,
+                Especialidad: item.especialidad || '',
+                'Día Semana': item.dia_semana || '',
+                'Hora Inicio': item.hora_inicio || '',
+                'Hora Fin': item.hora_fin || '',
+                'Máx. Citas/Día': item.max_citas_dia || 8,
+                'Citas Programadas': item.citas_programadas || 0,
+                'Disponibilidad': item.citas_programadas >= (item.max_citas_dia || 8) ? 'Completo' : 'Disponible'
+            }));
+
+            // Convertir a CSV
+            const json2csvParser = new Parser();
+            const csv = json2csvParser.parse(datosCSV);
+
+            // Configurar headers para descarga
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="disponibilidad_${fechaConsulta}.csv"`);
             
-            // Generar reporte en segundo plano
-            this.generarReportePacienteEnSegundoPlano(reporte.id, { paciente_id, fecha_inicio, fecha_fin, formato, usuarioId });
-            
+            res.send(csv);
+
+        } catch (error) {
+            console.error('Error exportando disponibilidad a CSV:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al exportar disponibilidad',
+                error: error.message
+            });
+        }
+    }
+
+    static async generarReporteConflictos(req, res) {
+        try {
+            const { fecha_inicio, fecha_fin } = req.body;
+
+            // Buscar citas solapadas
+            const conflictos = await sequelize.query(`
+                SELECT 
+                    c1.id as cita1_id,
+                    c1.paciente_id as paciente1_id,
+                    p1.nombre as paciente1_nombre,
+                    p1.apellido as paciente1_apellido,
+                    c1.psicologo_id as psicologo1_id,
+                    u1.nombre as psicologo1_nombre,
+                    u1.apellido as psicologo1_apellido,
+                    c1.fecha as fecha_conflicto,
+                    c1.hora as hora_inicio1,
+                    ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)) as hora_fin1,
+                    
+                    c2.id as cita2_id,
+                    c2.paciente_id as paciente2_id,
+                    p2.nombre as paciente2_nombre,
+                    p2.apellido as paciente2_apellido,
+                    c2.psicologo_id as psicologo2_id,
+                    u2.nombre as psicologo2_nombre,
+                    u2.apellido as psicologo2_apellido,
+                    c2.hora as hora_inicio2,
+                    ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)) as hora_fin2
+                    
+                FROM citas c1
+                JOIN citas c2 ON 
+                    c1.psicologo_id = c2.psicologo_id 
+                    AND c1.fecha = c2.fecha
+                    AND c1.id < c2.id
+                    AND (
+                        (c1.hora BETWEEN c2.hora AND ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)))
+                        OR 
+                        (c2.hora BETWEEN c1.hora AND ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)))
+                    )
+                JOIN pacientes p1 ON c1.paciente_id = p1.id
+                JOIN pacientes p2 ON c2.paciente_id = p2.id
+                JOIN users u1 ON c1.psicologo_id = u1.id
+                JOIN users u2 ON c2.psicologo_id = u2.id
+                WHERE c1.estado IN ('programada', 'confirmada')
+                    AND c2.estado IN ('programada', 'confirmada')
+                    ${fecha_inicio && fecha_fin ? 'AND c1.fecha BETWEEN ? AND ?' : ''}
+                ORDER BY c1.fecha, c1.hora
+            `, {
+                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : [],
+                type: QueryTypes.SELECT
+            });
+
             res.json({
                 success: true,
-                message: 'Reporte de paciente en proceso de generación',
                 data: {
-                    reporteId: reporte.id,
-                    estado: 'generando',
-                    paciente: `${paciente.nombre} ${paciente.apellido}`
+                    conflictos,
+                    total_conflictos: conflictos.length,
+                    periodo: fecha_inicio && fecha_fin ? `${fecha_inicio} a ${fecha_fin}` : 'Todo el período'
                 }
             });
-            
+
         } catch (error) {
-            console.error('Error en generarReportePaciente:', error);
+            console.error('Error generando reporte de conflictos:', error);
             res.status(500).json({
                 success: false,
-                message: 'Error al generar reporte de paciente'
+                message: 'Error al generar reporte de conflictos',
+                error: error.message
             });
         }
-    }
-    
-    static async generarReporteExcel(req, res) {
-        try {
-            const { tipo, mes, anio, psicologo_id, becario_id, fecha_inicio, fecha_fin } = req.query;
-            const usuarioId = req.user.id;
-            
-            // Obtener datos según tipo
-            let datos;
-            let nombreReporte;
-            
-            switch (tipo) {
-                case 'citas':
-                    datos = await this.obtenerDatosCitasExcel({ mes, anio, psicologo_id, becario_id, fecha_inicio, fecha_fin });
-                    nombreReporte = `Reporte_Citas_${mes || 'personalizado'}_${anio || new Date().getFullYear()}`;
-                    break;
-                    
-                case 'pacientes':
-                    datos = await this.obtenerDatosPacientesExcel({ fecha_inicio, fecha_fin });
-                    nombreReporte = `Reporte_Pacientes_${new Date().toISOString().slice(0, 10)}`;
-                    break;
-                    
-                case 'sesiones':
-                    datos = await this.obtenerDatosSesionesExcel({ mes, anio, psicologo_id, fecha_inicio, fecha_fin });
-                    nombreReporte = `Reporte_Sesiones_${mes || 'personalizado'}_${anio || new Date().getFullYear()}`;
-                    break;
-                    
-                case 'becarios':
-                    datos = await this.obtenerDatosBecariosExcel({ mes, anio, fecha_inicio, fecha_fin });
-                    nombreReporte = `Reporte_Becarios_${mes || 'personalizado'}_${anio || new Date().getFullYear()}`;
-                    break;
-                    
-                default:
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Tipo de reporte no válido'
-                    });
-            }
-            
-            // Generar Excel
-            const buffer = await ReporteService.generarExcel(datos, tipo);
-            
-            // Crear registro
-            await Reporte.create({
-                usuario_id: usuarioId,
-                tipo_reporte: tipo,
-                nombre: nombreReporte,
-                descripcion: `Reporte de ${tipo} generado el ${new Date().toLocaleDateString()}`,
-                parametros: { tipo, mes, anio, psicologo_id, becario_id, fecha_inicio, fecha_fin },
-                formato: 'excel',
-                estado: 'completado'
-            });
-            
-            // Configurar respuesta
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename="${nombreReporte}.xlsx"`);
-            
-            res.send(buffer);
-            
-        } catch (error) {
-            console.error('Error en generarReporteExcel:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al generar reporte Excel'
-            });
-        }
-    }
-    
-    static async obtenerMisReportes(req, res) {
-        try {
-            const usuarioId = req.user.id;
-            const { tipo_reporte, estado, limit = 20, offset = 0 } = req.query;
-            
-            const whereClause = { usuario_id: usuarioId };
-            
-            if (tipo_reporte) whereClause.tipo_reporte = tipo_reporte;
-            if (estado) whereClause.estado = estado;
-            
-            const reportes = await Reporte.findAll({
-                where: whereClause,
-                order: [['created_at', 'DESC']],
-                limit: parseInt(limit),
-                offset: parseInt(offset)
-            });
-            
-            res.json({
-                success: true,
-                data: reportes,
-                count: reportes.length
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerMisReportes:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener reportes'
-            });
-        }
-    }
-    
-    static async descargarReporte(req, res) {
-        try {
-            const { id } = req.params;
-            const usuarioId = req.user.id;
-            
-            const reporte = await Reporte.findByPk(id);
-            
-            if (!reporte) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Reporte no encontrado'
-                });
-            }
-            
-            // Verificar permisos
-            if (reporte.usuario_id !== usuarioId && 
-                (!reporte.compartido_con || !reporte.compartido_con.includes(usuarioId.toString()))) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para descargar este reporte'
-                });
-            }
-            
-            if (reporte.estado !== 'completado' || !reporte.archivo_url) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'El reporte no está disponible para descarga'
-                });
-            }
-            
-            // Obtener ruta del archivo
-            const filePath = path.join(__dirname, '..', '..', reporte.archivo_url);
-            
-            // Verificar que el archivo existe
-            try {
-                await fs.access(filePath);
-            } catch {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Archivo no encontrado'
-                });
-            }
-            
-            // Determinar Content-Type
-            let contentType;
-            switch (reporte.formato) {
-                case 'pdf':
-                    contentType = 'application/pdf';
-                    break;
-                case 'excel':
-                    contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-                    break;
-                case 'csv':
-                    contentType = 'text/csv';
-                    break;
-                default:
-                    contentType = 'application/octet-stream';
-            }
-            
-            // Enviar archivo
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('Content-Disposition', `attachment; filename="${reporte.nombre}.${reporte.formato}"`);
-            
-            const fileStream = fs.createReadStream(filePath);
-            fileStream.pipe(res);
-            
-        } catch (error) {
-            console.error('Error en descargarReporte:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al descargar reporte'
-            });
-        }
-    }
-    
-    // Métodos auxiliares para obtener datos
-    static async obtenerDatosCitasExcel(params) {
-        const query = `
-            SELECT 
-                c.fecha as DIA,
-                TIME_FORMAT(c.hora, '%H:%i') as HORA,
-                CONCAT(p.nombre, ' ', p.apellido) as ESTUDIANTE,
-                p.matricula as MATRICULA,
-                p.carrera as CARRERA,
-                p.edad as EDAD,
-                p.sexo as SEXO,
-                p.telefono as TELEFONO,
-                p.email as CORREO,
-                c.tipo_consulta as MODALIDAD,
-                c.estado as ESTATUS,
-                u_bec.nombre as PRACTICANTE,
-                u_psi.nombre as ATIENDE,
-                c.motivo as OBSERVACIONES,
-                MONTH(c.fecha) as MES
-            FROM citas c
-            JOIN pacientes p ON c.paciente_id = p.id
-            LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-            LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
-            WHERE 1=1
-        `;
-        
-        const replacements = [];
-        let whereClause = '';
-        
-        if (params.mes && params.anio) {
-            whereClause += ` AND MONTH(c.fecha) = ? AND YEAR(c.fecha) = ?`;
-            replacements.push(params.mes, params.anio);
-        }
-        
-        if (params.fecha_inicio && params.fecha_fin) {
-            whereClause += ` AND c.fecha BETWEEN ? AND ?`;
-            replacements.push(params.fecha_inicio, params.fecha_fin);
-        }
-        
-        if (params.psicologo_id) {
-            whereClause += ` AND c.psicologo_id = ?`;
-            replacements.push(params.psicologo_id);
-        }
-        
-        if (params.becario_id) {
-            whereClause += ` AND c.becario_id = ?`;
-            replacements.push(params.becario_id);
-        }
-        
-        const finalQuery = query + whereClause + ' ORDER BY c.fecha, c.hora';
-        
-        return await sequelize.query(finalQuery, {
-            replacements,
-            type: QueryTypes.SELECT
-        });
-    }
-    
-    static async obtenerDatosPacientesExcel(params) {
-        const query = `
-            SELECT 
-                p.nombre as NOMBRE,
-                p.apellido as APELLIDO,
-                p.matricula as MATRICULA,
-                p.telefono as TELEFONO,
-                p.carrera as CARRERA,
-                p.cuatri as CUATRI,
-                p.tipo_servicio as TIPO_DE_SERVICIO,
-                p.fecha_presentacion as FECHA_DE_PRESENTACION,
-                (SELECT COUNT(*) FROM citas c WHERE c.paciente_id = p.id AND c.estado = 'completada') as No_de_sesiones_terapeuticas_personales,
-                a.fecha_aceptacion as FECHA_DE_ACEPTACION,
-                p.mmpi2_rf as MMPI_2_RF,
-                al.fecha_alta as FECHA_DE_TERMINO,
-                al.carta_liberacion as CARTA_DE_LIBERACION,
-                p.horas_objetivo as HORAS_OBJETIVO,
-                p.horas_realizadas as HORAS_REALIZADAS,
-                p.horas_faltantes as HORAS_FALTANTES,
-                p.servicio_comunitario_liberado as SERVICIO_COMUNITARIO_LIBERADO,
-                u_psi.nombre as QUIEN_ATIENDE,
-                p.observaciones as OBSERVACIONES
-            FROM pacientes p
-            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
-            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
-            LEFT JOIN altas al ON p.id = al.paciente_id
-            WHERE p.activo = TRUE
-        `;
-        
-        const replacements = [];
-        let whereClause = '';
-        
-        if (params.fecha_inicio && params.fecha_fin) {
-            whereClause += ` AND p.created_at BETWEEN ? AND ?`;
-            replacements.push(params.fecha_inicio, params.fecha_fin);
-        }
-        
-        const finalQuery = query + whereClause + ' ORDER BY p.apellido, p.nombre';
-        
-        return await sequelize.query(finalQuery, {
-            replacements,
-            type: QueryTypes.SELECT
-        });
-    }
-    
-    // Método auxiliar para generar reporte en segundo plano
-    static async generarReporteEnSegundoPlano(reporteId, params) {
-        try {
-            // Aquí iría la lógica para generar el reporte
-            // Por ahora simulamos la generación
-            
-            setTimeout(async () => {
-                try {
-                    const reporte = await Reporte.findByPk(reporteId);
-                    if (reporte) {
-                        await reporte.update({
-                            estado: 'completado',
-                            archivo_url: `/reports/${reporteId}.${params.formato}`
-                        });
-                        
-                        // Notificar al usuario
-                        await sequelize.query(`
-                            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                            VALUES (?, 'reporte_generado', 'Reporte listo', 
-                            'Su reporte mensual ha sido generado y está listo para descargar.', NOW())
-                        `, { replacements: [params.usuarioId] });
-                    }
-                } catch (error) {
-                    console.error('Error al actualizar reporte:', error);
-                }
-            }, 5000); // Simulamos 5 segundos de procesamiento
-            
-        } catch (error) {
-            console.error('Error en generarReporteEnSegundoPlano:', error);
-        }
-    }
-    
-    // Método auxiliar para obtener último día del mes
-    static obtenerUltimoDiaMes(anio, mes) {
-        return new Date(anio, mes, 0).toISOString().split('T')[0];
     }
 }
 
@@ -9705,20 +9611,16 @@ module.exports = router;
 const express = require('express');
 const router = express.Router();
 const ReporteController = require('../controllers/reporteController');
-const verifyToken = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
 
-// Todas las rutas requieren autenticación
-router.use(verifyToken);
+// Exportar agenda a CSV
+router.post('/exportar-agenda-csv', ReporteController.exportarAgendaCSV);
 
-// Generar reportes
-router.get('/mensual', requireRole(['coordinador', 'psicologo']), ReporteController.generarReporteMensual);
-router.post('/paciente', requireRole(['coordinador', 'psicologo']), ReporteController.generarReportePaciente);
-router.get('/excel', requireRole(['coordinador']), ReporteController.generarReporteExcel);
+// Exportar disponibilidad a CSV
+router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibilidadCSV);
 
-// Obtener reportes generados
-router.get('/mis-reportes', ReporteController.obtenerMisReportes);
-router.get('/descargar/:id', ReporteController.descargarReporte);
+// Generar reporte de conflictos
+router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
+
 
 module.exports = router;
 
@@ -18723,14 +18625,19 @@ export default BecarioPacientes;
 
 /frontend\src\pages\coordinador\AgendaPage.js:
 --------------------------------------------------------------------------------
+// frontend/src/pages/coordinador/AgendaPage.js
 import React, { useState, useEffect } from 'react';
 import { 
   FiCalendar, FiClock, FiUsers, FiFilter, 
   FiChevronLeft, FiChevronRight, FiRefreshCw,
-  FiUser, FiSearch, FiEye, FiEyeOff
+  FiUser, FiEye, FiEyeOff, FiMail,
+  FiPhone, FiVideo, FiMapPin, FiEdit2,
+  FiDownload, FiBarChart2, FiCheckCircle, FiXCircle, FiAlertCircle,
+  FiSearch, FiUserCheck, FiSettings, FiArchive
 } from 'react-icons/fi';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
+import ApiService from '../../services/api';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
@@ -18746,71 +18653,169 @@ const CoordinadorAgenda = () => {
   const [showDetalles, setShowDetalles] = useState(false);
   const [selectedCita, setSelectedCita] = useState(null);
   const [mostrarTodas, setMostrarTodas] = useState(true);
+  const [estadisticas, setEstadisticas] = useState(null);
+  const [disponibilidad, setDisponibilidad] = useState([]);
+  const [showModalDisponibilidad, setShowModalDisponibilidad] = useState(false);
+  const [pacientes, setPacientes] = useState([]);
+  const [searchPaciente, setSearchPaciente] = useState('');
+  const [filteredPacientes, setFilteredPacientes] = useState([]);
+  
+  const [filtrosAvanzados, setFiltrosAvanzados] = useState({
+    fecha_inicio: '',
+    fecha_fin: '',
+    paciente_id: '',
+    tipo_consulta: ''
+  });
+
+  // Colores fijos para psicólogos
+  const coloresPsicologos = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
 
   useEffect(() => {
-    fetchData();
-    }, [selectedDate, view]);
+    fetchPsicologos();
+    fetchPacientes();
+  }, []);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    fetchAgenda();
+  }, [selectedDate, view, filterPsicologo, filterEstado, filtrosAvanzados]);
+
+  const fetchPacientes = async () => {
     try {
-        setLoading(true);
-        
-        // Primero, definir los psicólogos
-        const psicologosData = [
-        { id: 1, nombre: 'Lic. Luis Fernández', color: 'var(--grnb)', especialidad: 'Terapia Cognitivo-Conductual' },
-        { id: 2, nombre: 'Lic. Laura Gutiérrez', color: 'var(--blu)', especialidad: 'Psicología Clínica' }
-        ];
-        
-        setPsicologos(psicologosData);
+      const response = await ApiService.get('/pacientes?activo=true&limit=100');
+      if (response.success) {
+        setPacientes(response.data);
+      }
+    } catch (error) {
+      console.error('Error cargando pacientes:', error);
+    }
+  };
 
-        // Generar citas de ejemplo para la semana
-        const citasSemana = [];
-        const startDate = startOfWeek(selectedDate, { weekStartsOn: 1 });
-        const weekDays = eachDayOfInterval({ 
-        start: startDate, 
-        end: endOfWeek(startDate, { weekStartsOn: 1 }) 
-        });
-        
-        weekDays.forEach((day, dayIndex) => {
-        const psicologoId = dayIndex % 2 === 0 ? 1 : 2;
-        const psicologo = psicologosData.find(p => p.id === psicologoId);
-        
-        if (!psicologo) return; // Añadir validación
-        
-        // Agregar 3-5 citas por día
-        const citasCount = 3 + (dayIndex % 3);
-        
-        for (let i = 0; i < citasCount; i++) {
-            const hora = 9 + (i * 2) + (dayIndex % 2);
-            citasSemana.push({
-            id: `${dayIndex}-${i}`,
-            fecha: format(day, 'yyyy-MM-dd'),
-            hora: `${hora}:00`,
-            duracion: 50,
-            paciente_nombre: `Paciente ${dayIndex + 1}${String.fromCharCode(65 + i)}`,
-            psicologo_id: psicologoId,
+  const fetchPsicologos = async () => {
+    try {
+      const response = await ApiService.get('/users?rol=psicologo');
+      if (response.success) {
+        const psicologosData = response.data.map((psicologo, index) => ({
+          id: psicologo.id,
+          nombre: `${psicologo.nombre} ${psicologo.apellido}`,
+          color: coloresPsicologos[index % coloresPsicologos.length],
+          especialidad: psicologo.especialidad || 'Psicología General',
+          email: psicologo.email
+        }));
+        setPsicologos(psicologosData);
+      }
+    } catch (error) {
+      console.error('Error cargando psicólogos:', error);
+    }
+  };
+
+  const fetchAgenda = async () => {
+    try {
+      setLoading(true);
+      
+      const params = new URLSearchParams();
+      
+      // Si estamos en vista semanal, usar el rango de la semana
+      if (view === 'week') {
+        const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
+        const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
+        params.append('fecha_inicio', format(start, 'yyyy-MM-dd'));
+        params.append('fecha_fin', format(end, 'yyyy-MM-dd'));
+      } else {
+        // Vista diaria
+        params.append('fecha_inicio', format(selectedDate, 'yyyy-MM-dd'));
+        params.append('fecha_fin', format(selectedDate, 'yyyy-MM-dd'));
+      }
+      
+      // Aplicar filtros
+      if (filterPsicologo) {
+        params.append('psicologo_id', filterPsicologo);
+      }
+      
+      if (filterEstado) {
+        params.append('estado', filterEstado);
+      }
+      
+      // Filtros avanzados
+      if (filtrosAvanzados.paciente_id) {
+        params.append('paciente_id', filtrosAvanzados.paciente_id);
+      }
+      
+      if (filtrosAvanzados.tipo_consulta) {
+        params.append('tipo_consulta', filtrosAvanzados.tipo_consulta);
+      }
+      
+      // Llamar al endpoint de agenda global
+      const response = await ApiService.get(`/agenda/global?${params.toString()}`);
+      
+      if (response.success) {
+        // Transformar los datos para que coincidan con la estructura esperada
+        const citasTransformadas = response.data.citas.map(cita => {
+          const psicologo = psicologos.find(p => p.id === cita.psicologo_id) || {
+            nombre: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : 'No asignado',
+            color: coloresPsicologos[cita.psicologo_id % coloresPsicologos.length]
+          };
+          
+          return {
+            id: cita.id,
+            fecha: cita.fecha,
+            hora: cita.hora || '00:00',
+            duracion: cita.duracion || 50,
+            paciente_nombre: cita.Paciente ? 
+              `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : 'Paciente',
+            paciente_id: cita.paciente_id,
+            psicologo_id: cita.psicologo_id,
             psicologo_nombre: psicologo.nombre,
             psicologo_color: psicologo.color,
-            tipo_consulta: i % 2 === 0 ? 'presencial' : 'virtual',
-            estado: i === 0 ? 'confirmada' : i === 1 ? 'programada' : 'completada',
-            becario_nombre: i % 2 === 0 ? 'Juan Pérez' : null
-            });
-        }
+            tipo_consulta: cita.tipo_consulta,
+            estado: cita.estado,
+            becario_nombre: cita.Becario ? 
+              `${cita.Becario.nombre} ${cita.Becario.apellido}` : null,
+            becario_id: cita.becario_id,
+            notas: cita.notas,
+            telefono: cita.Paciente?.telefono,
+            email: cita.Paciente?.email
+          };
         });
-
-        setCitas(citasSemana);
-        setLoading(false);
+        
+        setCitas(citasTransformadas);
+        setEstadisticas(response.data.estadisticas);
+      }
+      
+      setLoading(false);
     } catch (error) {
-        console.error('Error cargando agenda:', error);
-        setLoading(false);
+      console.error('Error cargando agenda:', error);
+      setLoading(false);
     }
-    };
+  };
 
   const filteredCitas = citas.filter(cita => {
     const matchesPsicologo = !filterPsicologo || cita.psicologo_id == filterPsicologo;
     const matchesEstado = !filterEstado || cita.estado === filterEstado;
     return matchesPsicologo && matchesEstado;
-    });
+  });
+
+  // Función para buscar pacientes
+  const buscarPaciente = (searchTerm) => {
+    setSearchPaciente(searchTerm);
+    if (searchTerm.length > 1) {
+      const filtered = pacientes.filter(paciente =>
+        `${paciente.nombre} ${paciente.apellido}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        paciente.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredPacientes(filtered.slice(0, 5));
+    } else {
+      setFilteredPacientes([]);
+    }
+  };
+
+  const seleccionarPaciente = (paciente) => {
+    setSearchPaciente(`${paciente.nombre} ${paciente.apellido}`);
+    setFiltrosAvanzados(prev => ({
+      ...prev,
+      paciente_id: paciente.id
+    }));
+    setFilteredPacientes([]);
+  };
 
   const goToPrevious = () => {
     setSelectedDate(prev => subDays(prev, view === 'day' ? 1 : 7));
@@ -18844,23 +18849,192 @@ const CoordinadorAgenda = () => {
 
   const getCitasPorDiaYHora = (fecha, hora) => {
     try {
-        const fechaStr = format(new Date(fecha), 'yyyy-MM-dd');
-        const horaNum = hora.split(':')[0];
-        
-        return filteredCitas.filter(cita => 
+      const fechaStr = format(new Date(fecha), 'yyyy-MM-dd');
+      const horaNum = hora.split(':')[0];
+      
+      return filteredCitas.filter(cita => 
         cita.fecha === fechaStr &&
         cita.hora.startsWith(horaNum)
-        );
+      );
     } catch (error) {
-        console.error('Error filtrando citas:', error);
-        return [];
+      console.error('Error filtrando citas:', error);
+      return [];
     }
-    };
+  };
 
   const showCitaDetalles = (cita) => {
     setSelectedCita(cita);
     setShowDetalles(true);
   };
+
+  const handleFiltroAvanzado = (key, value) => {
+    setFiltrosAvanzados(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const resetFiltros = () => {
+    setFilterPsicologo('');
+    setFilterEstado('');
+    setSearchPaciente('');
+    setFiltrosAvanzados({
+      fecha_inicio: '',
+      fecha_fin: '',
+      paciente_id: '',
+      tipo_consulta: ''
+    });
+  };
+
+  const exportarAgenda = async () => {
+      try {
+          setLoading(true);
+          
+          const fechaInicio = filtrosAvanzados.fecha_inicio || format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+          const fechaFin = filtrosAvanzados.fecha_fin || format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+          
+          // Crear datos para exportar
+          const datosExportacion = {
+              fecha_inicio: fechaInicio,
+              fecha_fin: fechaFin,
+              psicologo_id: filterPsicologo || null,
+              tipo_consulta: filtrosAvanzados.tipo_consulta || null
+          };
+
+          const token = localStorage.getItem('token');
+          
+          const response = await fetch('http://localhost:3000/api/reportes/exportar-agenda-csv', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify(datosExportacion)
+          });
+
+          if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Error ${response.status}: ${errorText}`);
+          }
+
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          
+          let filename = `agenda_${fechaInicio}_a_${fechaFin}.csv`;
+          const contentDisposition = response.headers.get('content-disposition');
+          if (contentDisposition) {
+              const match = contentDisposition.match(/filename="(.+?)"/);
+              if (match) {
+                  filename = match[1];
+              }
+          }
+          
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          notifications.success(' Agenda exportada exitosamente como CSV');
+          
+      } catch (error) {
+          console.error('Error exportando agenda:', error);
+          notifications.error(' Error al exportar agenda: ' + error.message);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const exportarDisponibilidad = async () => {
+      try {
+          const fecha = format(new Date(), 'yyyy-MM-dd');
+          const response = await ApiService.post('/reportes/exportar-disponibilidad-csv', { fecha });
+          
+          const blob = new Blob([response], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          const url = URL.createObjectURL(blob);
+          
+          link.setAttribute('href', url);
+          link.setAttribute('download', `disponibilidad_${fecha}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          notifications.success(' Disponibilidad exportada exitosamente');
+          
+      } catch (error) {
+          console.error('Error exportando disponibilidad:', error);
+          notifications.error(' Error al exportar disponibilidad');
+      }
+  };
+
+  const verHoy = () => {
+      const hoy = format(new Date(), 'yyyy-MM-dd');
+      setFiltrosAvanzados({
+          fecha_inicio: hoy,
+          fecha_fin: hoy,
+          paciente_id: '',
+          tipo_consulta: ''
+      });
+      setSelectedDate(new Date());
+  };
+
+  const revisarConflictos = async () => {
+      try {
+          setLoading(true);
+          
+          const fechaInicio = filtrosAvanzados.fecha_inicio || format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+          const fechaFin = filtrosAvanzados.fecha_fin || format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+          
+          const response = await ApiService.post('/reportes/reporte-conflictos', {
+              fecha_inicio: fechaInicio,
+              fecha_fin: fechaFin
+          });
+          
+          if (response.success && response.data.conflictos.length > 0) {
+              notifications.warning(`Se encontraron ${response.data.conflictos.length} conflictos de horario`);
+          } else {
+              notifications.success(' No se encontraron conflictos de horario');
+          }
+          
+      } catch (error) {
+          console.error('Error revisando conflictos:', error);
+          notifications.error(' Error al revisar conflictos');
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const fetchDisponibilidad = async () => {
+    try {
+        const fecha = format(new Date(), 'yyyy-MM-dd');
+        const response = await ApiService.get(`/agenda/disponibilidad-profesionales?fecha=${fecha}`);
+        
+        if (response.success) {
+            setDisponibilidad(response.data.disponibilidad);
+        } else {
+            setDisponibilidad([]);
+        }
+    } catch (error) {
+        console.error('Error cargando disponibilidad:', error);
+        setDisponibilidad([]);
+    }
+  };
+
+  // Llama a fetchDisponibilidad en useEffect
+  useEffect(() => {
+    const loadData = async () => {
+        await fetchPsicologos();
+        await fetchPacientes();
+        await fetchAgenda();
+        await fetchDisponibilidad();
+    };
+    loadData();
+  }, [selectedDate, view, filterPsicologo, filterEstado, filtrosAvanzados]);
 
   const weekDays = view === 'week' ? 
     eachDayOfInterval({ 
@@ -18868,24 +19042,14 @@ const CoordinadorAgenda = () => {
       end: endOfWeek(selectedDate, { weekStartsOn: 1 }) 
     }) : [selectedDate];
 
-  if (loading) {
+  if (loading && citas.length === 0) {
     return (
-        <div className="loading-container">
+      <div className="loading-container">
         <div className="loading-spinner"></div>
         <div className="loading-text">Cargando agenda global...</div>
-        </div>
+      </div>
     );
-    }
-
-    // También puedes añadir una verificación adicional
-    if (!psicologos || psicologos.length === 0) {
-    return (
-        <div className="empty-state">
-        <h3>No hay psicólogos registrados</h3>
-        <p>Por favor, registra psicólogos en el sistema primero.</p>
-        </div>
-    );
-    }
+  }
 
   return (
     <div className="citas-page">
@@ -18894,29 +19058,182 @@ const CoordinadorAgenda = () => {
           <h1>Agenda Global</h1>
           <p>Vista completa de todas las citas del consultorio</p>
         </div>
-        <button className="btn-secondary" onClick={fetchData}>
-          <FiRefreshCw /> Actualizar
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={fetchAgenda}>
+            <FiRefreshCw /> Actualizar
+          </button>
+          <button className="btn-primary" onClick={exportarAgenda}>
+            <FiDownload /> Exportar Agenda
+          </button>
+        </div>
       </div>
+
+      {/* Estadísticas rápidas - MEJORADO */}
+      {estadisticas && (
+        <div className="grid-2 mb-20" style={{ gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <div className="card card-primary-coord">
+            <div className="flex-row align-center gap-15 mb-15">
+              <div className="avatar" style={{ background: 'var(--blu)' }}>
+                <FiBarChart2 size={24} />
+              </div>
+              <div>
+                <h4>Resumen General</h4>
+                <p className="text-small">Estadísticas del período</p>
+              </div>
+            </div>
+            
+            <div className="grid-2 gap-10">
+              <div className="stat-box">
+                <div className="stat-icon" style={{ color: 'var(--grnb)' }}>
+                  <FiCalendar />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{estadisticas.total_citas || filteredCitas.length}</div>
+                  <div className="stat-label">Total Citas</div>
+                </div>
+              </div>
+              
+              <div className="stat-box">
+                <div className="stat-icon" style={{ color: 'var(--blu)' }}>
+                  <FiCheckCircle />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{estadisticas.confirmadas || filteredCitas.filter(c => c.estado === 'confirmada').length}</div>
+                  <div className="stat-label">Confirmadas</div>
+                </div>
+              </div>
+              
+              <div className="stat-box">
+                <div className="stat-icon" style={{ color: 'var(--yy)' }}>
+                  <FiUsers />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{estadisticas.psicologos_involucrados || psicologos.length}</div>
+                  <div className="stat-label">Psicólogos</div>
+                </div>
+              </div>
+              
+              <div className="stat-box">
+                <div className="stat-icon" style={{ color: 'var(--grnd)' }}>
+                  <FiUser />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{estadisticas.pacientes_atendidos || new Set(filteredCitas.map(c => c.paciente_id)).size}</div>
+                  <div className="stat-label">Pacientes</div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-15 pt-15 border-top">
+              <div className="flex-row justify-between">
+                <span className="text-small">Programadas:</span>
+                <span className="badge badge-warning">{estadisticas.programadas || filteredCitas.filter(c => c.estado === 'programada').length}</span>
+              </div>
+              <div className="flex-row justify-between mt-5">
+                <span className="text-small">Completadas:</span>
+                <span className="badge badge-success">{estadisticas.completadas || filteredCitas.filter(c => c.estado === 'completada').length}</span>
+              </div>
+            </div>
+          </div>
+          
+
+          <div className="card card-secondary-coord">
+            <div className="flex-row align-center gap-15 mb-15">
+              <div className="avatar" style={{ background: 'var(--grnb)' }}>
+                <FiUserCheck size={24} />
+              </div>
+              <div>
+                <h4>Disponibilidad Hoy</h4>
+                <p className="text-small">{format(new Date(), 'dd/MM/yyyy')}</p>
+              </div>
+            </div>
+            
+            <div className="flex-col gap-10 mt-10">
+              {disponibilidad && disponibilidad.length > 0 ? (
+                <>
+                  {disponibilidad.slice(0, 3).map(profesional => {
+                    const porcentaje = profesional.porcentaje_ocupacion || 
+                      Math.round((profesional.citas_programadas / profesional.max_citas_dia) * 100);
+                    
+                    return (
+                      <div key={profesional.id} className="flex-col gap-5">
+                        <div className="flex-row justify-between align-center">
+                          <span className="text-small font-bold">
+                            {profesional.profesional.split(' ')[1] || profesional.profesional}
+                          </span>
+                          <span className={`badge ${
+                            profesional.estado === 'disponible' ? 'badge-success' :
+                            profesional.estado === 'limitado' ? 'badge-warning' :
+                            'badge-danger'
+                          }`}>
+                            {profesional.citas_programadas}/{profesional.max_citas_dia}
+                          </span>
+                        </div>
+                        <div className="progress-container">
+                          <div 
+                            className="progress-bar" 
+                            style={{ 
+                              width: `${porcentaje}%`,
+                              background: porcentaje > 80 ? 'var(--rr)' : 
+                                        porcentaje > 60 ? 'var(--yy)' : 'var(--grnb)'
+                            }}
+                          ></div>
+                        </div>
+                        {profesional.cupos_disponibles > 0 && (
+                          <div className="text-small text-success flex-row align-center gap-5">
+                            <FiCheckCircle size={12} />
+                            {profesional.cupos_disponibles} cupo(s) disponible(s)
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {disponibilidad.length > 3 && (
+                    <div className="text-center mt-10">
+                      <button 
+                        className="btn-text btn-text-modal"
+                        onClick={() => setShowModalDisponibilidad(true)}
+                        style={{ 
+                          fontSize: '12px',
+                          padding: '6px 12px'
+                        }}
+                      >
+                        Ver todos ({disponibilidad.length} profesionales)
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center p-10">
+                  <div className="loading-spinner"></div>
+                  <div className="text-small mt-10">Cargando disponibilidad...</div>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          
+        </div>
+      )}
 
       <div className="calendar-controls">
         <div className="view-selector">
           <button 
-            className={`btn-text ${view === 'day' ? 'active' : ''}`}
+            className={`btn-header ${view === 'day' ? 'active' : ''}`}
             onClick={() => setView('day')}
           >
-            Día
+            <FiCalendar /> Día
           </button>
           <button 
-            className={`btn-text ${view === 'week' ? 'active' : ''}`}
+            className={`btn-header ${view === 'week' ? 'active' : ''}`}
             onClick={() => setView('week')}
           >
-            Semana
+            <FiCalendar /> Semana
           </button>
         </div>
 
         <div className="date-navigation">
-          <button className="btn-text" onClick={goToPrevious}>
+          <button className="btn-header" onClick={goToPrevious}>
             <FiChevronLeft /> {view === 'day' ? 'Ayer' : 'Sem. anterior'}
           </button>
           
@@ -18928,33 +19245,33 @@ const CoordinadorAgenda = () => {
               }
             </h3>
             <div className="text-small">
+              <FiClock className="mr-5" />
               Total citas: {filteredCitas.length}
             </div>
           </div>
           
-          <button className="btn-text" onClick={goToNext}>
+          <button className="btn-header" onClick={goToNext}>
             {view === 'day' ? 'Mañana' : 'Próx. semana'} <FiChevronRight />
           </button>
         </div>
 
         <div className="quick-actions">
-          <button className="btn-secondary" onClick={goToToday}>
+          <button className="btn-primary" onClick={goToToday}>
             Hoy
           </button>
-          <button 
-            className={`btn-text ${mostrarTodas ? 'text-success' : ''}`}
-            onClick={() => setMostrarTodas(!mostrarTodas)}
-          >
-            {mostrarTodas ? <FiEye /> : <FiEyeOff />}
-          </button>
+
         </div>
       </div>
 
-      {/* Filtros */}
+      {/* Filtros - MEJORADO con alineación consistente */}
       <div className="filters-container mb-20">
-        <div className="grid-3 gap-20">
+
+        
+        <div className="grid-3 gap-20 mt-15">
           <div className="form-group">
-            <label>Filtrar por psicólogo</label>
+            <label className="form-label">
+              <FiUser /> Psicólogo
+            </label>
             <select 
               value={filterPsicologo} 
               onChange={(e) => setFilterPsicologo(e.target.value)}
@@ -18970,7 +19287,9 @@ const CoordinadorAgenda = () => {
           </div>
           
           <div className="form-group">
-            <label>Filtrar por estado</label>
+            <label className="form-label">
+              <FiCheckCircle /> Estado
+            </label>
             <select 
               value={filterEstado} 
               onChange={(e) => setFilterEstado(e.target.value)}
@@ -18985,18 +19304,84 @@ const CoordinadorAgenda = () => {
           </div>
           
           <div className="form-group">
-            <label>Filtrar por tipo</label>
-            <select className="select-field">
+            <label className="form-label">
+              <FiVideo /> Tipo de Consulta
+            </label>
+            <select 
+              value={filtrosAvanzados.tipo_consulta}
+              onChange={(e) => handleFiltroAvanzado('tipo_consulta', e.target.value)}
+              className="select-field"
+            >
               <option value="">Todos los tipos</option>
               <option value="presencial">Presencial</option>
               <option value="virtual">Virtual</option>
             </select>
           </div>
         </div>
+        
+        {/* Filtros avanzados - MEJORADO */}
+        <div className="grid-3 gap-20 mt-20">
+          <div className="form-group">
+            <label className="form-label">
+              <FiCalendar /> Fecha Inicio
+            </label>
+            <input
+              type="date"
+              value={filtrosAvanzados.fecha_inicio}
+              onChange={(e) => handleFiltroAvanzado('fecha_inicio', e.target.value)}
+              className="input-field"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label className="form-label">
+              <FiCalendar /> Fecha Fin
+            </label>
+            <input
+              type="date"
+              value={filtrosAvanzados.fecha_fin}
+              onChange={(e) => handleFiltroAvanzado('fecha_fin', e.target.value)}
+              className="input-field"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label className="form-label">
+              <FiSearch /> Buscar Paciente
+            </label>
+            <div className="search-box-wrapper">
+              <input
+                type="text"
+                value={searchPaciente}
+                onChange={(e) => buscarPaciente(e.target.value)}
+                className="input-field"
+                placeholder="Nombre o apellido del paciente"
+              />
+              {filteredPacientes.length > 0 && (
+                <div className="search-results">
+                  {filteredPacientes.map(paciente => (
+                    <div 
+                      key={paciente.id}
+                      className="search-result-item"
+                      onClick={() => seleccionarPaciente(paciente)}
+                    >
+                      <div className="search-result-name">
+                        {paciente.nombre} {paciente.apellido}
+                      </div>
+                      {paciente.email && (
+                        <div className="search-result-email">{paciente.email}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Calendario Semanal */}
-      <div className="calendar-week-view" style={{ height: '600px' }}>
+      {/* Calendario Semanal/Dia */}
+      <div className="calendar-week-view" style={{ minHeight: '600px' }}>
         <div className="week-header">
           <div className="time-header"></div>
           {weekDays.map((day) => (
@@ -19006,6 +19391,9 @@ const CoordinadorAgenda = () => {
               </div>
               <div className="day-number">
                 {format(day, 'd')}
+              </div>
+              <div className="text-small">
+                {filteredCitas.filter(c => c.fecha === format(day, 'yyyy-MM-dd')).length} citas
               </div>
             </div>
           ))}
@@ -19031,7 +19419,7 @@ const CoordinadorAgenda = () => {
                         className="week-event"
                         style={{ 
                           backgroundColor: cita.psicologo_color,
-                          opacity: 0.8,
+                          opacity: 0.85,
                           height: `${100 / (mostrarTodas ? Math.max(citasHora.length, 1) : 1)}%`,
                           top: `${(index / (mostrarTodas ? citasHora.length : 1)) * 100}%`
                         }}
@@ -19043,10 +19431,16 @@ const CoordinadorAgenda = () => {
                         <div className="week-event-psicologo">
                           {cita.psicologo_nombre.split(' ')[1]}
                         </div>
+                        <div className="week-event-type">
+                          {cita.tipo_consulta === 'virtual' ? <FiVideo /> : <FiMapPin />}
+                        </div>
                       </div>
                     ))}
                     {citasHora.length > 1 && !mostrarTodas && (
-                      <div className="week-event-more">
+                      <div 
+                        className="week-event-more"
+                        onClick={() => setMostrarTodas(true)}
+                      >
                         +{citasHora.length - 1} más
                       </div>
                     )}
@@ -19059,8 +19453,8 @@ const CoordinadorAgenda = () => {
       </div>
 
       {/* Resumen por Psicólogo */}
-      <div className="grid-3 mt-20">
-        {psicologos.map(psicologo => {
+      <div className="grid-3 mt-30">
+        {psicologos.slice(0, 3).map(psicologo => {
           const citasPsicologo = filteredCitas.filter(c => c.psicologo_id === psicologo.id);
           const citasHoy = citasPsicologo.filter(c => c.fecha === format(new Date(), 'yyyy-MM-dd')).length;
           
@@ -19073,9 +19467,12 @@ const CoordinadorAgenda = () => {
                 >
                   {psicologo.nombre.split(' ').map(n => n[0]).join('')}
                 </div>
-                <div>
+                <div className="flex-1">
                   <h4>{psicologo.nombre}</h4>
-                  <p className="text-small">{psicologo.especialidad || 'Psicólogo'}</p>
+                  <p className="text-small">{psicologo.especialidad}</p>
+                  <p className="text-small">
+                    <FiMail /> {psicologo.email}
+                  </p>
                 </div>
               </div>
               
@@ -19100,24 +19497,9 @@ const CoordinadorAgenda = () => {
             </div>
           );
         })}
-        
-        <div className="card">
-          <h4>Acciones Rápidas</h4>
-          <div className="flex-col gap-10 mt-10">
-            <button className="btn-primary w-100">
-              Ver Reporte Semanal
-            </button>
-            <button className="btn-secondary w-100">
-              Exportar Agenda
-            </button>
-            <button className="btn-warning w-100">
-              Revisar Conflictos
-            </button>
-          </div>
-        </div>
       </div>
 
-      {/* Modal de Detalles */}
+      {/* Modal de Detalles de Cita */}
       {showDetalles && selectedCita && (
         <div className="modal-overlay">
           <div className="modal-container">
@@ -19132,6 +19514,13 @@ const CoordinadorAgenda = () => {
                 <span>{selectedCita.paciente_nombre}</span>
               </div>
               
+              {selectedCita.telefono && (
+                <div className="detail-row">
+                  <strong>Teléfono:</strong>
+                  <span><FiPhone /> {selectedCita.telefono}</span>
+                </div>
+              )}
+              
               <div className="detail-row">
                 <strong>Fecha y hora:</strong>
                 <span>{selectedCita.fecha} {selectedCita.hora}</span>
@@ -19139,12 +19528,23 @@ const CoordinadorAgenda = () => {
               
               <div className="detail-row">
                 <strong>Psicólogo:</strong>
-                <span>{selectedCita.psicologo_nombre}</span>
+                <div className="flex-row align-center gap-5">
+                  <div 
+                    className="avatar-small" 
+                    style={{ background: selectedCita.psicologo_color }}
+                  >
+                    {selectedCita.psicologo_nombre.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <span>{selectedCita.psicologo_nombre}</span>
+                </div>
               </div>
               
               <div className="detail-row">
                 <strong>Tipo:</strong>
-                <span>{selectedCita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual'}</span>
+                <span className="flex-row align-center gap-5">
+                  {selectedCita.tipo_consulta === 'virtual' ? <FiVideo /> : <FiMapPin />}
+                  {selectedCita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual'}
+                </span>
               </div>
               
               <div className="detail-row">
@@ -19170,6 +19570,13 @@ const CoordinadorAgenda = () => {
                 <strong>Duración:</strong>
                 <span>{selectedCita.duracion} minutos</span>
               </div>
+              
+              {selectedCita.notas && (
+                <div className="detail-row notes">
+                  <strong>Notas:</strong>
+                  <p>{selectedCita.notas}</p>
+                </div>
+              )}
             </div>
             
             <div className="modal-footer">
@@ -19179,6 +19586,171 @@ const CoordinadorAgenda = () => {
               <button className="btn-primary">
                 Ver Expediente
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Disponibilidad Completa - MÁS ANCHO */}
+      {showModalDisponibilidad && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-extra-large">
+            <div className="modal-header">
+              <div className="flex-row align-center gap-15">
+                <div className="avatar" style={{ background: 'var(--grnb)' }}>
+                  <FiUserCheck size={24} />
+                </div>
+                <div>
+                  <h3>Disponibilidad Completa</h3>
+                  <p className="text-small">{format(new Date(), 'EEEE dd/MM/yyyy', { locale: es })}</p>
+                </div>
+              </div>
+              <button 
+                className="modal-close" 
+                onClick={() => setShowModalDisponibilidad(false)}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="modal-content">
+              {/* Estadísticas rápidas */}
+              {disponibilidad && disponibilidad.length > 0 && (
+                <div className="modal-stats-grid">
+                  <div className="stat-item">
+                    <div className="stat-value">{disponibilidad.length}</div>
+                    <div className="stat-label">Profesionales</div>
+                  </div>
+                  <div className="stat-item">
+                    <div className="stat-value text-success">
+                      {disponibilidad.filter(p => p.estado === 'disponible').length}
+                    </div>
+                    <div className="stat-label">Disponibles</div>
+                  </div>
+                  <div className="stat-item">
+                    <div className="stat-value text-warning">
+                      {disponibilidad.filter(p => p.estado === 'limitado').length}
+                    </div>
+                    <div className="stat-label">Limitados</div>
+                  </div>
+                  <div className="stat-item">
+                    <div className="stat-value text-danger">
+                      {disponibilidad.filter(p => p.estado === 'completo').length}
+                    </div>
+                    <div className="stat-label">Completos</div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="scrollable" style={{ maxHeight: '60vh' }}>
+                {disponibilidad && disponibilidad.length > 0 ? (
+                  <div className="table-container">
+                    <table className="data-table wide-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '25%' }}>Profesional</th>
+                          <th style={{ width: '10%' }}>Rol</th>
+                          <th style={{ width: '20%' }}>Especialidad</th>
+                          <th style={{ width: '15%' }}>Horario</th>
+                          <th style={{ width: '15%' }}>Citas / Cupos</th>
+                          <th style={{ width: '15%' }}>Disponibilidad</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {disponibilidad.map(profesional => {
+                          const porcentaje = profesional.porcentaje_ocupacion || 
+                            Math.round((profesional.citas_programadas / profesional.max_citas_dia) * 100);
+                          
+                          return (
+                            <tr key={profesional.id}>
+                              <td>
+                                <div className="flex-row align-center gap-10">
+                                  <div className="avatar-small">
+                                    {profesional.profesional.split(' ').map(n => n[0]).join('')}
+                                  </div>
+                                  <div>
+                                    <div className="font-bold">{profesional.profesional}</div>
+                                    <div className="text-small">{profesional.email}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`badge ${
+                                  profesional.rol === 'psicologo' ? 'badge-info' : 'badge-warning'
+                                }`}>
+                                  {profesional.rol}
+                                </span>
+                              </td>
+                              <td>
+                                <div className="text-small">{profesional.especialidad}</div>
+                              </td>
+                              <td>
+                                <div className="text-small">
+                                  {profesional.hora_inicio} - {profesional.hora_fin}
+                                </div>
+                              </td>
+                              <td>
+                                <div className="flex-col gap-5">
+                                  <div className="flex-row justify-between">
+                                    <span className="text-small">Citas:</span>
+                                    <span className="font-bold">{profesional.citas_programadas}/{profesional.max_citas_dia}</span>
+                                  </div>
+                                  <div className="flex-row justify-between">
+                                    <span className="text-small">Cupos:</span>
+                                    <span className={`font-bold ${
+                                      profesional.cupos_disponibles > 0 ? 'text-success' : 'text-danger'
+                                    }`}>
+                                      {profesional.cupos_disponibles}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="flex-col gap-5">
+                                  <div className="progress-container">
+                                    <div 
+                                      className="progress-bar" 
+                                      style={{ 
+                                        width: `${porcentaje}%`,
+                                        background: porcentaje > 80 ? 'var(--rr)' : 
+                                                  porcentaje > 60 ? 'var(--yy)' : 'var(--grnb)'
+                                      }}
+                                    ></div>
+                                  </div>
+                                  <div className="flex-row justify-between">
+                                    <span className="text-small">{porcentaje}% ocupado</span>
+                                    <span className={`badge ${
+                                      profesional.estado === 'disponible' ? 'badge-success' :
+                                      profesional.estado === 'limitado' ? 'badge-warning' :
+                                      'badge-danger'
+                                    }`}>
+                                      {profesional.estado}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center p-20">
+                    <div className="loading-spinner"></div>
+                    <div className="text-small mt-10">Cargando disponibilidad...</div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button 
+                className="btn-secondary" 
+                onClick={() => setShowModalDisponibilidad(false)}
+              >Cerrar
+              </button>
+
             </div>
           </div>
         </div>
@@ -22158,6 +22730,282 @@ input:checked + .slider:before {
   .bar-value-inside {
     top: -20px;
     font-size: 12px;
+  }
+}
+
+/* Añade esto a tu CSS */
+.btn-text-modal {
+  background: none;
+  border: none;
+  color: var(--blu);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  transition: all 0.3s ease;
+}
+
+.btn-text-modal:hover {
+  color: var(--grnb);
+  text-decoration: none;
+}
+
+.modal-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--grnb);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--grayl);
+  text-transform: uppercase;
+}
+
+
+
+/* Estadísticas mejoradas */
+.stat-box {
+  display: flex;
+  margin-top: 10px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+
+.stat-icon {
+  font-size: 24px;
+  min-width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--white);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--grayl);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Botones de acción mejorados */
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  min-height: 50px;
+}
+
+.action-btn-primary {
+  background: linear-gradient(135deg, var(--blu) 0%, var(--bludd) 100%);
+  color: var(--white);
+}
+
+.action-btn-secondary {
+  background: linear-gradient(135deg, var(--grnb) 0%, var(--grnd) 100%);
+  color: var(--white);
+}
+
+.action-btn-warning {
+  background: linear-gradient(135deg, var(--yy) 0%, var(--yl) 100%);
+  color: var(--blub);
+}
+
+.action-btn-info {
+  background: linear-gradient(135deg, var(--blu) 0%, var(--grnb) 100%);
+  color: var(--white);
+}
+
+.action-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Formularios mejorados */
+.form-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--white);
+  font-weight: 500;
+}
+
+.filters-header {
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--blu);
+  margin-bottom: 20px;
+}
+
+.filters-header h4 {
+  color: var(--blu);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Search box mejorado */
+.search-box-wrapper {
+  position: relative;
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 0 0 8px 8px;
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.search-result-item {
+  padding: 10px 15px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  border-bottom: 1px solid var(--blub);
+}
+
+.search-result-item:hover {
+  background: rgba(31, 133, 186, 0.2);
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-name {
+  font-weight: bold;
+  color: var(--white);
+}
+
+.search-result-email {
+  font-size: 11px;
+  color: var(--grayl);
+  margin-top: 2px;
+}
+
+/* Modal extra grande */
+.modal-extra-large {
+  max-width: 1000px !important;
+  width: 95% !important;
+}
+
+.wide-table th,
+.wide-table td {
+  padding: 12px 15px;
+}
+
+/* Grid de estadísticas del modal */
+.modal-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+  margin-bottom: 25px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  border: 1px solid var(--blub);
+}
+
+.modal-stats-grid .stat-item {
+  text-align: center;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.modal-stats-grid .stat-value {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.modal-stats-grid .stat-label {
+  font-size: 11px;
+  color: var(--grayl);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Border top para separadores */
+.border-top {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Ajustes responsive */
+@media (max-width: 1200px) {
+  .modal-extra-large {
+    max-width: 95% !important;
+    width: 95% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .grid-2.action-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .stat-box {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .modal-stats-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -26210,35 +27058,53 @@ class ApiService {
   }
 
   static async handleResponse(response) {
-    // Primero verificar si hay contenido
-    if (response.status === 204 || response.status === 205) {
-      return {};
-    }
-    
-    const contentType = response.headers.get('content-type');
-    
-    // Si no es JSON, manejar como texto
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text();
-      
-      if (!response.ok) {
-        throw new Error(text || `HTTP error! status: ${response.status}`);
+      // Primero verificar si hay contenido
+      if (response.status === 204 || response.status === 205) {
+          return {};
       }
       
-      return text ? JSON.parse(text) : {};
-    }
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
-      const error = new Error(errorMessage);
-      error.status = response.status;
-      error.data = data;
-      throw error;
-    }
-    
-    return data;
+      const contentType = response.headers.get('content-type');
+      
+      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
+      if (contentType && contentType.includes('text/csv')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Para CSV, devolvemos el texto directamente
+          return text;
+      }
+      
+      // Si no es CSV, verificar si es JSON
+      if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Intentar parsear como JSON si es posible
+          try {
+              return text ? JSON.parse(text) : {};
+          } catch {
+              return text;
+          }
+      }
+      
+      // Si es JSON, parsearlo normalmente
+      const data = await response.json();
+      
+      if (!response.ok) {
+          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+      }
+      
+      return data;
   }
 
   // Métodos específicos para el dashboard

@@ -142,7 +142,8 @@ ARCHIVOS_BASE = [
     "backend/src/services/api.js",
     "frontend/src/App.js",
     "frontend/src/index.js",
-    "frontend/src/services/api.js"
+    "frontend/src/services/api.js",
+    "frontend/src/global.css"
 ]
 
 def generar_txt_por_pagina(directorio_base, output_dir="paginas_backend"):

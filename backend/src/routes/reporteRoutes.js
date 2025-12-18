@@ -1,19 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const ReporteController = require('../controllers/reporteController');
-const verifyToken = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
 
-// Todas las rutas requieren autenticación
-router.use(verifyToken);
+// Exportar agenda a CSV
+router.post('/exportar-agenda-csv', ReporteController.exportarAgendaCSV);
 
-// Generar reportes
-router.get('/mensual', requireRole(['coordinador', 'psicologo']), ReporteController.generarReporteMensual);
-router.post('/paciente', requireRole(['coordinador', 'psicologo']), ReporteController.generarReportePaciente);
-router.get('/excel', requireRole(['coordinador']), ReporteController.generarReporteExcel);
+// Exportar disponibilidad a CSV
+router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibilidadCSV);
 
-// Obtener reportes generados
-router.get('/mis-reportes', ReporteController.obtenerMisReportes);
-router.get('/descargar/:id', ReporteController.descargarReporte);
+// Generar reporte de conflictos
+router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
+
 
 module.exports = router;

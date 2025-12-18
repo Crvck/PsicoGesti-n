@@ -1307,8 +1307,9 @@ export default PsicologoLayout;
 
 /src\context\AuthContext.js:
 --------------------------------------------------------------------------------
+// frontend/src/context/AuthContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
+import ApiService from '../services/api';
 
 const AuthContext = createContext({});
 
@@ -1321,7 +1322,6 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       fetchUserData();
     } else {
       setLoading(false);
@@ -1330,13 +1330,23 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserData = async () => {
     try {
-      const response = await axios.get('http://localhost:3000/api/auth/me');
-      setUser(response.data.user);
+      const response = await ApiService.getCurrentUser();
+      setUser(response.user);
+      
+      // Guardar también en localStorage para acceso rápido
+      localStorage.setItem('psico_user', JSON.stringify(response.user));
     } catch (error) {
       console.error('Error fetching user data:', error);
+      
       // Si el error es 401 (token inválido/vencido), hacer logout
-      if (error.response?.status === 401) {
+      if (error.status === 401) {
         logout();
+      }
+      
+      // Intentar recuperar usuario de localStorage como fallback
+      const storedUser = localStorage.getItem('psico_user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
       }
     } finally {
       setLoading(false);
@@ -1345,34 +1355,22 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post('http://localhost:3000/api/auth/login', {
-        email,
-        password
-      });
+      const response = await ApiService.post('/auth/login', { email, password });
       
-      const { token, user } = response.data;
+      const { token, user } = response;
       
       localStorage.setItem('token', token);
       localStorage.setItem('psico_user', JSON.stringify(user));
       
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setToken(token);
       setUser(user);
       
       // Redirigir según el rol después del login exitoso
       setTimeout(() => {
-        switch (user.rol) {
-          case 'becario':
-            window.location.href = '/becario/dashboard';
-            break;
-          case 'psicologo':
-            window.location.href = '/psicologo/dashboard';
-            break;
-          case 'coordinador':
-            window.location.href = '/coordinador/dashboard';
-            break;
-          default:
-            window.location.href = '/dashboard';
+        if (user.rol) {
+          window.location.href = `/${user.rol}/dashboard`;
+        } else {
+          window.location.href = '/dashboard';
         }
       }, 100);
       
@@ -1381,7 +1379,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Login error:', error);
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Error en el inicio de sesión' 
+        message: error.message || 'Error en el inicio de sesión' 
       };
     }
   };
@@ -1389,7 +1387,6 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('psico_user');
-    delete axios.defaults.headers.common['Authorization'];
     setToken(null);
     setUser(null);
     window.location.href = '/login';
@@ -1406,7 +1403,10 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     updateUser,
-    loading
+    loading,
+    isCoordinador: user?.rol === 'coordinador',
+    isPsicologo: user?.rol === 'psicologo',
+    isBecario: user?.rol === 'becario'
   };
 
   return (
@@ -2786,17 +2786,18 @@ export default BecarioPacientes;
 
 /src\pages\coordinador\AgendaPage.js:
 --------------------------------------------------------------------------------
+// frontend/src/pages/coordinador/AgendaPage.js
 import React, { useState, useEffect } from 'react';
 import { 
   FiCalendar, FiClock, FiUsers, FiFilter, 
   FiChevronLeft, FiChevronRight, FiRefreshCw,
-  FiUser, FiSearch, FiEye, FiEyeOff
+  FiUser, FiEye, FiEyeOff, FiMail,
+  FiPhone, FiVideo, FiMapPin, FiEdit2
 } from 'react-icons/fi';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
+import ApiService from '../../services/api';
 import './coordinador.css';
-import notifications from '../../utils/notifications';
-import confirmations from '../../utils/confirmations';
 
 const CoordinadorAgenda = () => {
   const [citas, setCitas] = useState([]);
@@ -2809,71 +2810,130 @@ const CoordinadorAgenda = () => {
   const [showDetalles, setShowDetalles] = useState(false);
   const [selectedCita, setSelectedCita] = useState(null);
   const [mostrarTodas, setMostrarTodas] = useState(true);
+  const [estadisticas, setEstadisticas] = useState(null);
+  const [filtrosAvanzados, setFiltrosAvanzados] = useState({
+    fecha_inicio: '',
+    fecha_fin: '',
+    paciente_id: '',
+    tipo_consulta: ''
+  });
+
+  // Colores fijos para psicólogos
+  const coloresPsicologos = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
 
   useEffect(() => {
-    fetchData();
-    }, [selectedDate, view]);
+    fetchPsicologos();
+  }, []);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    fetchAgenda();
+  }, [selectedDate, view, filterPsicologo, filterEstado, filtrosAvanzados]);
+
+  const fetchPsicologos = async () => {
     try {
-        setLoading(true);
-        
-        // Primero, definir los psicólogos
-        const psicologosData = [
-        { id: 1, nombre: 'Lic. Luis Fernández', color: 'var(--grnb)', especialidad: 'Terapia Cognitivo-Conductual' },
-        { id: 2, nombre: 'Lic. Laura Gutiérrez', color: 'var(--blu)', especialidad: 'Psicología Clínica' }
-        ];
-        
+      const response = await ApiService.get('/users?rol=psicologo');
+      if (response.success) {
+        const psicologosData = response.data.map((psicologo, index) => ({
+          id: psicologo.id,
+          nombre: `${psicologo.nombre} ${psicologo.apellido}`,
+          color: coloresPsicologos[index % coloresPsicologos.length],
+          especialidad: psicologo.especialidad || 'Psicología General',
+          email: psicologo.email
+        }));
         setPsicologos(psicologosData);
+      }
+    } catch (error) {
+      console.error('Error cargando psicólogos:', error);
+      alert('Error al cargar psicólogos');
+    }
+  };
 
-        // Generar citas de ejemplo para la semana
-        const citasSemana = [];
-        const startDate = startOfWeek(selectedDate, { weekStartsOn: 1 });
-        const weekDays = eachDayOfInterval({ 
-        start: startDate, 
-        end: endOfWeek(startDate, { weekStartsOn: 1 }) 
-        });
-        
-        weekDays.forEach((day, dayIndex) => {
-        const psicologoId = dayIndex % 2 === 0 ? 1 : 2;
-        const psicologo = psicologosData.find(p => p.id === psicologoId);
-        
-        if (!psicologo) return; // Añadir validación
-        
-        // Agregar 3-5 citas por día
-        const citasCount = 3 + (dayIndex % 3);
-        
-        for (let i = 0; i < citasCount; i++) {
-            const hora = 9 + (i * 2) + (dayIndex % 2);
-            citasSemana.push({
-            id: `${dayIndex}-${i}`,
-            fecha: format(day, 'yyyy-MM-dd'),
-            hora: `${hora}:00`,
-            duracion: 50,
-            paciente_nombre: `Paciente ${dayIndex + 1}${String.fromCharCode(65 + i)}`,
-            psicologo_id: psicologoId,
+  const fetchAgenda = async () => {
+    try {
+      setLoading(true);
+      
+      const params = new URLSearchParams();
+      
+      // Si estamos en vista semanal, usar el rango de la semana
+      if (view === 'week') {
+        const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
+        const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
+        params.append('fecha_inicio', format(start, 'yyyy-MM-dd'));
+        params.append('fecha_fin', format(end, 'yyyy-MM-dd'));
+      } else {
+        // Vista diaria
+        params.append('fecha_inicio', format(selectedDate, 'yyyy-MM-dd'));
+        params.append('fecha_fin', format(selectedDate, 'yyyy-MM-dd'));
+      }
+      
+      // Aplicar filtros
+      if (filterPsicologo) {
+        params.append('psicologo_id', filterPsicologo);
+      }
+      
+      if (filterEstado) {
+        params.append('estado', filterEstado);
+      }
+      
+      // Filtros avanzados
+      if (filtrosAvanzados.paciente_id) {
+        params.append('paciente_id', filtrosAvanzados.paciente_id);
+      }
+      
+      if (filtrosAvanzados.tipo_consulta) {
+        params.append('tipo_consulta', filtrosAvanzados.tipo_consulta);
+      }
+      
+      // Llamar al endpoint de agenda global
+      const response = await ApiService.get(`/agenda/global?${params.toString()}`);
+      
+      if (response.success) {
+        // Transformar los datos para que coincidan con la estructura esperada
+        const citasTransformadas = response.data.citas.map(cita => {
+          const psicologo = psicologos.find(p => p.id === cita.psicologo_id) || {
+            nombre: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : 'No asignado',
+            color: coloresPsicologos[cita.psicologo_id % coloresPsicologos.length]
+          };
+          
+          return {
+            id: cita.id,
+            fecha: cita.fecha,
+            hora: cita.hora || '00:00',
+            duracion: cita.duracion || 50,
+            paciente_nombre: cita.Paciente ? 
+              `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : 'Paciente',
+            paciente_id: cita.paciente_id,
+            psicologo_id: cita.psicologo_id,
             psicologo_nombre: psicologo.nombre,
             psicologo_color: psicologo.color,
-            tipo_consulta: i % 2 === 0 ? 'presencial' : 'virtual',
-            estado: i === 0 ? 'confirmada' : i === 1 ? 'programada' : 'completada',
-            becario_nombre: i % 2 === 0 ? 'Juan Pérez' : null
-            });
-        }
+            tipo_consulta: cita.tipo_consulta,
+            estado: cita.estado,
+            becario_nombre: cita.Becario ? 
+              `${cita.Becario.nombre} ${cita.Becario.apellido}` : null,
+            becario_id: cita.becario_id,
+            notas: cita.notas,
+            telefono: cita.Paciente?.telefono,
+            email: cita.Paciente?.email
+          };
         });
-
-        setCitas(citasSemana);
-        setLoading(false);
+        
+        setCitas(citasTransformadas);
+        setEstadisticas(response.data.estadisticas);
+      }
+      
+      setLoading(false);
     } catch (error) {
-        console.error('Error cargando agenda:', error);
-        setLoading(false);
+      console.error('Error cargando agenda:', error);
+      alert('Error al cargar la agenda');
+      setLoading(false);
     }
-    };
+  };
 
   const filteredCitas = citas.filter(cita => {
     const matchesPsicologo = !filterPsicologo || cita.psicologo_id == filterPsicologo;
     const matchesEstado = !filterEstado || cita.estado === filterEstado;
     return matchesPsicologo && matchesEstado;
-    });
+  });
 
   const goToPrevious = () => {
     setSelectedDate(prev => subDays(prev, view === 'day' ? 1 : 7));
@@ -2907,22 +2967,65 @@ const CoordinadorAgenda = () => {
 
   const getCitasPorDiaYHora = (fecha, hora) => {
     try {
-        const fechaStr = format(new Date(fecha), 'yyyy-MM-dd');
-        const horaNum = hora.split(':')[0];
-        
-        return filteredCitas.filter(cita => 
+      const fechaStr = format(new Date(fecha), 'yyyy-MM-dd');
+      const horaNum = hora.split(':')[0];
+      
+      return filteredCitas.filter(cita => 
         cita.fecha === fechaStr &&
         cita.hora.startsWith(horaNum)
-        );
+      );
     } catch (error) {
-        console.error('Error filtrando citas:', error);
-        return [];
+      console.error('Error filtrando citas:', error);
+      return [];
     }
-    };
+  };
 
   const showCitaDetalles = (cita) => {
     setSelectedCita(cita);
     setShowDetalles(true);
+  };
+
+  const handleFiltroAvanzado = (key, value) => {
+    setFiltrosAvanzados(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const resetFiltros = () => {
+    setFilterPsicologo('');
+    setFilterEstado('');
+    setFiltrosAvanzados({
+      fecha_inicio: '',
+      fecha_fin: '',
+      paciente_id: '',
+      tipo_consulta: ''
+    });
+  };
+
+  const exportarAgenda = async () => {
+    try {
+      setLoading(true);
+      const fechaInicio = filtrosAvanzados.fecha_inicio || format(startOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const fechaFin = filtrosAvanzados.fecha_fin || format(endOfWeek(selectedDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      
+      const response = await ApiService.post('/reportes/generar', {
+        tipo_reporte: 'agenda_semanal',
+        nombre: `Agenda ${fechaInicio} a ${fechaFin}`,
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
+        formato: 'pdf'
+      });
+      
+      if (response.success) {
+        alert('Reporte generado exitosamente');
+      }
+    } catch (error) {
+      console.error('Error exportando agenda:', error);
+      alert('Error al exportar agenda');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const weekDays = view === 'week' ? 
@@ -2931,24 +3034,14 @@ const CoordinadorAgenda = () => {
       end: endOfWeek(selectedDate, { weekStartsOn: 1 }) 
     }) : [selectedDate];
 
-  if (loading) {
+  if (loading && citas.length === 0) {
     return (
-        <div className="loading-container">
+      <div className="loading-container">
         <div className="loading-spinner"></div>
         <div className="loading-text">Cargando agenda global...</div>
-        </div>
+      </div>
     );
-    }
-
-    // También puedes añadir una verificación adicional
-    if (!psicologos || psicologos.length === 0) {
-    return (
-        <div className="empty-state">
-        <h3>No hay psicólogos registrados</h3>
-        <p>Por favor, registra psicólogos en el sistema primero.</p>
-        </div>
-    );
-    }
+  }
 
   return (
     <div className="citas-page">
@@ -2957,10 +3050,75 @@ const CoordinadorAgenda = () => {
           <h1>Agenda Global</h1>
           <p>Vista completa de todas las citas del consultorio</p>
         </div>
-        <button className="btn-secondary" onClick={fetchData}>
-          <FiRefreshCw /> Actualizar
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={fetchAgenda}>
+            <FiRefreshCw /> Actualizar
+          </button>
+          <button className="btn-primary" onClick={exportarAgenda}>
+            Exportar Agenda
+          </button>
+        </div>
       </div>
+
+      {/* Estadísticas rápidas */}
+      {estadisticas && (
+        <div className="grid-3 mb-20">
+          <div className="card">
+            <h4>Resumen General</h4>
+            <div className="grid-2 gap-10 mt-10">
+              <div>
+                <div className="text-small">Total Citas</div>
+                <div className="font-bold">{estadisticas.total_citas || filteredCitas.length}</div>
+              </div>
+              <div>
+                <div className="text-small">Confirmadas</div>
+                <div className="font-bold">{estadisticas.confirmadas || filteredCitas.filter(c => c.estado === 'confirmada').length}</div>
+              </div>
+              <div>
+                <div className="text-small">Psicólogos</div>
+                <div className="font-bold">{estadisticas.psicologos_involucrados || psicologos.length}</div>
+              </div>
+              <div>
+                <div className="text-small">Pacientes</div>
+                <div className="font-bold">{estadisticas.pacientes_atendidos || new Set(filteredCitas.map(c => c.paciente_id)).size}</div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="card">
+            <h4>Disponibilidad</h4>
+            <div className="flex-col gap-10 mt-10">
+              {psicologos.slice(0, 3).map(psicologo => {
+                const citasPsicologo = filteredCitas.filter(c => c.psicologo_id === psicologo.id && c.fecha === format(new Date(), 'yyyy-MM-dd'));
+                const cupos = 8 - citasPsicologo.length;
+                return (
+                  <div key={psicologo.id} className="flex-row justify-between">
+                    <span className="text-small">{psicologo.nombre.split(' ')[1]}</span>
+                    <span className={`badge ${cupos > 0 ? 'badge-success' : 'badge-danger'}`}>
+                      {cupos > 0 ? `${cupos} cupos` : 'Completo'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          
+          <div className="card">
+            <h4>Acciones Rápidas</h4>
+            <div className="flex-col gap-10 mt-10">
+              <button className="btn-primary w-100" onClick={() => setFiltrosAvanzados({...filtrosAvanzados, fecha_inicio: format(new Date(), 'yyyy-MM-dd'), fecha_fin: format(new Date(), 'yyyy-MM-dd')})}>
+                Ver Hoy
+              </button>
+              <button className="btn-secondary w-100" onClick={resetFiltros}>
+                Limpiar Filtros
+              </button>
+              <button className="btn-warning w-100" onClick={() => alert('Funcionalidad en desarrollo')}>
+                Revisar Conflictos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="calendar-controls">
         <div className="view-selector">
@@ -3009,6 +3167,7 @@ const CoordinadorAgenda = () => {
             onClick={() => setMostrarTodas(!mostrarTodas)}
           >
             {mostrarTodas ? <FiEye /> : <FiEyeOff />}
+            {mostrarTodas ? ' Agrupar' : ' Expandir'}
           </button>
         </div>
       </div>
@@ -3049,17 +3208,55 @@ const CoordinadorAgenda = () => {
           
           <div className="form-group">
             <label>Filtrar por tipo</label>
-            <select className="select-field">
+            <select 
+              value={filtrosAvanzados.tipo_consulta}
+              onChange={(e) => handleFiltroAvanzado('tipo_consulta', e.target.value)}
+              className="select-field"
+            >
               <option value="">Todos los tipos</option>
               <option value="presencial">Presencial</option>
               <option value="virtual">Virtual</option>
             </select>
           </div>
         </div>
+        
+        {/* Filtros avanzados */}
+        <div className="grid-3 gap-20 mt-15">
+          <div className="form-group">
+            <label>Fecha inicio</label>
+            <input
+              type="date"
+              value={filtrosAvanzados.fecha_inicio}
+              onChange={(e) => handleFiltroAvanzado('fecha_inicio', e.target.value)}
+              className="input-field"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Fecha fin</label>
+            <input
+              type="date"
+              value={filtrosAvanzados.fecha_fin}
+              onChange={(e) => handleFiltroAvanzado('fecha_fin', e.target.value)}
+              className="input-field"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>ID Paciente</label>
+            <input
+              type="text"
+              value={filtrosAvanzados.paciente_id}
+              onChange={(e) => handleFiltroAvanzado('paciente_id', e.target.value)}
+              className="input-field"
+              placeholder="Ej: 123"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Calendario Semanal */}
-      <div className="calendar-week-view" style={{ height: '600px' }}>
+      {/* Calendario Semanal/Dia */}
+      <div className="calendar-week-view" style={{ minHeight: '600px' }}>
         <div className="week-header">
           <div className="time-header"></div>
           {weekDays.map((day) => (
@@ -3069,6 +3266,9 @@ const CoordinadorAgenda = () => {
               </div>
               <div className="day-number">
                 {format(day, 'd')}
+              </div>
+              <div className="text-small">
+                {filteredCitas.filter(c => c.fecha === format(day, 'yyyy-MM-dd')).length} citas
               </div>
             </div>
           ))}
@@ -3094,7 +3294,7 @@ const CoordinadorAgenda = () => {
                         className="week-event"
                         style={{ 
                           backgroundColor: cita.psicologo_color,
-                          opacity: 0.8,
+                          opacity: 0.85,
                           height: `${100 / (mostrarTodas ? Math.max(citasHora.length, 1) : 1)}%`,
                           top: `${(index / (mostrarTodas ? citasHora.length : 1)) * 100}%`
                         }}
@@ -3106,10 +3306,16 @@ const CoordinadorAgenda = () => {
                         <div className="week-event-psicologo">
                           {cita.psicologo_nombre.split(' ')[1]}
                         </div>
+                        <div className="week-event-type">
+                          {cita.tipo_consulta === 'virtual' ? <FiVideo /> : <FiMapPin />}
+                        </div>
                       </div>
                     ))}
                     {citasHora.length > 1 && !mostrarTodas && (
-                      <div className="week-event-more">
+                      <div 
+                        className="week-event-more"
+                        onClick={() => setMostrarTodas(true)}
+                      >
                         +{citasHora.length - 1} más
                       </div>
                     )}
@@ -3122,8 +3328,8 @@ const CoordinadorAgenda = () => {
       </div>
 
       {/* Resumen por Psicólogo */}
-      <div className="grid-3 mt-20">
-        {psicologos.map(psicologo => {
+      <div className="grid-3 mt-30">
+        {psicologos.slice(0, 3).map(psicologo => {
           const citasPsicologo = filteredCitas.filter(c => c.psicologo_id === psicologo.id);
           const citasHoy = citasPsicologo.filter(c => c.fecha === format(new Date(), 'yyyy-MM-dd')).length;
           
@@ -3136,9 +3342,12 @@ const CoordinadorAgenda = () => {
                 >
                   {psicologo.nombre.split(' ').map(n => n[0]).join('')}
                 </div>
-                <div>
+                <div className="flex-1">
                   <h4>{psicologo.nombre}</h4>
-                  <p className="text-small">{psicologo.especialidad || 'Psicólogo'}</p>
+                  <p className="text-small">{psicologo.especialidad}</p>
+                  <p className="text-small">
+                    <FiMail /> {psicologo.email}
+                  </p>
                 </div>
               </div>
               
@@ -3163,21 +3372,6 @@ const CoordinadorAgenda = () => {
             </div>
           );
         })}
-        
-        <div className="card">
-          <h4>Acciones Rápidas</h4>
-          <div className="flex-col gap-10 mt-10">
-            <button className="btn-primary w-100">
-              Ver Reporte Semanal
-            </button>
-            <button className="btn-secondary w-100">
-              Exportar Agenda
-            </button>
-            <button className="btn-warning w-100">
-              Revisar Conflictos
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Modal de Detalles */}
@@ -3195,6 +3389,13 @@ const CoordinadorAgenda = () => {
                 <span>{selectedCita.paciente_nombre}</span>
               </div>
               
+              {selectedCita.telefono && (
+                <div className="detail-row">
+                  <strong>Teléfono:</strong>
+                  <span><FiPhone /> {selectedCita.telefono}</span>
+                </div>
+              )}
+              
               <div className="detail-row">
                 <strong>Fecha y hora:</strong>
                 <span>{selectedCita.fecha} {selectedCita.hora}</span>
@@ -3202,12 +3403,23 @@ const CoordinadorAgenda = () => {
               
               <div className="detail-row">
                 <strong>Psicólogo:</strong>
-                <span>{selectedCita.psicologo_nombre}</span>
+                <div className="flex-row align-center gap-5">
+                  <div 
+                    className="avatar-small" 
+                    style={{ background: selectedCita.psicologo_color }}
+                  >
+                    {selectedCita.psicologo_nombre.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <span>{selectedCita.psicologo_nombre}</span>
+                </div>
               </div>
               
               <div className="detail-row">
                 <strong>Tipo:</strong>
-                <span>{selectedCita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual'}</span>
+                <span className="flex-row align-center gap-5">
+                  {selectedCita.tipo_consulta === 'virtual' ? <FiVideo /> : <FiMapPin />}
+                  {selectedCita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual'}
+                </span>
               </div>
               
               <div className="detail-row">
@@ -3233,6 +3445,13 @@ const CoordinadorAgenda = () => {
                 <strong>Duración:</strong>
                 <span>{selectedCita.duracion} minutos</span>
               </div>
+              
+              {selectedCita.notas && (
+                <div className="detail-row notes">
+                  <strong>Notas:</strong>
+                  <p>{selectedCita.notas}</p>
+                </div>
+              )}
             </div>
             
             <div className="modal-footer">
@@ -5264,17 +5483,23 @@ export default CoordinadorConfiguracion;
 
 /src\pages\coordinador\DashboardPage.js:
 --------------------------------------------------------------------------------
+// frontend/src/pages/coordinador/DashboardPage.js
 import React, { useState, useEffect } from 'react';
 import { 
   FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
   FiUserCheck, FiClock, FiAlertCircle, FiRefreshCw,
-  FiDollarSign, FiActivity
+  FiDollarSign, FiActivity, FiInfo, FiUser, FiFileText,
+  FiCheckCircle, FiList, FiUserPlus, FiTarget, FiClipboard,
+  FiUsers as FiUsersGroup, FiCalendar as FiCalendarGlobal
 } from 'react-icons/fi';
 import './coordinador.css';
+import { useNavigate } from 'react-router-dom'; // Importamos useNavigate
 import notifications from '../../utils/notifications';
-import confirmations from '../../utils/confirmations';
+import DashboardService from '../../services/dashboardService';
 
 const CoordinadorDashboard = () => {
+  const navigate = useNavigate(); // Para navegación
+  
   const [estadisticas, setEstadisticas] = useState({
     becariosActivos: 0,
     psicologosActivos: 0,
@@ -5283,39 +5508,78 @@ const CoordinadorDashboard = () => {
     citasCompletadasHoy: 0,
     altasMesActual: 0
   });
+  
   const [actividadReciente, setActividadReciente] = useState([]);
+  const [distribucionPsicologos, setDistribucionPsicologos] = useState([]);
+  const [alertas, setAlertas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
   const fetchDashboardData = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setEstadisticas({
-          becariosActivos: 4,
-          psicologosActivos: 2,
-          pacientesActivos: 25,
-          citasHoy: 12,
-          citasCompletadasHoy: 6,
-          altasMesActual: 3
-        });
-        
-        setActividadReciente([
-          { id: 1, tipo: 'nueva_cita', descripcion: 'Nueva cita agendada para Carlos Gómez', fecha: '2024-01-10 09:30:00', usuario: 'Juan Pérez' },
-          { id: 2, tipo: 'alta_paciente', descripcion: 'Ana Rodríguez dada de alta terapéutica', fecha: '2024-01-10 08:15:00', usuario: 'Lic. Luis Fernández' },
-          { id: 3, tipo: 'nuevo_usuario', descripcion: 'Nuevo becario registrado: Pedro Hernández', fecha: '2024-01-09 16:45:00', usuario: 'Coordinador' },
-          { id: 4, tipo: 'asignacion', descripcion: 'Paciente asignado a becario Sofía Ramírez', fecha: '2024-01-09 14:20:00', usuario: 'Coordinador' }
-        ]);
-        
-        setLoading(false);
-      }, 1000);
+      console.log('Cargando dashboard...');
+      const response = await DashboardService.obtenerDashboardCoordinador();
+      
+      const datosTransformados = DashboardService.transformarDatosCoordinador(response);
+      
+      setEstadisticas(datosTransformados.estadisticas);
+      setActividadReciente(datosTransformados.actividadReciente);
+      setDistribucionPsicologos(datosTransformados.distribucionPsicologos);
+      setAlertas(datosTransformados.alertas);
+      
+      
     } catch (error) {
       console.error('Error cargando dashboard:', error);
+      setError(`Error al cargar datos: ${error.message}`);
+      notifications.error('Error', 'No se pudieron cargar los datos del dashboard');
+    } finally {
       setLoading(false);
     }
+  };
+
+  // Función para manejar "Ver todo" en Actividad Reciente
+  const handleVerTodaActividad = () => {
+    navigate('/coordinador/agenda'); // Redirige a la agenda
+  };
+
+  // Funciones para las Acciones de Coordinación
+  const handleGestionarUsuarios = () => {
+    navigate('/coordinador/usuarios');
+  };
+
+  const handleAsignarPacientes = () => {
+    navigate('/coordinador/asignaciones');
+  };
+
+  const handleGenerarReporteMensual = () => {
+    navigate('/coordinador/reportes');
+  };
+
+  const handleRevisarAltas = () => {
+    navigate('/coordinador/altas');
+  };
+
+  const handleVerAgendaGlobal = () => {
+    navigate('/coordinador/agenda');
+  };
+
+  // Función para manejar "Reasignar" en Carga de Pacientes
+  const handleReasignar = () => {
+    navigate('/coordinador/asignaciones');
+  };
+
+  // Función para manejar "Resolver" en Alertas
+  const handleResolverAlertas = () => {
+    // Aquí puedes implementar lógica para marcar alertas como resueltas
+    setAlertas([]);
+    notifications.success('Alertas resueltas', 'Las alertas han sido marcadas como resueltas');
   };
 
   const statCards = [
@@ -5362,18 +5626,18 @@ const CoordinadorDashboard = () => {
       change: 'Por paciente/mes'
     },
     {
+      title: 'Alertas Pendientes',
+      value: alertas.reduce((total, alerta) => total + (alerta.cantidad || 0), 0),
+      icon: <FiAlertCircle />,
+      color: 'var(--rl)',
+      change: 'Requieren atención'
+    },
+    {
       title: 'Ingresos Estimados',
       value: '$24,500',
       icon: <FiDollarSign />,
       color: 'var(--grnb)',
       change: 'Este mes'
-    },
-    {
-      title: 'Alertas Pendientes',
-      value: '3',
-      icon: <FiAlertCircle />,
-      color: 'var(--rl)',
-      change: 'Requieren atención'
     }
   ];
 
@@ -5392,9 +5656,14 @@ const CoordinadorDashboard = () => {
         <div>
           <h1>Panel de Coordinación</h1>
           <p>Vista general del sistema y gestión administrativa</p>
+          {error && (
+            <div className="alert alert-warning mt-10">
+              <FiAlertCircle /> {error}
+            </div>
+          )}
         </div>
-        <button className="btn-secondary" onClick={fetchDashboardData}>
-          <FiRefreshCw /> Actualizar
+        <button className="btn-secondary" onClick={fetchDashboardData} disabled={loading}>
+          <FiRefreshCw /> {loading ? 'Cargando...' : 'Actualizar'}
         </button>
       </div>
 
@@ -5420,25 +5689,41 @@ const CoordinadorDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Actividad Reciente del Sistema</h3>
-            <button className="btn-text">Ver todo</button>
+            <button className="btn-text" onClick={handleVerTodaActividad}>
+              Ver todo
+            </button>
           </div>
           
           <div className="timeline">
-            {actividadReciente.map((actividad) => (
-              <div key={actividad.id} className="timeline-item">
+            {actividadReciente.length > 0 ? (
+              actividadReciente.map((actividad) => (
+                <div key={actividad.id} className="timeline-item">
+                  <div className="timeline-content">
+                    <div className="flex-row justify-between">
+                      <strong>{actividad.descripcion}</strong>
+                      <span className="text-small">
+                        {new Date(actividad.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </span>
+                    </div>
+                    <div className="text-small mt-5">
+                      Por: {actividad.usuario} • {new Date(actividad.fecha).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="timeline-item">
                 <div className="timeline-content">
                   <div className="flex-row justify-between">
-                    <strong>{actividad.descripcion}</strong>
-                    <span className="text-small">
-                      {new Date(actividad.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                    </span>
+                    <strong>No hay actividad reciente</strong>
+                    <FiClock className="text-small" />
                   </div>
                   <div className="text-small mt-5">
-                    Por: {actividad.usuario} • {new Date(actividad.fecha).toLocaleDateString()}
+                    El sistema no registra actividad en este momento
                   </div>
                 </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
@@ -5448,27 +5733,45 @@ const CoordinadorDashboard = () => {
             <h3>Distribución de Citas por Psicólogo</h3>
           </div>
           
-          <div className="activity-chart">
-            <div className="chart-placeholder">
-              <div className="chart-bars">
-                {[
-                  { nombre: 'Luis Fernández', citas: 8, color: 'var(--grnb)' },
-                  { nombre: 'Laura Gutiérrez', citas: 4, color: 'var(--blu)' }
-                ].map((psicologo, index) => (
-                  <div key={index} className="chart-bar" style={{ flex: psicologo.citas }}>
-                    <div 
-                      className="bar-fill"
-                      style={{ 
-                        height: `${(psicologo.citas / 12) * 100}%`,
-                        background: psicologo.color
-                      }}
-                    ></div>
-                    <div className="bar-label">{psicologo.nombre.split(' ')[1]}</div>
-                    <div className="bar-value">{psicologo.citas} citas</div>
-                  </div>
-                ))}
+          <div className="distribution-chart">
+            {distribucionPsicologos.length > 0 ? (
+              <div className="distribution-bars">
+                {distribucionPsicologos.map((psicologo, index) => {
+                  // Calcular altura máxima basada en el máximo de citas
+                  const maxCitas = Math.max(...distribucionPsicologos.map(p => p.citas || 0), 1);
+                  const porcentaje = ((psicologo.citas || 0) / maxCitas) * 100;
+                  
+                  return (
+                    <div key={index} className="distribution-bar-container">
+                      <div className="distribution-bar-wrapper">
+                        <div 
+                          className="distribution-bar"
+                          style={{ 
+                            height: `${porcentaje}%`,
+                            backgroundColor: psicologo.color || 'var(--grnb)'
+                          }}
+                        >
+                          <div className="bar-value-inside">{psicologo.citas || 0}</div>
+                        </div>
+                      </div>
+                      <div className="distribution-label">
+                        <div className="psychologist-name">
+                          {psicologo.nombre || 'Sin nombre'}
+                        </div>
+                        <div className="psychologist-sessions">
+                          {psicologo.citas || 0} citas
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            ) : (
+              <div className="no-data-message">
+                <FiBarChart2 size={40} />
+                <p>No hay datos de distribución disponibles</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -5476,61 +5779,59 @@ const CoordinadorDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Carga de Pacientes por Becario</h3>
-            <button className="btn-text">Reasignar</button>
+            <button className="btn-text" onClick={handleReasignar}>
+              Reasignar
+            </button>
           </div>
           
           <div className="pacientes-list">
-            {[
-              { id: 1, nombre: 'Juan Pérez', pacientes: 3, capacidad: 5, porcentaje: 60 },
-              { id: 2, nombre: 'Sofía Ramírez', pacientes: 2, capacidad: 4, porcentaje: 50 },
-              { id: 3, nombre: 'Pedro Hernández', pacientes: 1, capacidad: 3, porcentaje: 33 },
-              { id: 4, nombre: 'Nuevo Becario', pacientes: 0, capacidad: 3, porcentaje: 0 }
-            ].map((becario) => (
-              <div key={becario.id} className="paciente-item">
-                <div className="paciente-info">
-                  <div className="paciente-nombre">{becario.nombre}</div>
-                  <div className="paciente-fecha">
-                    {becario.pacientes} / {becario.capacidad} pacientes
-                  </div>
-                </div>
-                <div className="paciente-progreso">
-                  <div className="progress-container">
-                    <div 
-                      className="progress-bar"
-                      style={{ width: `${becario.porcentaje}%` }}
-                    ></div>
-                  </div>
-                  <span className="progreso-text">{becario.porcentaje}%</span>
-                </div>
-              </div>
-            ))}
+            {/* Aquí puedes obtener datos reales de becarios */}
+            <div className="no-data-message">
+              <FiUser size={40} />
+              <p>Los datos de becarios se cargarán próximamente</p>
+            </div>
           </div>
         </div>
 
-        {/* Quick Actions */}
+        {/* Alertas Pendientes */}
         <div className="dashboard-section">
           <div className="section-header">
-            <h3>Acciones de Coordinación</h3>
+            <h3>Alertas Pendientes</h3>
+            <button className="btn-text" onClick={handleResolverAlertas}>
+              Resolver
+            </button>
           </div>
           
-          <div className="quick-actions">
-            <button className="btn-primary w-100 mb-10">
-              Gestionar Usuarios
-            </button>
-            <button className="btn-secondary w-100 mb-10">
-              Asignar Pacientes
-            </button>
-            <button className="btn-warning w-100 mb-10">
-              Generar Reporte Mensual
-            </button>
-            <button className="btn-danger w-100">
-              Revisar Altas
-            </button>
-            <button className="btn-text w-100 mt-10">
-              Ver Agenda Global
-            </button>
+          <div className="alertas-list">
+            {alertas.length > 0 ? (
+              alertas.map((alerta, index) => (
+                <div key={index} className="alerta-item">
+                  <div className="alerta-icon">
+                    <FiAlertCircle style={{ color: 'var(--rl)' }} />
+                  </div>
+                  <div className="alerta-content">
+                    <div className="alerta-titulo">{alerta.descripcion}</div>
+                    <div className="alerta-subtitulo">
+                      {alerta.cantidad} {alerta.cantidad === 1 ? 'elemento' : 'elementos'} pendientes
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="alerta-item alerta-item-success">
+                <div className="alerta-icon">
+                  <FiCheckCircle style={{ color: 'var(--grnb)' }} />
+                </div>
+                <div className="alerta-content">
+                  <div className="alerta-titulo">Sin alertas pendientes</div>
+                  <div className="alerta-subtitulo">Todo está al día en el sistema</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        
       </div>
     </div>
   );
@@ -9166,6 +9467,284 @@ const PsicologoSupervision = () => {
 };
 
 export default PsicologoSupervision;
+
+/src\services\api.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
+
+  static async get(url) {
+    return this.request(url);
+  }
+
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+    // Primero verificar si hay contenido
+    if (response.status === 204 || response.status === 205) {
+      return {};
+    }
+    
+    const contentType = response.headers.get('content-type');
+    
+    // Si no es JSON, manejar como texto
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      
+      if (!response.ok) {
+        throw new Error(text || `HTTP error! status: ${response.status}`);
+      }
+      
+      return text ? JSON.parse(text) : {};
+    }
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+    
+    return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
+}
+
+export default ApiService;
+
+/src\services\dashboardService.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/dashboardService.js
+import ApiService from './api';
+
+class DashboardService {
+  static async obtenerDashboardCoordinador() {
+    try {
+      console.log('Obteniendo dashboard coordinador...');
+      const response = await ApiService.getDashboardCoordinador();
+      console.log('Respuesta recibida:', response);
+      return response.data;
+    } catch (error) {
+      console.error('Error obteniendo dashboard coordinador:', error);
+      throw error;
+    }
+  }
+
+  static async obtenerMetricasGlobales(periodo = 'mes') {
+    try {
+      const response = await ApiService.getMetricasGlobales(periodo);
+      return response.data;
+    } catch (error) {
+      console.error('Error obteniendo métricas globales:', error);
+      throw error;
+    }
+  }
+
+  static async obtenerEstadisticas() {
+    try {
+      const response = await ApiService.getEstadisticas();
+      return response.data;
+    } catch (error) {
+      console.error('Error obteniendo estadísticas:', error);
+      throw error;
+    }
+  }
+
+  // Método para transformar los datos del backend al formato que usa el frontend
+  static transformarDatosCoordinador(datosBackend) {
+    if (!datosBackend) {
+      throw new Error('No se recibieron datos del backend');
+    }
+    
+    const { estadisticas = {}, top_psicologos = [], alertas = [], evolucion_mensual = [], citas_por_dia = [] } = datosBackend;
+    
+    // Transformar estadísticas principales
+    const estadisticasTransformadas = {
+      becariosActivos: estadisticas.becarios_activos || 0,
+      psicologosActivos: estadisticas.psicologos_activos || 0,
+      pacientesActivos: estadisticas.pacientes_activos || 0,
+      citasHoy: estadisticas.citas_hoy || 0,
+      citasCompletadasHoy: estadisticas.citas_completadas_hoy || 0,
+      altasMesActual: estadisticas.altas_mes || 0
+    };
+
+    // Transformar actividad reciente
+    const actividadReciente = this.generarActividadReciente(datosBackend);
+
+    // Transformar distribución de citas por psicólogo
+    const distribucionPsicologos = top_psicologos.map(psicologo => ({
+      nombre: psicologo.nombre_completo || psicologo.nombre || 'Psicólogo',
+      citas: psicologo.total_citas || psicologo.citas_completadas || 0,
+      color: this.asignarColor(psicologo.id || 0)
+    }));
+
+    // Transformar alertas
+    const alertasTransformadas = alertas.map((alerta, index) => ({
+      id: index + 1,
+      tipo: alerta.tipo || 'alerta',
+      descripcion: alerta.descripcion || 'Alerta del sistema',
+      cantidad: alerta.cantidad || 1
+    }));
+
+    return {
+      estadisticas: estadisticasTransformadas,
+      actividadReciente,
+      distribucionPsicologos,
+      alertas: alertasTransformadas,
+      evolucionMensual: evolucion_mensual,
+      citasPorDia: citas_por_dia
+    };
+  }
+
+  static asignarColor(id) {
+    const colores = [
+      'var(--grnb)',  // Verde azulado
+      'var(--blu)',   // Azul
+      'var(--yy)',    // Amarillo
+      'var(--grnd)',  // Verde oscuro
+      'var(--grnl)',  // Verde claro
+      'var(--rr)',    // Rojo
+      'var(--rl)'     // Rojo claro
+    ];
+    return colores[id % colores.length];
+  }
+
+  static generarActividadReciente(datosBackend) {
+    const actividades = [];
+    const ahora = new Date().toISOString();
+    
+    if (datosBackend.estadisticas) {
+      // Si hay nuevas altas hoy
+      if (datosBackend.estadisticas.altas_hoy > 0) {
+        actividades.push({
+          id: 1,
+          tipo: 'alta_paciente',
+          descripcion: `${datosBackend.estadisticas.altas_hoy} paciente(s) dado(s) de alta hoy`,
+          fecha: ahora,
+          usuario: 'Sistema'
+        });
+      }
+
+      // Si hay pacientes nuevos hoy
+      if (datosBackend.estadisticas.pacientes_nuevos_hoy > 0) {
+        actividades.push({
+          id: 2,
+          tipo: 'nuevo_paciente',
+          descripcion: `${datosBackend.estadisticas.pacientes_nuevos_hoy} nuevo(s) paciente(s) registrado(s) hoy`,
+          fecha: ahora,
+          usuario: 'Sistema'
+        });
+      }
+
+      // Si hay citas hoy
+      if (datosBackend.estadisticas.citas_hoy > 0) {
+        actividades.push({
+          id: 3,
+          tipo: 'citas_hoy',
+          descripcion: `${datosBackend.estadisticas.citas_hoy} cita(s) programada(s) para hoy`,
+          fecha: ahora,
+          usuario: 'Sistema'
+        });
+      }
+
+      // Si hay citas completadas hoy
+      if (datosBackend.estadisticas.citas_completadas_hoy > 0) {
+        actividades.push({
+          id: 4,
+          tipo: 'citas_completadas',
+          descripcion: `${datosBackend.estadisticas.citas_completadas_hoy} cita(s) completada(s) hoy`,
+          fecha: ahora,
+          usuario: 'Sistema'
+        });
+      }
+    }
+
+    // Si no hay actividades específicas, mostrar mensaje de sistema
+    if (actividades.length === 0) {
+      actividades.push({
+        id: 1,
+        tipo: 'sistema',
+        descripcion: 'Sistema sincronizado con el backend',
+        fecha: ahora,
+        usuario: 'Sistema'
+      });
+    }
+
+    return actividades;
+  }
+}
+
+export default DashboardService;
 
 /src\utils\confirmations.js:
 --------------------------------------------------------------------------------

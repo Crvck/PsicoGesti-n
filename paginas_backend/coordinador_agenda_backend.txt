@@ -1,214 +1,7 @@
 ARCHIVOS BACKEND PARA: COORDINADOR_AGENDA
 ================================================================================
-Generado: 2025-12-17 14:42:22
+Generado: 2025-12-17 16:14:49
 ================================================================================
-
-/backend/src/services/api.js:
---------------------------------------------------------------------------------
-const API_BASE_URL = 'http://localhost:3000/api';
-
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
-
-  static getHeaders() {
-    const token = this.getToken();
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-  }
-
-  static async get(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async post(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async put(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async delete(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async handleResponse(response) {
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error en la petición');
-    }
-    return response.json();
-  }
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-}
-
-export default ApiService;
-
-
-/backend/src/models/citaModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-const Paciente = require('./pacienteModel');
-const User = require('./userModel');
-
-const Cita = sequelize.define('Cita', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    paciente_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-            model: Paciente,
-            key: 'id'
-        }
-    },
-    psicologo_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    becario_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    fecha: {
-        type: DataTypes.DATEONLY,
-        allowNull: false
-    },
-    hora: {
-        type: DataTypes.TIME,
-        allowNull: false,
-        get() {
-            // Obtener la hora sin segundos
-            const rawValue = this.getDataValue('hora');
-            return rawValue ? rawValue.substring(0, 5) : null;
-        }
-    },
-    tipo_consulta: {
-        type: DataTypes.ENUM('presencial', 'virtual'),
-        allowNull: false,
-        defaultValue: 'presencial'
-    },
-    estado: {
-        type: DataTypes.ENUM('programada', 'confirmada', 'completada', 'cancelada'),
-        allowNull: false,
-        defaultValue: 'programada'
-    },
-    notas: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    motivo_cancelacion: {
-        type: DataTypes.STRING(255),
-        allowNull: true
-    },
-    duracion: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 50,
-        comment: 'Duración en minutos'
-    },
-    // Mantén compatibilidad con duracion_minutos
-    duracion_minutos: {
-        type: DataTypes.VIRTUAL,
-        get() {
-            return this.getDataValue('duracion');
-        }
-    }
-}, {
-    tableName: 'citas',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['fecha', 'estado']
-        },
-        {
-            fields: ['psicologo_id', 'fecha']
-        },
-        {
-            fields: ['becario_id']
-        },
-        {
-            fields: ['paciente_id']
-        }
-    ]
-});
-
-// Relaciones
-Cita.belongsTo(Paciente, { foreignKey: 'paciente_id' });
-Cita.belongsTo(User, { as: 'Psicologo', foreignKey: 'psicologo_id' });
-Cita.belongsTo(User, { as: 'Becario', foreignKey: 'becario_id' });
-
-module.exports = Cita;
-
-
-/backend/src/routes/agendaRoutes.js:
---------------------------------------------------------------------------------
-const express = require('express');
-const router = express.Router();
-const AgendaController = require('../controllers/agendaController');
-const verifyToken = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
-
-// Todas las rutas requieren autenticación
-router.use(verifyToken);
-
-// Obtener agendas
-router.get('/global', AgendaController.obtenerAgendaGlobal);
-router.get('/diaria', AgendaController.obtenerAgendaDiaria);
-router.get('/mensual', AgendaController.obtenerCalendarioMensual);
-router.get('/disponibilidad-profesionales', AgendaController.obtenerDisponibilidadProfesionales);
-
-// Reprogramar citas
-router.put('/cita/:id/reprogramar', requireRole(['psicologo', 'becario', 'coordinador']), AgendaController.reprogramarCita);
-
-module.exports = router;
-
 
 /backend/src/db/db.sql:
 --------------------------------------------------------------------------------
@@ -869,25 +662,115 @@ GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicog
 FLUSH PRIVILEGES;
 
 
-/frontend/src/index.js:
+/backend/src/models/citaModel.js:
 --------------------------------------------------------------------------------
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './global.css';
-import './App.css';
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const Paciente = require('./pacienteModel');
+const User = require('./userModel');
 
-// Importa los estilos de los modales
-import './components/Common/ConfirmModal.css';
-import './components/Common/NotificationModal.css';
+const Cita = sequelize.define('Cita', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    paciente_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: Paciente,
+            key: 'id'
+        }
+    },
+    psicologo_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    becario_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    fecha: {
+        type: DataTypes.DATEONLY,
+        allowNull: false
+    },
+    hora: {
+        type: DataTypes.TIME,
+        allowNull: false,
+        get() {
+            // Obtener la hora sin segundos
+            const rawValue = this.getDataValue('hora');
+            return rawValue ? rawValue.substring(0, 5) : null;
+        }
+    },
+    tipo_consulta: {
+        type: DataTypes.ENUM('presencial', 'virtual'),
+        allowNull: false,
+        defaultValue: 'presencial'
+    },
+    estado: {
+        type: DataTypes.ENUM('programada', 'confirmada', 'completada', 'cancelada'),
+        allowNull: false,
+        defaultValue: 'programada'
+    },
+    notas: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    motivo_cancelacion: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    duracion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 50,
+        comment: 'Duración en minutos'
+    },
+    // Mantén compatibilidad con duracion_minutos
+    duracion_minutos: {
+        type: DataTypes.VIRTUAL,
+        get() {
+            return this.getDataValue('duracion');
+        }
+    }
+}, {
+    tableName: 'citas',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['fecha', 'estado']
+        },
+        {
+            fields: ['psicologo_id', 'fecha']
+        },
+        {
+            fields: ['becario_id']
+        },
+        {
+            fields: ['paciente_id']
+        }
+    ]
+});
 
-import App from './App';
+// Relaciones
+Cita.belongsTo(Paciente, { foreignKey: 'paciente_id' });
+Cita.belongsTo(User, { as: 'Psicologo', foreignKey: 'psicologo_id' });
+Cita.belongsTo(User, { as: 'Becario', foreignKey: 'becario_id' });
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+module.exports = Cita;
 
 
 /backend/src/models/userModel.js:
@@ -962,598 +845,6 @@ const User = sequelize.define('User', {
 module.exports = User;
 
 
-/backend/src/controllers/agendaController.js:
---------------------------------------------------------------------------------
-const Cita = require('../models/citaModel');
-const Paciente = require('../models/pacienteModel');
-const User = require('../models/userModel');
-const Disponibilidad = require('../models/disponibilidadModel');
-const { QueryTypes, Op } = require('sequelize');
-const sequelize = require('../config/db');
-
-class AgendaController {
-    
-    static async obtenerAgendaGlobal(req, res) {
-        try {
-            const { 
-                fecha_inicio, 
-                fecha_fin, 
-                psicologo_id, 
-                becario_id, 
-                paciente_id,
-                estado,
-                tipo_consulta,
-                limit = 50,
-                offset = 0
-            } = req.query;
-            
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
-            // Construir condiciones de filtro
-            const whereClause = {};
-            const includeConditions = [];
-            
-            if (fecha_inicio && fecha_fin) {
-                whereClause.fecha = {
-                    [Op.between]: [fecha_inicio, fecha_fin]
-                };
-            } else if (fecha_inicio) {
-                whereClause.fecha = { [Op.gte]: fecha_inicio };
-            } else if (fecha_fin) {
-                whereClause.fecha = { [Op.lte]: fecha_fin };
-            } else {
-                // Por defecto, mostrar solo citas futuras y de hoy
-                whereClause.fecha = { [Op.gte]: new Date().toISOString().split('T')[0] };
-            }
-            
-            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
-            if (becario_id) whereClause.becario_id = becario_id;
-            if (paciente_id) whereClause.paciente_id = paciente_id;
-            if (estado) whereClause.estado = estado;
-            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
-            
-            // Para becarios y psicólogos, limitar a sus pacientes
-            if (usuarioRol === 'becario') {
-                whereClause.becario_id = usuarioId;
-            } else if (usuarioRol === 'psicologo') {
-                whereClause.psicologo_id = usuarioId;
-            }
-            
-            const citas = await Cita.findAll({
-                where: whereClause,
-                include: [
-                    {
-                        model: Paciente,
-                        attributes: ['id', 'nombre', 'apellido', 'telefono', 'email']
-                    },
-                    {
-                        model: User,
-                        as: 'Psicologo',
-                        attributes: ['id', 'nombre', 'apellido', 'especialidad']
-                    },
-                    {
-                        model: User,
-                        as: 'Becario',
-                        attributes: ['id', 'nombre', 'apellido']
-                    }
-                ],
-                order: [
-                    ['fecha', 'ASC'],
-                    ['hora', 'ASC']
-                ],
-                limit: parseInt(limit),
-                offset: parseInt(offset)
-            });
-            
-            // Para coordinador, incluir estadísticas
-            let estadisticas = null;
-            if (usuarioRol === 'coordinador') {
-                const [stats] = await sequelize.query(`
-                    SELECT 
-                        COUNT(*) as total_citas,
-                        SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) as programadas,
-                        SUM(CASE WHEN estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
-                        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-                        SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
-                        COUNT(DISTINCT psicologo_id) as psicologos_involucrados,
-                        COUNT(DISTINCT becario_id) as becarios_involucrados,
-                        COUNT(DISTINCT paciente_id) as pacientes_atendidos
-                    FROM citas
-                    WHERE ${Object.keys(whereClause).length > 0 ? 
-                        this.construirWhereSQL(whereClause) : '1=1'}
-                `, { type: QueryTypes.SELECT });
-                
-                estadisticas = stats;
-            }
-            
-            res.json({
-                success: true,
-                data: {
-                    citas,
-                    estadisticas,
-                    filtros: {
-                        fecha_inicio,
-                        fecha_fin,
-                        psicologo_id,
-                        becario_id,
-                        paciente_id,
-                        estado,
-                        tipo_consulta
-                    }
-                },
-                count: citas.length
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerAgendaGlobal:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener agenda global'
-            });
-        }
-    }
-    
-    static async obtenerAgendaDiaria(req, res) {
-        try {
-            const { fecha } = req.query;
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
-            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
-            
-            let query = `
-                SELECT 
-                    c.id,
-                    c.fecha,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    c.estado,
-                    c.tipo_consulta,
-                    c.duracion_minutos,
-                    c.notas,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    p.telefono as paciente_telefono,
-                    p.email as paciente_email,
-                    CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo,
-                    CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario,
-                    u_psi.especialidad as psicologo_especialidad
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                JOIN users u_psi ON c.psicologo_id = u_psi.id
-                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-                WHERE c.fecha = ?
-            `;
-            
-            const replacements = [fechaConsulta];
-            
-            // Filtrar por rol
-            if (usuarioRol === 'psicologo') {
-                query += ` AND c.psicologo_id = ?`;
-                replacements.push(usuarioId);
-            } else if (usuarioRol === 'becario') {
-                query += ` AND c.becario_id = ?`;
-                replacements.push(usuarioId);
-            }
-            
-            query += ` ORDER BY c.hora`;
-            
-            const citas = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
-            });
-            
-            // Obtener disponibilidad de profesionales para este día
-            const diaSemana = this.obtenerDiaSemana(fechaConsulta);
-            const [disponibilidad] = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
-                    u.rol,
-                    GROUP_CONCAT(
-                        CONCAT(
-                            TIME_FORMAT(d.hora_inicio, '%H:%i'), 
-                            ' - ', 
-                            TIME_FORMAT(d.hora_fin, '%H:%i')
-                        ) SEPARATOR ', '
-                    ) as horarios_disponibles,
-                    COUNT(DISTINCT c.id) as citas_programadas
-                FROM users u
-                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
-                    AND d.dia_semana = ?
-                    AND d.activo = TRUE
-                LEFT JOIN citas c ON u.id = c.psicologo_id 
-                    AND c.fecha = ?
-                    AND c.estado IN ('programada', 'confirmada')
-                WHERE u.rol IN ('psicologo', 'becario')
-                AND u.activo = TRUE
-                GROUP BY u.id, u.nombre, u.apellido, u.rol
-                ORDER BY u.rol, u.apellido, u.nombre
-            `, {
-                replacements: [diaSemana, fechaConsulta],
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: {
-                    fecha: fechaConsulta,
-                    citas,
-                    disponibilidad: disponibilidad || [],
-                    total_citas: citas.length
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerAgendaDiaria:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener agenda diaria'
-            });
-        }
-    }
-    
-    static async obtenerCalendarioMensual(req, res) {
-        try {
-            const { mes, anio } = req.query;
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
-            const mesActual = mes || new Date().getMonth() + 1;
-            const anioActual = anio || new Date().getFullYear();
-            
-            // Obtener citas del mes
-            let query = `
-                SELECT 
-                    c.fecha,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) as programadas,
-                    SUM(CASE WHEN c.estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
-                    GROUP_CONCAT(
-                        CONCAT(
-                            TIME_FORMAT(c.hora, '%H:%i'), ' ', 
-                            SUBSTRING(p.nombre, 1, 1), '. ', p.apellido
-                        ) 
-                        ORDER BY c.hora 
-                        SEPARATOR '; '
-                    ) as detalle_citas
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                WHERE MONTH(c.fecha) = ? AND YEAR(c.fecha) = ?
-            `;
-            
-            const replacements = [mesActual, anioActual];
-            
-            // Filtrar por rol
-            if (usuarioRol === 'psicologo') {
-                query += ` AND c.psicologo_id = ?`;
-                replacements.push(usuarioId);
-            } else if (usuarioRol === 'becario') {
-                query += ` AND c.becario_id = ?`;
-                replacements.push(usuarioId);
-            }
-            
-            query += ` GROUP BY c.fecha ORDER BY c.fecha`;
-            
-            const citasPorDia = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
-            });
-            
-            // Crear calendario
-            const diasMes = new Date(anioActual, mesActual, 0).getDate();
-            const calendario = [];
-            
-            for (let dia = 1; dia <= diasMes; dia++) {
-                const fecha = `${anioActual}-${mesActual.toString().padStart(2, '0')}-${dia.toString().padStart(2, '0')}`;
-                const datosDia = citasPorDia.find(c => c.fecha === fecha);
-                
-                calendario.push({
-                    fecha,
-                    dia,
-                    dia_semana: this.obtenerDiaSemana(fecha),
-                    total_citas: datosDia ? datosDia.total_citas : 0,
-                    programadas: datosDia ? datosDia.programadas : 0,
-                    confirmadas: datosDia ? datosDia.confirmadas : 0,
-                    completadas: datosDia ? datosDia.completadas : 0,
-                    canceladas: datosDia ? datosDia.canceladas : 0,
-                    detalle_citas: datosDia ? datosDia.detalle_citas : null
-                });
-            }
-            
-            // Estadísticas del mes
-            const [estadisticasMes] = await sequelize.query(`
-                SELECT 
-                    COUNT(*) as total_citas_mes,
-                    COUNT(DISTINCT paciente_id) as pacientes_unicos,
-                    COUNT(DISTINCT psicologo_id) as psicologos_activos,
-                    COUNT(DISTINCT becario_id) as becarios_activos,
-                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    ROUND(AVG(duracion_minutos), 1) as duracion_promedio
-                FROM citas
-                WHERE MONTH(fecha) = ? AND YEAR(fecha) = ?
-                ${usuarioRol === 'psicologo' ? 'AND psicologo_id = ?' : ''}
-                ${usuarioRol === 'becario' ? 'AND becario_id = ?' : ''}
-            `, {
-                replacements: usuarioRol === 'psicologo' ? [mesActual, anioActual, usuarioId] :
-                           usuarioRol === 'becario' ? [mesActual, anioActual, usuarioId] :
-                           [mesActual, anioActual],
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: {
-                    mes: mesActual,
-                    anio: anioActual,
-                    calendario,
-                    estadisticas: estadisticasMes || {},
-                    total_dias: diasMes
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerCalendarioMensual:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener calendario mensual'
-            });
-        }
-    }
-    
-    static async reprogramarCita(req, res) {
-        try {
-            const { id } = req.params;
-            const { nueva_fecha, nueva_hora, motivo } = req.body;
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
-            const cita = await Cita.findByPk(id);
-            
-            if (!cita) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Cita no encontrada'
-                });
-            }
-            
-            // Verificar permisos
-            if (usuarioRol === 'becario' && cita.becario_id !== usuarioId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para reprogramar esta cita'
-                });
-            }
-            
-            if (usuarioRol === 'psicologo' && cita.psicologo_id !== usuarioId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para reprogramar esta cita'
-                });
-            }
-            
-            // Verificar que la nueva fecha/hora no se solape
-            const [solapamiento] = await sequelize.query(`
-                SELECT id FROM citas 
-                WHERE (
-                    (psicologo_id = ? OR becario_id = ?)
-                    AND fecha = ?
-                    AND hora = ?
-                    AND estado IN ('programada', 'confirmada')
-                    AND id != ?
-                )
-            `, {
-                replacements: [
-                    cita.psicologo_id,
-                    cita.becario_id || 0,
-                    nueva_fecha,
-                    nueva_hora,
-                    id
-                ],
-                type: QueryTypes.SELECT
-            });
-            
-            if (solapamiento) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Ya existe una cita programada en ese horario'
-                });
-            }
-            
-            // Guardar datos originales para log
-            const datosOriginales = {
-                fecha: cita.fecha,
-                hora: cita.hora,
-                estado: cita.estado
-            };
-            
-            // Actualizar cita
-            await cita.update({
-                fecha: nueva_fecha,
-                hora: nueva_hora,
-                estado: 'programada',
-                motivo_cancelacion: motivo ? `Reprogramación: ${motivo}` : 'Reprogramación'
-            });
-            
-            // Crear notificaciones
-            const notificaciones = [];
-            
-            // Notificar al paciente (si tiene email)
-            const [paciente] = await sequelize.query(
-                'SELECT email, nombre, apellido FROM pacientes WHERE id = ?',
-                { replacements: [cita.paciente_id], type: QueryTypes.SELECT }
-            );
-            
-            if (paciente && paciente.email) {
-                // Aquí se podría integrar con el servicio de email
-                notificaciones.push({
-                    tipo: 'email',
-                    destinatario: paciente.email,
-                    asunto: 'Cita reprogramada',
-                    mensaje: `Estimad@ ${paciente.nombre}, su cita ha sido reprogramada para el ${nueva_fecha} a las ${nueva_hora}.`
-                });
-            }
-            
-            // Notificar al psicólogo
-            if (cita.psicologo_id) {
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'cita_modificada', 'Cita reprogramada', 
-                    CONCAT('Cita reprogramada para el paciente: ', ?, '. Nueva fecha: ', ?, ' ', ?), NOW())
-                `, {
-                    replacements: [
-                        cita.psicologo_id,
-                        `${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}`,
-                        nueva_fecha,
-                        nueva_hora
-                    ]
-                });
-            }
-            
-            // Notificar al becario si está asignado
-            if (cita.becario_id) {
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'cita_modificada', 'Cita reprogramada', 
-                    CONCAT('Cita reprogramada para el paciente: ', ?, '. Nueva fecha: ', ?, ' ', ?), NOW())
-                `, {
-                    replacements: [
-                        cita.becario_id,
-                        `${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}`,
-                        nueva_fecha,
-                        nueva_hora
-                    ]
-                });
-            }
-            
-            // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'agenda', 'Reprogramar cita', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Cita ${id} reprogramada`,
-                    JSON.stringify(datosOriginales),
-                    JSON.stringify({
-                        fecha: nueva_fecha,
-                        hora: nueva_hora,
-                        estado: 'programada'
-                    })
-                ]
-            });
-            
-            res.json({
-                success: true,
-                message: 'Cita reprogramada exitosamente',
-                data: {
-                    cita_id: id,
-                    fecha_anterior: datosOriginales.fecha,
-                    hora_anterior: datosOriginales.hora,
-                    nueva_fecha,
-                    nueva_hora
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en reprogramarCita:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al reprogramar cita'
-            });
-        }
-    }
-    
-    static async obtenerDisponibilidadProfesionales(req, res) {
-        try {
-            const { fecha } = req.query;
-            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
-            const diaSemana = this.obtenerDiaSemana(fechaConsulta);
-            
-            const disponibilidad = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
-                    u.rol,
-                    u.especialidad,
-                    d.hora_inicio,
-                    d.hora_fin,
-                    d.max_citas_dia,
-                    d.intervalo_citas,
-                    (SELECT COUNT(*) FROM citas c 
-                     WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
-                     AND c.fecha = ?
-                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas,
-                    (d.max_citas_dia - 
-                     (SELECT COUNT(*) FROM citas c 
-                      WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
-                      AND c.fecha = ?
-                      AND c.estado IN ('programada', 'confirmada'))
-                    ) as cupos_disponibles
-                FROM users u
-                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
-                    AND d.dia_semana = ?
-                    AND d.activo = TRUE
-                WHERE u.rol IN ('psicologo', 'becario')
-                AND u.activo = TRUE
-                AND d.id IS NOT NULL
-                ORDER BY u.rol, u.apellido, u.nombre
-            `, {
-                replacements: [fechaConsulta, fechaConsulta, diaSemana],
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: {
-                    fecha: fechaConsulta,
-                    dia_semana: diaSemana,
-                    disponibilidad,
-                    total_profesionales: disponibilidad.length
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerDisponibilidadProfesionales:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener disponibilidad de profesionales'
-            });
-        }
-    }
-    
-    // Métodos auxiliares
-    static obtenerDiaSemana(fecha) {
-        const dias = [
-            'domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'
-        ];
-        const fechaObj = new Date(fecha);
-        return dias[fechaObj.getDay()];
-    }
-    
-    static construirWhereSQL(whereClause) {
-        const condiciones = [];
-        
-        for (const [key, value] of Object.entries(whereClause)) {
-            if (typeof value === 'object' && value[Op.between]) {
-                condiciones.push(`${key} BETWEEN '${value[Op.between][0]}' AND '${value[Op.between][1]}'`);
-            } else if (typeof value === 'object' && value[Op.gte]) {
-                condiciones.push(`${key} >= '${value[Op.gte]}'`);
-            } else if (typeof value === 'object' && value[Op.lte]) {
-                condiciones.push(`${key} <= '${value[Op.lte]}'`);
-            } else {
-                condiciones.push(`${key} = ${typeof value === 'string' ? `'${value}'` : value}`);
-            }
-        }
-        
-        return condiciones.join(' AND ');
-    }
-}
-
-module.exports = AgendaController;
-
-
 /backend/server.js:
 --------------------------------------------------------------------------------
 const path = require('path');
@@ -1588,7 +879,6 @@ const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const agendaRoutes = require('./src/routes/agendaRoutes');
 const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
 const pacienteRoutes = require('./src/routes/pacienteRoutes');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -1627,7 +917,6 @@ const userRoutes = require('./src/routes/userRoutes');
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/pacientes', pacienteRoutes);
-
 // Sincronizar modelos
 sequelize.sync({ force: false, alter: false })
     .then(() => {
@@ -1648,9 +937,8 @@ sequelize.sync({ force: false, alter: false })
     });
 
 
-/frontend/src/services/api.js:
+/backend/src/services/api.js:
 --------------------------------------------------------------------------------
-// frontend/src/services/api.js
 const API_BASE_URL = 'http://localhost:3000/api';
 
 class ApiService {
@@ -1660,88 +948,52 @@ class ApiService {
 
   static getHeaders() {
     const token = this.getToken();
-    const headers = {
+    return {
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     };
-    
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
-    return headers;
-  }
-
-  static async request(url, options = {}) {
-    const { method = 'GET', data } = options;
-    
-    const config = {
-      method,
-      headers: this.getHeaders(),
-      credentials: 'include' // Importante para cookies si las usas
-    };
-    
-    if (data) {
-      config.body = JSON.stringify(data);
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}${url}`, config);
-      return this.handleResponse(response);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      throw error;
-    }
   }
 
   static async get(url) {
-    return this.request(url);
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
   }
 
   static async post(url, data) {
-    return this.request(url, { method: 'POST', data });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
   }
 
   static async put(url, data) {
-    return this.request(url, { method: 'PUT', data });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
   }
 
   static async delete(url) {
-    return this.request(url, { method: 'DELETE' });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
   }
 
   static async handleResponse(response) {
-    // Primero verificar si hay contenido
-    if (response.status === 204 || response.status === 205) {
-      return {};
-    }
-    
-    const contentType = response.headers.get('content-type');
-    
-    // Si no es JSON, manejar como texto
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text();
-      
-      if (!response.ok) {
-        throw new Error(text || `HTTP error! status: ${response.status}`);
-      }
-      
-      return text ? JSON.parse(text) : {};
-    }
-    
-    const data = await response.json();
-    
     if (!response.ok) {
-      const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
-      const error = new Error(errorMessage);
-      error.status = response.status;
-      error.data = data;
-      throw error;
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
     }
-    
-    return data;
+    return response.json();
   }
-
-  // Métodos específicos para el dashboard
   static async getDashboardCoordinador() {
     return this.get('/dashboard/coordinador');
   }
@@ -1753,14 +1005,99 @@ class ApiService {
   static async getEstadisticas() {
     return this.get('/estadisticas/generales');
   }
-
-  // Método para obtener información del usuario actual
-  static async getCurrentUser() {
-    return this.get('/auth/me');
-  }
 }
 
 export default ApiService;
+
+
+/frontend/src/App.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Login from './components/Auth/Login';
+import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
+
+// Páginas para Becarios
+import BecarioDashboard from './pages/becario/DashboardPage';
+import BecarioCitas from './pages/becario/CitasPage';
+import BecarioPacientes from './pages/becario/PacientesPage';
+import BecarioNotificaciones from './pages/becario/NotificacionesPage';
+import BecarioObservaciones from './pages/becario/ObservacionesPage';
+
+// Páginas para Psicólogos
+import PsicologoDashboard from './pages/psicologo/DashboardPage';
+import PsicologoPacientes from './pages/psicologo/PacientesPage';
+import PsicologoCitas from './pages/psicologo/CitasPage';
+import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
+import PsicologoSesiones from './pages/psicologo/SesionesPage';
+import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+
+// Páginas para Coordinadores
+import CoordinadorDashboard from './pages/coordinador/DashboardPage';
+import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
+import CoordinadorPacientes from './pages/coordinador/PacientesPage';
+import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
+import CoordinadorAgenda from './pages/coordinador/AgendaPage';
+import CoordinadorReportes from './pages/coordinador/ReportesPage';
+import CoordinadorAltas from './pages/coordinador/AltasPage';
+import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          {/* Rutas de Becario */}
+          <Route path="/" element={<RoleRouter />}>
+            <Route index element={<BecarioDashboard />} />
+            
+            {/* Becario */}
+            <Route path="becario/dashboard" element={<BecarioDashboard />} />
+            <Route path="becario/citas" element={<BecarioCitas />} />
+            <Route path="becario/pacientes" element={<BecarioPacientes />} />
+            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
+            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
+            
+            {/* Psicólogo */}
+            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
+            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
+            <Route path="psicologo/citas" element={<PsicologoCitas />} />
+            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
+            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
+            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
+            
+            {/* Coordinador */}
+            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
+            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
+            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
+            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
+            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
+            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
+            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
+            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
+          </Route>
+          
+          {/* Redirección por defecto */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;
 
 
 /backend/src/services/calendarioService.js:
@@ -2175,99 +1512,3266 @@ CalendarioService.inicializar().catch(console.error);
 module.exports = CalendarioService;
 
 
-/frontend/src/App.js:
+/frontend/src/index.js:
 --------------------------------------------------------------------------------
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import Login from './components/Auth/Login';
-import RoleRouter from './components/Auth/RoleRouter';
-import ProtectedRoute from './components/Auth/ProtectedRoute';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
 
-// Importa los modales
-import ConfirmModal from './components/Common/ConfirmModal';
-import NotificationModal from './components/Common/NotificationModal';
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
 
-// Páginas para Becarios
-import BecarioDashboard from './pages/becario/DashboardPage';
-import BecarioCitas from './pages/becario/CitasPage';
-import BecarioPacientes from './pages/becario/PacientesPage';
-import BecarioNotificaciones from './pages/becario/NotificacionesPage';
-import BecarioObservaciones from './pages/becario/ObservacionesPage';
+import App from './App';
 
-// Páginas para Psicólogos
-import PsicologoDashboard from './pages/psicologo/DashboardPage';
-import PsicologoPacientes from './pages/psicologo/PacientesPage';
-import PsicologoCitas from './pages/psicologo/CitasPage';
-import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
-import PsicologoSesiones from './pages/psicologo/SesionesPage';
-import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
 
-// Páginas para Coordinadores
-import CoordinadorDashboard from './pages/coordinador/DashboardPage';
-import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
-import CoordinadorPacientes from './pages/coordinador/PacientesPage';
-import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
-import CoordinadorAgenda from './pages/coordinador/AgendaPage';
-import CoordinadorReportes from './pages/coordinador/ReportesPage';
-import CoordinadorAltas from './pages/coordinador/AltasPage';
-import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
 
-function App() {
-  return (
-    <Router>
-      <AuthProvider>
-        {/* Agrega los modales aquí */}
-        <ConfirmModal />
-        <NotificationModal />
+/backend/src/controllers/agendaController.js:
+--------------------------------------------------------------------------------
+// backend/src/controllers/agendaController.js - Versión simplificada sin verificación de roles
+const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
+const User = require('../models/userModel');
+const { QueryTypes, Op } = require('sequelize');
+const sequelize = require('../config/db');
+
+class AgendaController {
+
+    static async obtenerAgendaGlobal(req, res) {
+        try {
+            const { 
+                fecha_inicio, 
+                fecha_fin, 
+                psicologo_id, 
+                becario_id, 
+                paciente_id,
+                estado,
+                tipo_consulta,
+                limit = 50,
+                offset = 0
+            } = req.query;
+            
+            // Construir condiciones de filtro
+            const whereClause = {};
+            
+            if (fecha_inicio && fecha_fin) {
+                whereClause.fecha = {
+                    [Op.between]: [fecha_inicio, fecha_fin]
+                };
+            } else if (fecha_inicio) {
+                whereClause.fecha = { [Op.gte]: fecha_inicio };
+            } else if (fecha_fin) {
+                whereClause.fecha = { [Op.lte]: fecha_fin };
+            } else {
+                // Por defecto, mostrar solo citas futuras y de hoy
+                whereClause.fecha = { [Op.gte]: new Date().toISOString().split('T')[0] };
+            }
+            
+            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
+            if (becario_id) whereClause.becario_id = becario_id;
+            if (paciente_id) whereClause.paciente_id = paciente_id;
+            if (estado) whereClause.estado = estado;
+            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
+            
+            console.log('Where clause:', whereClause);
+            
+            const citas = await Cita.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: Paciente,
+                        attributes: ['id', 'nombre', 'apellido', 'telefono', 'email']
+                    },
+                    {
+                        model: User,
+                        as: 'Psicologo',
+                        attributes: ['id', 'nombre', 'apellido', 'especialidad']
+                    },
+                    {
+                        model: User,
+                        as: 'Becario',
+                        attributes: ['id', 'nombre', 'apellido']
+                    }
+                ],
+                order: [
+                    ['fecha', 'ASC'],
+                    ['hora', 'ASC']
+                ],
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            });
+            
+            console.log('Citas encontradas:', citas.length);
+            
+            // Incluir estadísticas - consulta simplificada
+            let estadisticas = null;
+            try {
+                // Construir condiciones WHERE para SQL
+                let whereSQL = '1=1';
+                const replacements = [];
+                
+                if (fecha_inicio && fecha_fin) {
+                    whereSQL += ' AND fecha BETWEEN ? AND ?';
+                    replacements.push(fecha_inicio, fecha_fin);
+                } else if (fecha_inicio) {
+                    whereSQL += ' AND fecha >= ?';
+                    replacements.push(fecha_inicio);
+                } else if (fecha_fin) {
+                    whereSQL += ' AND fecha <= ?';
+                    replacements.push(fecha_fin);
+                }
+                
+                if (psicologo_id) {
+                    whereSQL += ' AND psicologo_id = ?';
+                    replacements.push(psicologo_id);
+                }
+                
+                if (estado) {
+                    whereSQL += ' AND estado = ?';
+                    replacements.push(estado);
+                }
+                
+                const query = `
+                    SELECT 
+                        COUNT(*) as total_citas,
+                        SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) as programadas,
+                        SUM(CASE WHEN estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
+                        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+                        SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
+                        COUNT(DISTINCT psicologo_id) as psicologos_involucrados,
+                        COUNT(DISTINCT becario_id) as becarios_involucrados,
+                        COUNT(DISTINCT paciente_id) as pacientes_atendidos
+                    FROM citas
+                    WHERE ${whereSQL}
+                `;
+                
+                const [stats] = await sequelize.query(query, {
+                    replacements,
+                    type: QueryTypes.SELECT
+                });
+                
+                estadisticas = stats;
+                console.log('Estadísticas:', estadisticas);
+                
+            } catch (statsError) {
+                console.error('Error al obtener estadísticas:', statsError);
+                // Continuar sin estadísticas
+                estadisticas = {
+                    total_citas: citas.length,
+                    programadas: citas.filter(c => c.estado === 'programada').length,
+                    confirmadas: citas.filter(c => c.estado === 'confirmada').length,
+                    completadas: citas.filter(c => c.estado === 'completada').length,
+                    canceladas: citas.filter(c => c.estado === 'cancelada').length,
+                    psicologos_involucrados: new Set(citas.map(c => c.psicologo_id)).size,
+                    becarios_involucrados: new Set(citas.map(c => c.becario_id)).size - 1, // Restar null
+                    pacientes_atendidos: new Set(citas.map(c => c.paciente_id)).size
+                };
+            }
+            
+            res.json({
+                success: true,
+                data: {
+                    citas,
+                    estadisticas,
+                    filtros: {
+                        fecha_inicio,
+                        fecha_fin,
+                        psicologo_id,
+                        becario_id,
+                        paciente_id,
+                        estado,
+                        tipo_consulta
+                    }
+                },
+                count: citas.length
+            });
+            
+        } catch (error) {
+            console.error('Error detallado en obtenerAgendaGlobal:', error);
+            console.error('Stack trace:', error.stack);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener agenda global',
+                error: error.message,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            });
+        }
+    }
+    
+    static async obtenerAgendaDiaria(req, res) {
+        try {
+            const { fecha } = req.query;
+            
+            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
+            
+            const query = `
+                SELECT 
+                    c.id,
+                    c.fecha,
+                    TIME_FORMAT(c.hora, '%H:%i') as hora,
+                    c.estado,
+                    c.tipo_consulta,
+                    c.duracion as duracion_minutos,
+                    c.notas,
+                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
+                    p.telefono as paciente_telefono,
+                    p.email as paciente_email,
+                    CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo,
+                    CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario,
+                    u_psi.especialidad as psicologo_especialidad
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                JOIN users u_psi ON c.psicologo_id = u_psi.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                WHERE c.fecha = ?
+                ORDER BY c.hora
+            `;
+            
+            const replacements = [fechaConsulta];
+            
+            const citas = await sequelize.query(query, {
+                replacements,
+                type: QueryTypes.SELECT
+            });
+            
+            // Obtener disponibilidad de profesionales para este día
+            const diaSemana = this.obtenerDiaSemana(fechaConsulta);
+            const [disponibilidad] = await sequelize.query(`
+                SELECT 
+                    u.id,
+                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
+                    u.rol,
+                    GROUP_CONCAT(
+                        CONCAT(
+                            TIME_FORMAT(d.hora_inicio, '%H:%i'), 
+                            ' - ', 
+                            TIME_FORMAT(d.hora_fin, '%H:%i')
+                        ) SEPARATOR ', '
+                    ) as horarios_disponibles,
+                    COUNT(DISTINCT c.id) as citas_programadas
+                FROM users u
+                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
+                    AND d.dia_semana = ?
+                    AND d.activo = TRUE
+                LEFT JOIN citas c ON u.id = c.psicologo_id 
+                    AND c.fecha = ?
+                    AND c.estado IN ('programada', 'confirmada')
+                WHERE u.rol IN ('psicologo', 'becario')
+                AND u.activo = TRUE
+                GROUP BY u.id, u.nombre, u.apellido, u.rol
+                ORDER BY u.rol, u.apellido, u.nombre
+            `, {
+                replacements: [diaSemana, fechaConsulta],
+                type: QueryTypes.SELECT
+            });
+            
+            res.json({
+                success: true,
+                data: {
+                    fecha: fechaConsulta,
+                    citas,
+                    disponibilidad: disponibilidad || [],
+                    total_citas: citas.length
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerAgendaDiaria:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener agenda diaria'
+            });
+        }
+    }
+    
+    static async obtenerCalendarioMensual(req, res) {
+        try {
+            const { mes, anio } = req.query;
+            
+            const mesActual = mes || new Date().getMonth() + 1;
+            const anioActual = anio || new Date().getFullYear();
+            
+            // Obtener citas del mes
+            const query = `
+                SELECT 
+                    c.fecha,
+                    COUNT(*) as total_citas,
+                    SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) as programadas,
+                    SUM(CASE WHEN c.estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
+                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
+                    GROUP_CONCAT(
+                        CONCAT(
+                            TIME_FORMAT(c.hora, '%H:%i'), ' ', 
+                            SUBSTRING(p.nombre, 1, 1), '. ', p.apellido
+                        ) 
+                        ORDER BY c.hora 
+                        SEPARATOR '; '
+                    ) as detalle_citas
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                WHERE MONTH(c.fecha) = ? AND YEAR(c.fecha) = ?
+                GROUP BY c.fecha ORDER BY c.fecha
+            `;
+            
+            const replacements = [mesActual, anioActual];
+            
+            const citasPorDia = await sequelize.query(query, {
+                replacements,
+                type: QueryTypes.SELECT
+            });
+            
+            // Crear calendario
+            const diasMes = new Date(anioActual, mesActual, 0).getDate();
+            const calendario = [];
+            
+            for (let dia = 1; dia <= diasMes; dia++) {
+                const fecha = `${anioActual}-${mesActual.toString().padStart(2, '0')}-${dia.toString().padStart(2, '0')}`;
+                const datosDia = citasPorDia.find(c => c.fecha === fecha);
+                
+                calendario.push({
+                    fecha,
+                    dia,
+                    dia_semana: this.obtenerDiaSemana(fecha),
+                    total_citas: datosDia ? datosDia.total_citas : 0,
+                    programadas: datosDia ? datosDia.programadas : 0,
+                    confirmadas: datosDia ? datosDia.confirmadas : 0,
+                    completadas: datosDia ? datosDia.completadas : 0,
+                    canceladas: datosDia ? datosDia.canceladas : 0,
+                    detalle_citas: datosDia ? datosDia.detalle_citas : null
+                });
+            }
+            
+            // Estadísticas del mes
+            const [estadisticasMes] = await sequelize.query(`
+                SELECT 
+                    COUNT(*) as total_citas_mes,
+                    COUNT(DISTINCT paciente_id) as pacientes_unicos,
+                    COUNT(DISTINCT psicologo_id) as psicologos_activos,
+                    COUNT(DISTINCT becario_id) as becarios_activos,
+                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
+                    ROUND(AVG(duracion), 1) as duracion_promedio
+                FROM citas
+                WHERE MONTH(fecha) = ? AND YEAR(fecha) = ?
+            `, {
+                replacements: [mesActual, anioActual],
+                type: QueryTypes.SELECT
+            });
+            
+            res.json({
+                success: true,
+                data: {
+                    mes: mesActual,
+                    anio: anioActual,
+                    calendario,
+                    estadisticas: estadisticasMes || {},
+                    total_dias: diasMes
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerCalendarioMensual:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener calendario mensual'
+            });
+        }
+    }
+    
+    static async reprogramarCita(req, res) {
+        try {
+            const { id } = req.params;
+            const { nueva_fecha, nueva_hora, motivo } = req.body;
+            
+            const cita = await Cita.findByPk(id);
+            
+            if (!cita) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Cita no encontrada'
+                });
+            }
+            
+            // Verificar que la nueva fecha/hora no se solape
+            const [solapamiento] = await sequelize.query(`
+                SELECT id FROM citas 
+                WHERE (
+                    (psicologo_id = ? OR becario_id = ?)
+                    AND fecha = ?
+                    AND hora = ?
+                    AND estado IN ('programada', 'confirmada')
+                    AND id != ?
+                )
+            `, {
+                replacements: [
+                    cita.psicologo_id,
+                    cita.becario_id || 0,
+                    nueva_fecha,
+                    nueva_hora,
+                    id
+                ],
+                type: QueryTypes.SELECT
+            });
+            
+            if (solapamiento) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Ya existe una cita programada en ese horario'
+                });
+            }
+            
+            // Guardar datos originales para log
+            const datosOriginales = {
+                fecha: cita.fecha,
+                hora: cita.hora,
+                estado: cita.estado
+            };
+            
+            // Actualizar cita
+            await cita.update({
+                fecha: nueva_fecha,
+                hora: nueva_hora,
+                estado: 'programada',
+                motivo_cancelacion: motivo ? `Reprogramación: ${motivo}` : 'Reprogramación'
+            });
+            
+            // Crear notificaciones
+            const [paciente] = await sequelize.query(
+                'SELECT email, nombre, apellido FROM pacientes WHERE id = ?',
+                { replacements: [cita.paciente_id], type: QueryTypes.SELECT }
+            );
+            
+            // Notificar al psicólogo
+            if (cita.psicologo_id) {
+                await sequelize.query(`
+                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                    VALUES (?, 'cita_modificada', 'Cita reprogramada', 
+                    CONCAT('Cita reprogramada para el paciente: ', ?, '. Nueva fecha: ', ?, ' ', ?), NOW())
+                `, {
+                    replacements: [
+                        cita.psicologo_id,
+                        `${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}`,
+                        nueva_fecha,
+                        nueva_hora
+                    ]
+                });
+            }
+            
+            // Notificar al becario si está asignado
+            if (cita.becario_id) {
+                await sequelize.query(`
+                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                    VALUES (?, 'cita_modificada', 'Cita reprogramada', 
+                    CONCAT('Cita reprogramada para el paciente: ', ?, '. Nueva fecha: ', ?, ' ', ?), NOW())
+                `, {
+                    replacements: [
+                        cita.becario_id,
+                        `${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}`,
+                        nueva_fecha,
+                        nueva_hora
+                    ]
+                });
+            }
+            
+            res.json({
+                success: true,
+                message: 'Cita reprogramada exitosamente',
+                data: {
+                    cita_id: id,
+                    fecha_anterior: datosOriginales.fecha,
+                    hora_anterior: datosOriginales.hora,
+                    nueva_fecha,
+                    nueva_hora
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error en reprogramarCita:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al reprogramar cita'
+            });
+        }
+    }
+    
+    
+
+    static async obtenerDisponibilidadProfesionales(req, res) {
+        try {
+            const { fecha } = req.query;
+            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
+            
+            
+            // Función auxiliar para obtener día de la semana
+            const obtenerDiaSemana = (fechaStr) => {
+                try {
+                    const fechaObj = new Date(fechaStr);
+                    const dias = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+                    return dias[fechaObj.getDay()];
+                } catch (error) {
+                    console.error('Error parseando fecha:', fechaStr, error);
+                    return 'lunes';
+                }
+            };
+            
+            const diaSemana = obtenerDiaSemana(fechaConsulta);
+            
+            // CONSULTA PRINCIPAL: Obtener psicólogos y becarios activos
+            const psicologos = await sequelize.query(`
+                SELECT 
+                    u.id,
+                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
+                    u.rol,
+                    u.especialidad,
+                    u.email
+                FROM users u
+                WHERE u.rol IN ('psicologo', 'becario')
+                    AND u.activo = TRUE
+                ORDER BY 
+                    CASE u.rol 
+                        WHEN 'psicologo' THEN 1
+                        WHEN 'becario' THEN 2
+                        ELSE 3
+                    END,
+                    u.apellido, u.nombre
+            `, {
+                type: QueryTypes.SELECT
+            });
+            
+            
+            // Para cada profesional, obtener su disponibilidad y citas programadas
+            const disponibilidadDetallada = [];
+            
+            for (const psicologo of psicologos) {
+                try {
+                    // 1. Obtener disponibilidad del día
+                    const [disponibilidad] = await sequelize.query(`
+                        SELECT 
+                            TIME_FORMAT(hora_inicio, '%H:%i') as hora_inicio,
+                            TIME_FORMAT(hora_fin, '%H:%i') as hora_fin,
+                            COALESCE(max_citas_dia, 8) as max_citas_dia,
+                            intervalo_citas
+                        FROM disponibilidades
+                        WHERE usuario_id = ?
+                            AND dia_semana = ?
+                            AND activo = TRUE
+                            AND (? BETWEEN fecha_inicio_vigencia AND COALESCE(fecha_fin_vigencia, '2099-12-31'))
+                        LIMIT 1
+                    `, {
+                        replacements: [psicologo.id, diaSemana, fechaConsulta],
+                        type: QueryTypes.SELECT
+                    });
+                    
+                    // 2. Obtener citas programadas para la fecha
+                    const [citasCount] = await sequelize.query(`
+                        SELECT COUNT(*) as citas_programadas
+                        FROM citas 
+                        WHERE (psicologo_id = ? OR becario_id = ?)
+                            AND fecha = ?
+                            AND estado IN ('programada', 'confirmada')
+                    `, {
+                        replacements: [psicologo.id, psicologo.id, fechaConsulta],
+                        type: QueryTypes.SELECT
+                    });
+                    
+                    const citasProgramadas = citasCount ? parseInt(citasCount.citas_programadas) : 0;
+                    const maxCitas = disponibilidad ? parseInt(disponibilidad.max_citas_dia) : 8;
+                    const cuposDisponibles = Math.max(0, maxCitas - citasProgramadas);
+                    const porcentajeOcupacion = maxCitas > 0 ? Math.round((citasProgramadas / maxCitas) * 100) : 0;
+                    
+                    // Determinar estado de disponibilidad
+                    let estado = 'disponible';
+                    if (cuposDisponibles === 0) estado = 'completo';
+                    else if (cuposDisponibles <= 2) estado = 'limitado';
+                    
+                    disponibilidadDetallada.push({
+                        id: psicologo.id,
+                        profesional: psicologo.profesional,
+                        rol: psicologo.rol,
+                        especialidad: psicologo.especialidad || (psicologo.rol === 'becario' ? 'Becario' : 'Psicología General'),
+                        email: psicologo.email,
+                        hora_inicio: disponibilidad ? disponibilidad.hora_inicio : '09:00',
+                        hora_fin: disponibilidad ? disponibilidad.hora_fin : '18:00',
+                        max_citas_dia: maxCitas,
+                        citas_programadas: citasProgramadas,
+                        cupos_disponibles: cuposDisponibles,
+                        porcentaje_ocupacion: porcentajeOcupacion,
+                        estado: estado,
+                        intervalo_citas: disponibilidad ? disponibilidad.intervalo_citas : 50
+                    });
+                    
+                    
+                } catch (error) {
+                    console.error(`⚠️ Error procesando ${psicologo.profesional}:`, error.message);
+                    // Datos de respaldo
+                    disponibilidadDetallada.push({
+                        id: psicologo.id,
+                        profesional: psicologo.profesional,
+                        rol: psicologo.rol,
+                        especialidad: psicologo.especialidad || 'Psicología General',
+                        email: psicologo.email,
+                        hora_inicio: '09:00',
+                        hora_fin: '18:00',
+                        max_citas_dia: 8,
+                        citas_programadas: 0,
+                        cupos_disponibles: 8,
+                        porcentaje_ocupacion: 0,
+                        estado: 'disponible',
+                        intervalo_citas: 50
+                    });
+                }
+            }
+            
+            // Estadísticas generales
+            const totalProfesionales = disponibilidadDetallada.length;
+            const totalCupos = disponibilidadDetallada.reduce((sum, p) => sum + p.max_citas_dia, 0);
+            const totalCitasProgramadas = disponibilidadDetallada.reduce((sum, p) => sum + p.citas_programadas, 0);
+            const totalCuposDisponibles = disponibilidadDetallada.reduce((sum, p) => sum + p.cupos_disponibles, 0);
+            const porcentajeTotalOcupacion = totalCupos > 0 ? Math.round((totalCitasProgramadas / totalCupos) * 100) : 0;
+            
+            console.log(`📊 Estadísticas: ${totalCitasProgramadas}/${totalCupos} citas (${porcentajeTotalOcupacion}% ocupado)`);
+            
+            res.json({
+                success: true,
+                data: {
+                    fecha: fechaConsulta,
+                    dia_semana: diaSemana,
+                    disponibilidad: disponibilidadDetallada,
+                    total_profesionales: totalProfesionales,
+                    estadisticas: {
+                        total_cupos: totalCupos,
+                        total_citas_programadas: totalCitasProgramadas,
+                        total_cupos_disponibles: totalCuposDisponibles,
+                        porcentaje_ocupacion_total: porcentajeTotalOcupacion,
+                        profesionales_disponibles: disponibilidadDetallada.filter(p => p.estado === 'disponible').length,
+                        profesionales_limitados: disponibilidadDetallada.filter(p => p.estado === 'limitado').length,
+                        profesionales_completos: disponibilidadDetallada.filter(p => p.estado === 'completo').length
+                    }
+                }
+            });
+            
+        } catch (error) {
+            console.error('❌ Error CRÍTICO en obtenerDisponibilidadProfesionales:', error);
+            console.error('Stack trace:', error.stack);
+            
+            // Respuesta de error controlada
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener disponibilidad de profesionales',
+                error: process.env.NODE_ENV === 'development' ? error.message : 'Error interno del servidor',
+                data: {
+                    fecha: req.query.fecha || new Date().toISOString().split('T')[0],
+                    dia_semana: 'lunes',
+                    disponibilidad: [],
+                    total_profesionales: 0,
+                    estadisticas: {
+                        total_cupos: 0,
+                        total_citas_programadas: 0,
+                        total_cupos_disponibles: 0,
+                        porcentaje_ocupacion_total: 0,
+                        profesionales_disponibles: 0,
+                        profesionales_limitados: 0,
+                        profesionales_completos: 0
+                    }
+                }
+            });
+        }
+    }
+
+    // Método auxiliar para obtener día de la semana
+    static obtenerDiaSemana(fecha) {
+        try {
+            const fechaObj = new Date(fecha);
+            const dias = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+            return dias[fechaObj.getDay()];
+        } catch (error) {
+            return 'lunes'; // Valor por defecto
+        }
+    }
+    
+    static construirWhereSQL(whereClause) {
+        const condiciones = [];
         
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          {/* Rutas de Becario */}
-          <Route path="/" element={<RoleRouter />}>
-            <Route index element={<BecarioDashboard />} />
-            
-            {/* Becario */}
-            <Route path="becario/dashboard" element={<BecarioDashboard />} />
-            <Route path="becario/citas" element={<BecarioCitas />} />
-            <Route path="becario/pacientes" element={<BecarioPacientes />} />
-            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
-            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
-            
-            {/* Psicólogo */}
-            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
-            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
-            <Route path="psicologo/citas" element={<PsicologoCitas />} />
-            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
-            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
-            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
-            
-            {/* Coordinador */}
-            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
-            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
-            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
-            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
-            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
-            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
-            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
-            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
-          </Route>
-          
-          {/* Redirección por defecto */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </AuthProvider>
-    </Router>
-  );
+        for (const [key, value] of Object.entries(whereClause)) {
+            if (typeof value === 'object' && value[Op.between]) {
+                condiciones.push(`${key} BETWEEN '${value[Op.between][0]}' AND '${value[Op.between][1]}'`);
+            } else if (typeof value === 'object' && value[Op.gte]) {
+                condiciones.push(`${key} >= '${value[Op.gte]}'`);
+            } else if (typeof value === 'object' && value[Op.lte]) {
+                condiciones.push(`${key} <= '${value[Op.lte]}'`);
+            } else {
+                condiciones.push(`${key} = ${typeof value === 'string' ? `'${value}'` : value}`);
+            }
+        }
+        
+        return condiciones.join(' AND ');
+    }
+    
 }
 
-export default App;
+module.exports = AgendaController;
+
+
+/frontend/src/global.css:
+--------------------------------------------------------------------------------
+:root {
+  /* Colores base - Manteniendo nombres originales */
+  --grnb: #29ce9b;   /* Verde azulado oscuro */
+  --blub: #2c3138;   /* Azul claro */
+  --blud: #1B1E23;   /* Azul oscuro */
+  --white: #ffffff;
+  --grayl: #96a2ad;
+  --gray: #6c757d;
+  --gray-dark: #343a40;
+
+  --whiteSET: #ffffff;
+  --bludSET: #1B1E23;
+  --blubSET: #2c3138;
+  
+  /* Colores adicionales */
+  --blu: #1F85BA;      /* GRNB - Azul */
+  --bludd: #1B6DA7;
+  --blub-dark: #131923; /* BLUD - Azul más oscuro */
+  --blul: #1b2937;     /* BLUL - Azul oscuro */
+  --grnd: #37B69C;     /* GRND - Verde */
+  --grnl: #30ff96;     /* GRNL - Verde claro */
+  --rr: #fa3144;       /* RR - Rojo */
+  --yy: #ffa631;       /* YY - Amarillo */
+  --rl: #ff5363;       /* RL - Rojo claro */
+  --yl: #ffdd55;       /* YL - Amarillo claro */
+  --wt: #ffffff;       /* WT - Blanco */
+}
+
+[data-theme="light"] {
+  /* Colores base - Manteniendo nombres originales */
+  --grnb: #29ce9b;   /* Verde azulado oscuro */
+  --blub: #fff;   /* Azul claro */
+  --blud: #e8f1fa;   /* Azul oscuro */
+  --white: #1B1E23;
+  --grayl: #2c3138;
+  --gray: #2c3138;
+  --gray-dark: #343a40;
+
+  --whiteSET: #ffffff;
+  --bludSET: #1B1E23;
+  
+  /* Colores adicionales */
+  --blu: #1F85BA;      /* GRNB - Azul */
+  --bludd: #1B6DA7;
+  --blub-dark: #131923; /* BLUD - Azul más oscuro */
+  --blul: #1b2937;     /* BLUL - Azul oscuro */
+  --grnd: #37B69C;     /* GRND - Verde */
+  --grnl: #30ff96;     /* GRNL - Verde claro */
+  --rr: #fa3144;       /* RR - Rojo */
+  --yy: #ffa631;       /* YY - Amarillo */
+  --rl: #ff5363;       /* RL - Rojo claro */
+  --yl: #ffdd55;       /* YL - Amarillo claro */
+  --wt: #ffffff;       /* WT - Blanco */
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, var(--blub) 0%, var(--blud) 100%);
+  color: var(--white);
+
+}
+
+/* ===== ESTRUCTURA PRINCIPAL ===== */
+.main-container {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  height: 100vh;
+}
+
+.dashboard-logo {
+  max-width: 200px;
+  height: auto;
+  object-fit: contain;
+}
+
+.content-area {
+  flex: 1;
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  border: 2px solid var(--blub);
+  margin: 10px;
+  padding: 15px;
+  border-radius: 10px;
+  position: relative;
+  overflow: auto;
+}
+
+.grid-content {
+  width: 1500px;
+  height: 750px;
+  background: transparent;
+  border-radius: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== HEADERS ===== */
+.header {
+  height: 35px;
+  background: var(--blu);
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  position: relative;
+  z-index: 10;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.top-header {
+  height: 50px;
+  background: var(--blu);
+  display: flex;
+  align-items: center;
+  color: var(--whiteSET);
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 1000;
+
+  
+}
+
+.window-controls {
+  display: flex;
+  gap: 10px;
+}
+
+/* ===== BOTONES GENERALES ===== */
+.btn-header {
+  background: transparent;
+  border: 2px solid transparent;
+  color: var(--whiteSET);
+  font-weight: bold;
+  padding: 8px 16px;
+  border-radius: 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+}
+
+.btn-header:hover {
+  color: var(--bludSET);
+}
+
+.btn-header:disabled {
+  color: var(--bludd);
+  cursor: not-allowed;
+}
+
+.btn-header-logo {
+  background: transparent;
+  border: 2px solid transparent;
+  color: transparent;
+  font-weight: bold;
+  padding: 8px 16px;
+  border-radius: 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+}
+
+.control-btn {
+  background: transparent;
+  border: none;
+  color: var(--whiteSET);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+.control-btn:hover {
+  color: var(--bludSET)
+}
+
+.btn-icon {
+  width: 20px;
+  height: 20px;
+  transition: filter 0.3s ease;
+}
+
+.control-icon {
+  width: 25px;
+  height: 25px;
+}
+
+/* ===== BOTONES POR COLOR/TIPO ===== */
+/* Botón primario (verde) */
+.btn-primary {
+  background: var(--grnb);
+  margin-top: 10px;
+  color: var(--blub);
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--white);
+  color: var(--grnb);
+}
+
+.btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-primary:disabled:hover {
+  background: var(--grnb);
+  color: var(--blub);
+}
+
+/* Botón secundario (azul) */
+.btn-secondary {
+  background: var(--blu);
+  color: var(--white);
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  margin-top: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--white);
+  color: var(--blu);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-secondary:disabled:hover {
+  background: var(--blu);
+  color: var(--white);
+}
+
+/* Botón peligro/cancelar (rojo) */
+.btn-danger {
+  background: var(--rr);
+  color: var(--white);
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--white);
+  color: var(--rr);
+}
+
+.btn-danger:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-danger:disabled:hover {
+  background: var(--rr);
+  color: var(--white);
+}
+
+/* Botón advertencia (amarillo) */
+.btn-warning {
+  background: var(--yy);
+  color: var(--blub);
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: var(--white);
+  color: var(--yy);
+}
+
+.btn-warning:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-warning:disabled:hover {
+  background: var(--yy);
+  color: var(--blub);
+}
+
+/* Botón con texto sin fondo */
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--blu);
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: underline;
+  padding: 5px;
+  transition: all 0.3s ease;
+}
+
+.btn-text:hover {
+  color: var(--white);
+  text-decoration: none;
+}
+
+/* Botón redondeado especial */
+.btn-rounded {
+  padding: 12px;
+  border-radius: 15px;
+  border: none;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+/* ===== INPUTS GENERALES ===== */
+.input-field {
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 5px;
+  border: 2px solid var(--blu);
+  background: var(--blud);
+  color: var(--white);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+}
+
+.input-field:focus {
+  border-color: var(--grnb);
+  background: var(--blud);
+  color: var(--white);
+}
+
+.input-field:hover {
+  border-color: var(--blu);
+}
+
+.input-field::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Input especial para códigos */
+.code-input {
+  width: 45px;
+  height: 45px;
+  font-size: 24px;
+  background: var(--blud);
+  color: var(--white);
+  text-align: center;
+  border: 2px solid var(--blub);
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.3s ease;
+}
+
+.code-input:focus {
+  border-color: var(--blu);
+}
+
+.code-input-filled {
+  border-color: var(--blu);
+}
+
+/* Input de búsqueda */
+.search-input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 5px;
+  border: 2px solid var(--blu);
+  background: var(--blud);
+  color: var(--white);
+}
+
+.search-input:focus {
+  border-color: var(--grnb);
+  outline: none;
+}
+
+/* Textarea */
+.textarea-field {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--blu);
+  background: var(--blud);
+  color: var(--white);
+  border-radius: 5px;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.textarea-field:focus {
+  border-color: var(--grnb);
+  outline: none;
+}
+
+/* Select */
+.select-field {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--blu);
+  background: var(--blud);
+  color: var(--white);
+  border-radius: 5px;
+}
+
+.select-field:focus {
+  border-color: var(--grnb);
+  outline: none;
+}
+
+/* ===== TARJETAS Y CONTENEDORES ===== */
+.card {
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  border: 2px solid var(--blub);
+  backdrop-filter: blur(10px);
+  border-radius: 10px;
+  padding: 20px;
+  color: var(--white);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.card-primary {
+  border-color: var(--grnb);
+}
+
+.card-secondary {
+  border-color: var(--blu);
+}
+
+.card-danger {
+  border-color: var(--rr);
+}
+
+.card-warning {
+  border-color: var(--yy);
+}
+
+/* Contenedor con fondo semitransparente */
+.container-transparent {
+  background: rgba(0, 0, 0, 0.30);
+  border-radius: 10px;
+  padding: 20px;
+  backdrop-filter: blur(10px);
+}
+
+/* ===== MODALES ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal-container {
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  border: 2px solid var(--blub);
+  border-radius: 10px;
+  padding: 30px;
+  color: var(--white);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease;
+}
+
+.modal-large {
+  max-width: 800px;
+  width: 95%;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--grnb);
+}
+
+.modal-title {
+  margin: 0;
+  color: var(--grnb);
+  font-size: 1.5em;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--rr);
+  font-size: 28px;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.modal-close:hover {
+  color: var(--white);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.modal-content {
+  margin-bottom: 20px;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 2px solid var(--grnb);
+}
+
+/* ===== GRIDS Y LAYOUTS ===== */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+}
+
+.grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.flex-row {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* ===== ESTADOS Y MENSAJES ===== */
+.error-message {
+  color: var(--white);
+  background: rgba(231, 76, 60, 0.2);
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  border: 1px solid var(--rr);
+}
+
+.success-message {
+  color: var(--white);
+  background: rgba(52, 152, 219, 0.2);
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  border: 1px solid var(--blu);
+  font-weight: bold;
+  text-align: center;
+}
+
+.warning-message {
+  color: var(--white);
+  background: rgba(241, 196, 15, 0.2);
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  border: 1px solid var(--yy);
+}
+
+/* Estados de carga */
+.loading-container {
+  text-align: center;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid var(--blu);
+  border-top: 5px solid var(--white);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-text {
+  font-size: 18px;
+  margin-top: 15px;
+  color: var(--blu);
+}
+
+/* Estados de usuario/privilegios */
+.status-verified {
+  color: var(--grnb);
+  font-weight: bold;
+}
+
+.status-pending {
+  color: var(--yy);
+  font-weight: bold;
+}
+
+.status-active {
+  color: var(--grnb);
+  font-weight: bold;
+}
+
+.status-inactive {
+  color: var(--rr);
+  font-weight: bold;
+}
+
+.privilege-admin {
+  color: var(--rr);
+  font-weight: bold;
+}
+
+.privilege-vendor {
+  color: var(--blu);
+  font-weight: bold;
+}
+
+/* ===== SCROLLBAR ===== */
+.scrollable {
+  overflow-y: auto;
+}
+
+.scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.scrollable::-webkit-scrollbar-thumb {
+  background: var(--white);
+  border-radius: 3px;
+}
+
+.scrollable::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Para Firefox */
+.scrollable {
+  scrollbar-width: thin;
+  scrollbar-color: var(--white) rgba(255, 255, 255, 0.05);
+}
+
+/* ===== ANIMACIONES ===== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-container {
+    width: 95%;
+    padding: 20px;
+  }
+  
+  .modal-footer {
+    flex-direction: column;
+  }
+  
+  .flex-row {
+    flex-direction: column;
+  }
+  
+  .btn-header {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header,
+  .top-header {
+    padding: 0 10px;
+  }
+  
+  .modal-container {
+    padding: 15px;
+  }
+  
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-warning {
+    padding: 8px 15px;
+    font-size: 14px;
+  }
+}
+
+/* ===== UTILIDADES ===== */
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.mt-10 { margin-top: 10px; }
+.mt-20 { margin-top: 20px; }
+.mb-10 { margin-bottom: 10px; }
+.mb-20 { margin-bottom: 20px; }
+.ml-10 { margin-left: 10px; }
+.mr-10 { margin-right: 10px; }
+
+.p-10 { padding: 10px; }
+.p-20 { padding: 20px; }
+.pt-10 { padding-top: 10px; }
+.pb-10 { padding-bottom: 10px; }
+
+.w-100 { width: 100%; }
+.h-100 { height: 100%; }
+
+.hidden { display: none; }
+.flex { display: flex; }
+.grid { display: grid; }
+.block { display: block; }
+.inline { display: inline; }
+.inline-block { display: inline-block; }
+
+/* Tablas */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  background: var(--blud);
+  border-radius: 8px;
+  border: 1px solid var(--blub);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--white);
+}
+
+.data-table th {
+  background: var(--bluDSET);
+  padding: 12px 15px;
+  text-align: left;
+  font-weight: bold;
+  border-bottom: 2px solid var(--blu);
+}
+
+.data-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--blub);
+}
+
+.data-table tr:hover {
+  background: rgba(31, 133, 186, 0.1);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.badge-success {
+  background: rgba(31, 133, 186, 0.2);
+  color: var(--grnb);
+  border: 1px solid var(--grnb);
+}
+
+.badge-warning {
+  background: rgba(255, 166, 49, 0.2);
+  color: var(--yy);
+  border: 1px solid var(--yy);
+}
+
+.badge-danger {
+  background: rgba(250, 49, 68, 0.2);
+  color: var(--rr);
+  border: 1px solid var(--rr);
+}
+
+.badge-info {
+  background: rgba(64, 148, 232, 0.2);
+  color: var(--blu);
+  border: 1px solid var(--blu);
+}
+
+/* Progress bars */
+.progress-container {
+  width: 100%;
+  height: 8px;
+  background: var(--blub);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--grnd) 0%, var(--grnb) 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Avatars */
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--blu);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--white);
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.avatar-small {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+.avatar-large {
+  width: 60px;
+  height: 60px;
+  font-size: 24px;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid var(--blub);
+  margin-bottom: 20px;
+}
+
+.tab {
+  padding: 12px 24px;
+  background: transparent;
+  border: none;
+  color: var(--grayl);
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.tab:hover {
+  color: var(--white);
+}
+
+.tab.active {
+  color: var(--grnb);
+  border-bottom: 2px solid var(--grnb);
+}
+
+/* Accordion */
+.accordion {
+  border: 1px solid var(--blub);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.accordion-header {
+  padding: 15px 20px;
+  background: var(--blud);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+  transition: background 0.3s ease;
+}
+
+.accordion-header:hover {
+  background: var(--blub);
+}
+
+.accordion-content {
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.1);
+  border-top: 1px solid var(--blub);
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.page-item {
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  color: var(--white);
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.page-item:hover {
+  background: var(--white);
+  border-color: var(--white);
+}
+
+.page-item.active {
+  background: var(--blu);
+  border-color: var(--blu);
+  color: var(--blud);
+}
+
+/* Timeline para actividad reciente */
+.timeline {
+  position: relative;
+  padding-left: 30px;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--bludd);
+}
+
+.timeline-item {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 40px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--white);
+
+}
+
+.timeline-content {
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid var(--blub);
+}
+
+/* Layout Styles */
+.content-wrapper {
+  display: flex;
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  height: calc(100vh - 80px);
+}
+
+.sidebar {
+  width: 250px;
+  background: var(--blub);
+  border-right: 1px solid var(--blub);
+  transition: width 0.3s ease;
+  overflow-y: auto;
+}
+
+.sidebar.closed {
+  width: 70px;
+}
+
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-nav {
+  padding: 20px 0;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 12px 20px;
+  color: var(--grayl);
+  text-decoration: none;
+  transition: all 0.3s ease;
+  border-left: 3px solid transparent;
+}
+
+.sidebar-nav-item:hover {
+  background: rgba(31, 133, 186, 0.1);
+  color: var(--blu);
+  border-left-color: var(--blu);
+}
+
+.sidebar-nav-item.active {
+  background: rgba(31, 133, 186, 0.2);
+  color: var(--white);
+  border-left-color: var(--blu);
+}
+
+.sidebar-nav-item svg {
+  font-size: 20px;
+  color: var(--blu);
+  min-width: 24px;
+}
+
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  background: var(--blud);
+  border-top: 1px solid var(--blub);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--grayl);
+  z-index: 1000;
+}
+
+.user-info {
+  display: flex;
+  
+  align-items: center;
+  gap: 10px;
+}
+
+.user-email {
+  color: var(--whiteSET);
+  font-weight: 500;
+}
+
+/* Dashboard Styles */
+.dashboard-page {
+  padding: 0px;
+}
+
+.page-header {
+  margin-bottom: 30px;
+}
+
+.page-header h1 {
+  color: var(--whiteset);
+  margin-bottom: 5px;
+}
+
+.page-header p {
+  color: var(--grayl);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.stat-card {
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  border: 1px solid var(--blub);
+  border-radius: 10px;
+  padding: 20px;
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+  border-color: var(--blu);
+}
+
+.stat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.stat-header h3 {
+  font-size: 14px;
+  color: var(--white);
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: bold;
+  color: var(--white);
+  margin-bottom: 10px;
+}
+
+.stat-change {
+  font-size: 12px;
+  color: var(--grayl);
+}
+
+.dashboard-content-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.dashboard-section {
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.citas-list, .pacientes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cita-item, .paciente-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  transition: background 0.3s ease;
+}
+
+.cita-item:hover, .paciente-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cita-info, .paciente-info {
+  flex: 1;
+}
+
+.cita-paciente, .paciente-nombre {
+  font-weight: bold;
+  color: var(--white);
+}
+
+.cita-hora, .paciente-fecha {
+  font-size: 12px;
+  color: var(--grayl);
+}
+
+.paciente-progreso {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 150px;
+}
+
+.progreso-text {
+  font-size: 12px;
+  color: var(--grnb);
+  min-width: 40px;
+}
+
+.activity-chart {
+  height: 200px;
+  padding: 20px;
+}
+
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 100%;
+  padding-top: 20px;
+}
+
+.chart-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.bar-fill {
+  width: 20px;
+  background: linear-gradient(to top, var(--grnd), var(--grnb));
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s ease;
+}
+
+.bar-label {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--grayl);
+}
+
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Calendar Styles */
+.calendar-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--blud);
+  border-radius: 10px;
+  border: 1px solid var(--blub);
+}
+
+.view-selector {
+  display: flex;
+  gap: 5px;
+}
+
+.date-navigation {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.current-date h3 {
+  color: var(--white);
+  margin: 0;
+}
+
+.calendar-day-view {
+  display: flex;
+  height: 600px;
+  overflow-y: auto;
+  background: var(--blud);
+  border-radius: 10px;
+  border: 1px solid var(--blub);
+  margin-bottom: 20px;
+}
+
+.time-column {
+  width: 80px;
+  border-right: 1px solid var(--blub);
+}
+
+.time-slot {
+  height: 60px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--blub);
+}
+
+.time-label {
+  color: var(--grayl);
+  font-size: 12px;
+}
+
+.events-column {
+  flex: 1;
+  position: relative;
+}
+
+.hour-slot {
+  height: 60px;
+  border-bottom: 1px solid var(--blub);
+  position: relative;
+}
+
+.event-item {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  background: var(--blub);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.event-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.event-confirmed {
+  border-left: 4px solid var(--grnb);
+}
+
+.event-pending {
+  border-left: 4px solid var(--yy);
+}
+
+.event-cancelled {
+  border-left: 4px solid var(--rr);
+}
+
+.event-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.event-time {
+  font-size: 12px;
+  color: var(--grayl);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.event-content {
+  margin-bottom: 10px;
+}
+
+.event-patient {
+  font-weight: bold;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.event-type {
+  font-size: 12px;
+  color: var(--grnb);
+  margin-top: 2px;
+}
+
+.event-notes {
+  font-size: 11px;
+  color: var(--grayl);
+  margin-top: 2px;
+}
+
+.event-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.day-citas-list {
+  background: var(--blud);
+  border-radius: 10px;
+  border: 1px solid var(--blub);
+  padding: 20px;
+}
+
+.citas-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.cita-card {
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  border: 1px solid var(--blub);
+  border-radius: 10px;
+  padding: 15px;
+  transition: all 0.3s ease;
+}
+
+.cita-card:hover {
+  border-color: var(--grnb);
+  transform: translateY(-2px);
+}
+
+.cita-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.cita-card-body {
+  margin-bottom: 15px;
+}
+
+.cita-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.no-citas {
+  text-align: center;
+  padding: 40px;
+  color: var(--grayl);
+}
+
+.no-citas-icon {
+  font-size: 48px;
+  margin-bottom: 15px;
+}
+
+/* Configuration Styles */
+.configuracion-container {
+  display: flex;
+  gap: 30px;
+  margin-bottom: 30px;
+}
+
+.config-tabs {
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.config-tab {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 20px;
+  background: transparent;
+  border: none;
+  color: var(--grayl);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.config-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+}
+
+.config-tab.active {
+  background: rgba(31, 133, 186, 0.2);
+  color: var(--grnb);
+  border-left: 3px solid var(--grnb);
+}
+
+.config-tab svg {
+  font-size: 20px;
+}
+
+.config-content {
+  flex: 1;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 10px;
+  padding: 30px;
+}
+
+.tab-content h3 {
+  color: var(--grnb);
+  margin-bottom: 25px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--white);
+  font-weight: 500;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid var(--blub);
+}
+
+.security-info {
+  margin-top: 30px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border-left: 4px solid var(--blu);
+}
+
+.security-info h4 {
+  color: var(--blu);
+  margin-bottom: 10px;
+}
+
+.security-info ul {
+  padding-left: 20px;
+  color: var(--grayl);
+}
+
+.security-info li {
+  margin-bottom: 5px;
+}
+
+.notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.notification-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid var(--blub);
+}
+
+.notification-item h4 {
+  color: var(--white);
+  margin-bottom: 5px;
+}
+
+.notification-item p {
+  color: var(--grayl);
+  font-size: 14px;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--blub);
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: var(--white);
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--grnb);
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+.horario-disponibilidad {
+  margin: 30px 0;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.dias-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.dia-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.advanced-settings {
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 10px;
+  padding: 30px;
+  margin-top: 30px;
+}
+
+.advanced-actions {
+  display: flex;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.alert-message {
+  padding: 15px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border-left: 4px solid;
+}
+
+.alert-message.success {
+  background: rgba(31, 186, 101, 0.2);
+  border-color: var(--grnb);
+  color: var(--grnb);
+}
+
+.alert-message.error {
+  background: rgba(250, 49, 68, 0.2);
+  border-color: var(--rr);
+  color: var(--rr);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .configuracion-container {
+    flex-direction: column;
+  }
+  
+  .config-tabs {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid,
+  .dashboard-content-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .calendar-controls {
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+  }
+  
+  .date-navigation {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .citas-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Clases de utilidad adicionales */
+.gap-5 { gap: 5px; }
+.gap-10 { gap: 10px; }
+.gap-20 { gap: 20px; }
+.align-center { align-items: center; }
+.font-bold { font-weight: bold; }
+.text-small { font-size: 12px; }
+.text-danger { color: var(--rr); }
+.text-success { color: var(--grnb); }
+
+/* Estilos para el modal de nueva cita */
+.modal-overlay-nueva-cita {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal-container-nueva-cita {
+  background: var(--blub);
+  border-radius: 10px;
+  padding: 25px;
+  width: 500px;
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+  border: 2px solid var(--grnd);
+}
+
+.modal-title-nueva-cita {
+  color: var(--grnd);
+  margin-bottom: 20px;
+  font-size: 24px;
+  border-bottom: 2px solid var(--grnd);
+  padding-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-input-nueva-cita {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 15px;
+  border: 1px solid var(--grayl);
+  border-radius: 5px;
+  background: var(--blud);
+  color: var(--white);
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.form-input-nueva-cita:focus {
+  outline: none;
+  border-color: var(--grnd);
+  box-shadow: 0 0 0 2px rgba(55, 182, 156, 0.2);
+}
+
+.form-select-nueva-cita {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 15px;
+  border: 1px solid var(--grayl);
+  border-radius: 5px;
+  background: var(--blud);
+  color: var(--white);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.form-select-nueva-cita:focus {
+  outline: none;
+  border-color: var(--grnd);
+}
+
+.form-textarea-nueva-cita {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 15px;
+  border: 1px solid var(--grayl);
+  border-radius: 5px;
+  background: var(--blud);
+  color: var(--white);
+  font-size: 16px;
+  min-height: 100px;
+  resize: vertical;
+}
+
+.modal-buttons-container-nueva-cita {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.modal-button-nueva-cita {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.button-success-nueva-cita {
+  background: var(--grnd);
+  color: var(--white);
+}
+
+.button-success-nueva-cita:hover {
+  background: var(--grnb);
+  transform: translateY(-2px);
+}
+
+.button-danger-nueva-cita {
+  background: var(--rr);
+  color: var(--white);
+}
+
+.button-danger-nueva-cita:hover {
+  background: var(--rl);
+  transform: translateY(-2px);
+}
+
+.error-message-nueva-cita {
+  background: var(--rl);
+  color: var(--white);
+  padding: 12px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  animation: shake 0.5s ease;
+}
+
+.info-box-nueva-cita {
+  background: var(--blul);
+  padding: 15px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  color: var(--grnl);
+  border-left: 4px solid var(--grnd);
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* Media queries para responsive */
+@media (max-width: 768px) {
+  .modal-container-nueva-cita {
+    width: 95%;
+    padding: 15px;
+  }
+  
+  .modal-buttons-container-nueva-cita {
+    flex-direction: column;
+  }
+  
+  .modal-button-nueva-cita {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+
+/* ===== ESTILOS PARA NUEVAS PÁGINAS ===== */
+
+/* Notificaciones */
+.unread {
+  background: rgba(64, 148, 232, 0.1);
+  border-left-color: var(--blu) !important;
+}
+
+.notification-icon {
+  font-size: 24px;
+  min-width: 40px;
+}
+
+.notification-content {
+  flex: 1;
+}
+
+.notification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 5px;
+}
+
+.notification-time {
+  font-size: 12px;
+  color: var(--grayl);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.notification-type {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.notification-type-icon {
+  font-size: 28px;
+}
+
+.notification-type-info {
+  flex: 1;
+}
+
+.notification-type-info strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.notification-type-info p {
+  font-size: 13px;
+  color: var(--grayl);
+  margin: 0;
+}
+
+/* Observaciones y Sesiones */
+.observaciones-list,
+.sesiones-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Expedientes */
+.diagnostico-tag {
+  background: rgba(31, 133, 186, 0.1);
+  color: var(--grnb);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  border: 1px solid rgba(31, 133, 186, 0.3);
+}
+
+/* Supervisión */
+.flex-1 {
+  flex: 1;
+}
+
+/* Layouts específicos por rol */
+.user-rol {
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 5px;
+}
+
+.user-especialidad {
+  font-size: 12px;
+  color: var(--whiteSET);
+  margin-left: 5px;
+}
+
+.sidebar-info {
+  padding: 20px;
+  border-top: 1px solid var(--blub);
+  margin-top: auto;
+}
+
+.sidebar-info-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--grayl);
+  margin-bottom: 10px;
+}
+
+.badge-notificacion {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: var(--rr);
+  color: var(--white);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Grids responsivos */
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+/* Detalles en modales */
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.detail-row strong {
+  color: var(--grnb);
+}
+
+.detail-row.notes {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.detail-row.notes p {
+  margin-top: 5px;
+  color: var(--grayl);
+}
+
+/* Ajustes responsive */
+@media (max-width: 1200px) {
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .grid-4 {
+    grid-template-columns: 1fr;
+  }
+  
+  .notification-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .notification-icon {
+    margin-bottom: 10px;
+  }
+}
+
+/* Animaciones adicionales */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Estados de usuario */
+.estado-activo {
+  color: var(--grnb);
+}
+
+.estado-inactivo {
+  color: var(--rr);
+}
+
+/* Barra de progreso en cards */
+.card-progress {
+  margin-top: 15px;
+}
+
+.card-progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: var(--grayl);
+}
+
+/* Filtros mejorados */
+.filters-container {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.search-box {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-box svg {
+  position: absolute;
+  left: 15px;
+  color: var(--grayl);
+}
+
+.search-input {
+  padding-left: 45px;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+/* Ajustes para tablas */
+.data-table th,
+.data-table td {
+  vertical-align: middle;
+}
+
+/* Mejoras en accordions */
+.accordion-header {
+  align-items: center;
+}
+
+.accordion-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.accordion.active .accordion-content {
+  max-height: 1000px;
+}
+
+/* Timeline mejorado */
+.timeline-item:last-child {
+  margin-bottom: 0;
+}
+
+.timeline-content strong {
+  color: var(--blu);
+  display: block;
+  margin-bottom: 5px;
+}
+
+/* Utilidades adicionales */
+.ml-10 { margin-left: 10px; }
+.mr-10 { margin-right: 10px; }
+.mt-30 { margin-top: 30px; }
+
+.justify-between { justify-content: space-between; }
+.justify-end { justify-content: flex-end; }
+.flex-wrap { flex-wrap: wrap; }
+
+.text-primary { color: var(--blu); }
+.text-warning { color: var(--yy); }
+.text-info { color: var(--grnb); }
+
+/* Botones en tablas */
+.btn-table {
+  padding: 4px 8px;
+  font-size: 12px;
+  min-width: auto;
+}
+
+/* Estado de carga global */
+.global-loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--blud);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.global-loader-content {
+  text-align: center;
+}
+
+.global-loader-spinner {
+  width: 60px;
+  height: 60px;
+  border: 5px solid rgba(255, 255, 255, 0.1);
+  border-top: 5px solid var(--grnb);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+.global-loader-text {
+  font-size: 18px;
+  color: var(--grnb);
+  font-weight: bold;
+}
+
+
+
+/* Estilos para el toggle switch */
+.toggle-container {
+  display: flex;
+  align-items: center;
+}
+
+.toggle-checkbox {
+  display: none;
+}
+
+.toggle-label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 60px;
+  height: 30px;
+  background: var(--white);
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  overflow: hidden;
+
+}
+
+[data-theme="light"] .toggle-label {
+  background: var(--white);
+
+}
+
+.toggle-ball {
+  position: absolute;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  background: var(--blud);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 2;
+
+  color: var(--yy);
+}
+
+.toggle-checkbox:checked + .toggle-label .toggle-ball {
+  left: calc(100% - 27px);
+  color: var(--blu);
+}
+
+.toggle-icons {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 8px;
+  z-index: 1;
+}
+
+.sun-icon {
+  color: var(--yy);
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+.moon-icon {
+  color: var(--blu);
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+.toggle-checkbox:not(:checked) + .toggle-label .sun-icon {
+  opacity: 1;
+}
+
+.toggle-checkbox:checked + .toggle-label .moon-icon {
+  opacity: 1;
+}
+
+
+
+
+/* Efecto activo */
+.toggle-label:active {
+  transform: scale(0.95);
+}
+
+/* Animación suave para el cambio de tema */
+.main-container,
+.sidebar,
+.main-content,
+.card,
+.input-field,
+.data-table,
+.btn-primary,
+.btn-secondary {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+
+
+
+/frontend/src/services/api.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
+
+  static async get(url) {
+    return this.request(url);
+  }
+
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+      // Primero verificar si hay contenido
+      if (response.status === 204 || response.status === 205) {
+          return {};
+      }
+      
+      const contentType = response.headers.get('content-type');
+      
+      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
+      if (contentType && contentType.includes('text/csv')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Para CSV, devolvemos el texto directamente
+          return text;
+      }
+      
+      // Si no es CSV, verificar si es JSON
+      if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Intentar parsear como JSON si es posible
+          try {
+              return text ? JSON.parse(text) : {};
+          } catch {
+              return text;
+          }
+      }
+      
+      // Si es JSON, parsearlo normalmente
+      const data = await response.json();
+      
+      if (!response.ok) {
+          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+      }
+      
+      return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
+}
+
+export default ApiService;
+
+
+/backend/src/routes/agendaRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const AgendaController = require('../controllers/agendaController');
+const verifyToken = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
+
+// Todas las rutas requieren autenticación
+router.use(verifyToken);
+
+// Obtener agendas
+router.get('/global', AgendaController.obtenerAgendaGlobal);
+router.get('/diaria', AgendaController.obtenerAgendaDiaria);
+router.get('/mensual', AgendaController.obtenerCalendarioMensual);
+router.get('/disponibilidad-profesionales', AgendaController.obtenerDisponibilidadProfesionales);
+
+// Reprogramar citas
+router.put('/cita/:id/reprogramar', requireRole(['psicologo', 'becario', 'coordinador']), AgendaController.reprogramarCita);
+
+module.exports = router;
 
 
 ================================================================================
 RESUMEN PARA COORDINADOR_AGENDA:
 ----------------------------------------
-Archivos necesarios: 11
-Archivos encontrados: 11
+Archivos necesarios: 12
+Archivos encontrados: 12
 Archivos no encontrados: 0

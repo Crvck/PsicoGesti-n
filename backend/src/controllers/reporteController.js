@@ -1,423 +1,235 @@
-const Reporte = require('../models/reporteModel');
-const ReporteService = require('../services/reporteService');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
+// backend/src/controllers/reporteController.js - Añade este método
+const { Parser } = require('json2csv');
+const fs = require('fs');
 const path = require('path');
-const fs = require('fs').promises;
+const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
+const User = require('../models/userModel');
+const { Op } = require('sequelize');
+const sequelize = require('../config/db');
 
 class ReporteController {
-    
-    static async generarReporteMensual(req, res) {
+    // Método para exportar agenda a CSV
+    static async exportarAgendaCSV(req, res) {
         try {
-            const { mes, anio, formato = 'excel' } = req.query;
-            const usuarioId = req.user.id;
+            const { 
+                fecha_inicio, 
+                fecha_fin, 
+                psicologo_id, 
+                tipo_consulta 
+            } = req.body;
+
+            // Construir condiciones de filtro
+            const whereClause = {};
             
-            if (!mes || !anio) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Los parámetros mes y anio son requeridos'
-                });
+            if (fecha_inicio && fecha_fin) {
+                whereClause.fecha = {
+                    [Op.between]: [fecha_inicio, fecha_fin]
+                };
             }
             
-            // Crear registro de reporte
-            const reporte = await Reporte.create({
-                usuario_id: usuarioId,
-                tipo_reporte: 'mensual',
-                nombre: `Reporte Mensual ${mes}/${anio}`,
-                descripcion: `Reporte de actividades del mes ${mes} del año ${anio}`,
-                parametros: { mes, anio, formato },
-                fecha_inicio: `${anio}-${mes.padStart(2, '0')}-01`,
-                fecha_fin: this.obtenerUltimoDiaMes(anio, mes),
-                formato,
-                estado: 'generando'
+            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
+            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
+
+            // Obtener citas con información relacionada
+            const citas = await Cita.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: Paciente,
+                        attributes: ['nombre', 'apellido', 'telefono', 'email']
+                    },
+                    {
+                        model: User,
+                        as: 'Psicologo',
+                        attributes: ['nombre', 'apellido', 'especialidad']
+                    },
+                    {
+                        model: User,
+                        as: 'Becario',
+                        attributes: ['nombre', 'apellido']
+                    }
+                ],
+                order: [
+                    ['fecha', 'ASC'],
+                    ['hora', 'ASC']
+                ]
             });
+
+            // Preparar datos para CSV
+            const datosCSV = citas.map(cita => ({
+                Fecha: cita.fecha,
+                Hora: cita.hora,
+                'Duración (min)': cita.duracion,
+                Paciente: cita.Paciente ? `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : '',
+                'Teléfono Paciente': cita.Paciente?.telefono || '',
+                'Email Paciente': cita.Paciente?.email || '',
+                Psicólogo: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : '',
+                Especialidad: cita.Psicologo?.especialidad || '',
+                Becario: cita.Becario ? `${cita.Becario.nombre} ${cita.Becario.apellido}` : '',
+                'Tipo Consulta': cita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual',
+                Estado: cita.estado,
+                Notas: cita.notas || '',
+                'Motivo Cancelación': cita.motivo_cancelacion || ''
+            }));
+
+            // Convertir a CSV
+            const json2csvParser = new Parser();
+            const csv = json2csvParser.parse(datosCSV);
+
+            // Crear nombre de archivo
+            const fechaActual = new Date().toISOString().split('T')[0];
+            const nombreArchivo = `agenda_${fecha_inicio || fechaActual}_a_${fecha_fin || fechaActual}.csv`;
+
+            // Configurar headers para descarga
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
             
-            // Generar reporte en segundo plano
-            this.generarReporteEnSegundoPlano(reporte.id, { mes, anio, formato, usuarioId });
-            
-            res.json({
-                success: true,
-                message: 'Reporte en proceso de generación',
-                data: {
-                    reporteId: reporte.id,
-                    estado: 'generando',
-                    formatoSolicitado: formato
-                }
-            });
-            
+            res.send(csv);
+
         } catch (error) {
-            console.error('Error en generarReporteMensual:', error);
+            console.error('Error exportando agenda a CSV:', error);
             res.status(500).json({
                 success: false,
-                message: 'Error al generar reporte mensual',
+                message: 'Error al exportar agenda',
                 error: error.message
             });
         }
     }
-    
-    static async generarReportePaciente(req, res) {
+
+    // Método para exportar disponibilidad a CSV
+    static async exportarDisponibilidadCSV(req, res) {
         try {
-            const { paciente_id, fecha_inicio, fecha_fin, formato = 'pdf' } = req.body;
-            const usuarioId = req.user.id;
+            const { fecha } = req.body;
+            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
             
-            // Verificar que el paciente existe
-            const [paciente] = await sequelize.query(
-                'SELECT id, nombre, apellido FROM pacientes WHERE id = ?',
-                { replacements: [paciente_id], type: QueryTypes.SELECT }
-            );
-            
-            if (!paciente) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Paciente no encontrado'
-                });
-            }
-            
-            // Crear registro de reporte
-            const reporte = await Reporte.create({
-                usuario_id: usuarioId,
-                tipo_reporte: 'paciente',
-                nombre: `Reporte Paciente ${paciente.nombre} ${paciente.apellido}`,
-                descripcion: `Reporte completo del paciente ${paciente.nombre} ${paciente.apellido}`,
-                parametros: { paciente_id, fecha_inicio, fecha_fin, formato },
-                fecha_inicio: fecha_inicio || null,
-                fecha_fin: fecha_fin || null,
-                formato,
-                estado: 'generando'
+            // Consulta de disponibilidad
+            const disponibilidad = await sequelize.query(`
+                SELECT 
+                    u.id,
+                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
+                    u.rol,
+                    u.especialidad,
+                    d.dia_semana,
+                    TIME_FORMAT(d.hora_inicio, '%H:%i') as hora_inicio,
+                    TIME_FORMAT(d.hora_fin, '%H:%i') as hora_fin,
+                    d.max_citas_dia,
+                    (SELECT COUNT(*) FROM citas c 
+                     WHERE c.psicologo_id = u.id 
+                     AND c.fecha = ? 
+                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas
+                FROM users u
+                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
+                    AND d.activo = TRUE
+                WHERE u.rol IN ('psicologo', 'becario')
+                AND u.activo = TRUE
+                ORDER BY u.rol, u.apellido, u.nombre, d.dia_semana
+            `, {
+                replacements: [fechaConsulta],
+                type: QueryTypes.SELECT
             });
+
+            // Preparar datos para CSV
+            const datosCSV = disponibilidad.map(item => ({
+                Profesional: item.profesional,
+                Rol: item.rol,
+                Especialidad: item.especialidad || '',
+                'Día Semana': item.dia_semana || '',
+                'Hora Inicio': item.hora_inicio || '',
+                'Hora Fin': item.hora_fin || '',
+                'Máx. Citas/Día': item.max_citas_dia || 8,
+                'Citas Programadas': item.citas_programadas || 0,
+                'Disponibilidad': item.citas_programadas >= (item.max_citas_dia || 8) ? 'Completo' : 'Disponible'
+            }));
+
+            // Convertir a CSV
+            const json2csvParser = new Parser();
+            const csv = json2csvParser.parse(datosCSV);
+
+            // Configurar headers para descarga
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="disponibilidad_${fechaConsulta}.csv"`);
             
-            // Generar reporte en segundo plano
-            this.generarReportePacienteEnSegundoPlano(reporte.id, { paciente_id, fecha_inicio, fecha_fin, formato, usuarioId });
-            
+            res.send(csv);
+
+        } catch (error) {
+            console.error('Error exportando disponibilidad a CSV:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al exportar disponibilidad',
+                error: error.message
+            });
+        }
+    }
+
+    static async generarReporteConflictos(req, res) {
+        try {
+            const { fecha_inicio, fecha_fin } = req.body;
+
+            // Buscar citas solapadas
+            const conflictos = await sequelize.query(`
+                SELECT 
+                    c1.id as cita1_id,
+                    c1.paciente_id as paciente1_id,
+                    p1.nombre as paciente1_nombre,
+                    p1.apellido as paciente1_apellido,
+                    c1.psicologo_id as psicologo1_id,
+                    u1.nombre as psicologo1_nombre,
+                    u1.apellido as psicologo1_apellido,
+                    c1.fecha as fecha_conflicto,
+                    c1.hora as hora_inicio1,
+                    ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)) as hora_fin1,
+                    
+                    c2.id as cita2_id,
+                    c2.paciente_id as paciente2_id,
+                    p2.nombre as paciente2_nombre,
+                    p2.apellido as paciente2_apellido,
+                    c2.psicologo_id as psicologo2_id,
+                    u2.nombre as psicologo2_nombre,
+                    u2.apellido as psicologo2_apellido,
+                    c2.hora as hora_inicio2,
+                    ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)) as hora_fin2
+                    
+                FROM citas c1
+                JOIN citas c2 ON 
+                    c1.psicologo_id = c2.psicologo_id 
+                    AND c1.fecha = c2.fecha
+                    AND c1.id < c2.id
+                    AND (
+                        (c1.hora BETWEEN c2.hora AND ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)))
+                        OR 
+                        (c2.hora BETWEEN c1.hora AND ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)))
+                    )
+                JOIN pacientes p1 ON c1.paciente_id = p1.id
+                JOIN pacientes p2 ON c2.paciente_id = p2.id
+                JOIN users u1 ON c1.psicologo_id = u1.id
+                JOIN users u2 ON c2.psicologo_id = u2.id
+                WHERE c1.estado IN ('programada', 'confirmada')
+                    AND c2.estado IN ('programada', 'confirmada')
+                    ${fecha_inicio && fecha_fin ? 'AND c1.fecha BETWEEN ? AND ?' : ''}
+                ORDER BY c1.fecha, c1.hora
+            `, {
+                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : [],
+                type: QueryTypes.SELECT
+            });
+
             res.json({
                 success: true,
-                message: 'Reporte de paciente en proceso de generación',
                 data: {
-                    reporteId: reporte.id,
-                    estado: 'generando',
-                    paciente: `${paciente.nombre} ${paciente.apellido}`
+                    conflictos,
+                    total_conflictos: conflictos.length,
+                    periodo: fecha_inicio && fecha_fin ? `${fecha_inicio} a ${fecha_fin}` : 'Todo el período'
                 }
             });
-            
+
         } catch (error) {
-            console.error('Error en generarReportePaciente:', error);
+            console.error('Error generando reporte de conflictos:', error);
             res.status(500).json({
                 success: false,
-                message: 'Error al generar reporte de paciente'
+                message: 'Error al generar reporte de conflictos',
+                error: error.message
             });
         }
-    }
-    
-    static async generarReporteExcel(req, res) {
-        try {
-            const { tipo, mes, anio, psicologo_id, becario_id, fecha_inicio, fecha_fin } = req.query;
-            const usuarioId = req.user.id;
-            
-            // Obtener datos según tipo
-            let datos;
-            let nombreReporte;
-            
-            switch (tipo) {
-                case 'citas':
-                    datos = await this.obtenerDatosCitasExcel({ mes, anio, psicologo_id, becario_id, fecha_inicio, fecha_fin });
-                    nombreReporte = `Reporte_Citas_${mes || 'personalizado'}_${anio || new Date().getFullYear()}`;
-                    break;
-                    
-                case 'pacientes':
-                    datos = await this.obtenerDatosPacientesExcel({ fecha_inicio, fecha_fin });
-                    nombreReporte = `Reporte_Pacientes_${new Date().toISOString().slice(0, 10)}`;
-                    break;
-                    
-                case 'sesiones':
-                    datos = await this.obtenerDatosSesionesExcel({ mes, anio, psicologo_id, fecha_inicio, fecha_fin });
-                    nombreReporte = `Reporte_Sesiones_${mes || 'personalizado'}_${anio || new Date().getFullYear()}`;
-                    break;
-                    
-                case 'becarios':
-                    datos = await this.obtenerDatosBecariosExcel({ mes, anio, fecha_inicio, fecha_fin });
-                    nombreReporte = `Reporte_Becarios_${mes || 'personalizado'}_${anio || new Date().getFullYear()}`;
-                    break;
-                    
-                default:
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Tipo de reporte no válido'
-                    });
-            }
-            
-            // Generar Excel
-            const buffer = await ReporteService.generarExcel(datos, tipo);
-            
-            // Crear registro
-            await Reporte.create({
-                usuario_id: usuarioId,
-                tipo_reporte: tipo,
-                nombre: nombreReporte,
-                descripcion: `Reporte de ${tipo} generado el ${new Date().toLocaleDateString()}`,
-                parametros: { tipo, mes, anio, psicologo_id, becario_id, fecha_inicio, fecha_fin },
-                formato: 'excel',
-                estado: 'completado'
-            });
-            
-            // Configurar respuesta
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename="${nombreReporte}.xlsx"`);
-            
-            res.send(buffer);
-            
-        } catch (error) {
-            console.error('Error en generarReporteExcel:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al generar reporte Excel'
-            });
-        }
-    }
-    
-    static async obtenerMisReportes(req, res) {
-        try {
-            const usuarioId = req.user.id;
-            const { tipo_reporte, estado, limit = 20, offset = 0 } = req.query;
-            
-            const whereClause = { usuario_id: usuarioId };
-            
-            if (tipo_reporte) whereClause.tipo_reporte = tipo_reporte;
-            if (estado) whereClause.estado = estado;
-            
-            const reportes = await Reporte.findAll({
-                where: whereClause,
-                order: [['created_at', 'DESC']],
-                limit: parseInt(limit),
-                offset: parseInt(offset)
-            });
-            
-            res.json({
-                success: true,
-                data: reportes,
-                count: reportes.length
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerMisReportes:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener reportes'
-            });
-        }
-    }
-    
-    static async descargarReporte(req, res) {
-        try {
-            const { id } = req.params;
-            const usuarioId = req.user.id;
-            
-            const reporte = await Reporte.findByPk(id);
-            
-            if (!reporte) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Reporte no encontrado'
-                });
-            }
-            
-            // Verificar permisos
-            if (reporte.usuario_id !== usuarioId && 
-                (!reporte.compartido_con || !reporte.compartido_con.includes(usuarioId.toString()))) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para descargar este reporte'
-                });
-            }
-            
-            if (reporte.estado !== 'completado' || !reporte.archivo_url) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'El reporte no está disponible para descarga'
-                });
-            }
-            
-            // Obtener ruta del archivo
-            const filePath = path.join(__dirname, '..', '..', reporte.archivo_url);
-            
-            // Verificar que el archivo existe
-            try {
-                await fs.access(filePath);
-            } catch {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Archivo no encontrado'
-                });
-            }
-            
-            // Determinar Content-Type
-            let contentType;
-            switch (reporte.formato) {
-                case 'pdf':
-                    contentType = 'application/pdf';
-                    break;
-                case 'excel':
-                    contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-                    break;
-                case 'csv':
-                    contentType = 'text/csv';
-                    break;
-                default:
-                    contentType = 'application/octet-stream';
-            }
-            
-            // Enviar archivo
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('Content-Disposition', `attachment; filename="${reporte.nombre}.${reporte.formato}"`);
-            
-            const fileStream = fs.createReadStream(filePath);
-            fileStream.pipe(res);
-            
-        } catch (error) {
-            console.error('Error en descargarReporte:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al descargar reporte'
-            });
-        }
-    }
-    
-    // Métodos auxiliares para obtener datos
-    static async obtenerDatosCitasExcel(params) {
-        const query = `
-            SELECT 
-                c.fecha as DIA,
-                TIME_FORMAT(c.hora, '%H:%i') as HORA,
-                CONCAT(p.nombre, ' ', p.apellido) as ESTUDIANTE,
-                p.matricula as MATRICULA,
-                p.carrera as CARRERA,
-                p.edad as EDAD,
-                p.sexo as SEXO,
-                p.telefono as TELEFONO,
-                p.email as CORREO,
-                c.tipo_consulta as MODALIDAD,
-                c.estado as ESTATUS,
-                u_bec.nombre as PRACTICANTE,
-                u_psi.nombre as ATIENDE,
-                c.motivo as OBSERVACIONES,
-                MONTH(c.fecha) as MES
-            FROM citas c
-            JOIN pacientes p ON c.paciente_id = p.id
-            LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-            LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
-            WHERE 1=1
-        `;
-        
-        const replacements = [];
-        let whereClause = '';
-        
-        if (params.mes && params.anio) {
-            whereClause += ` AND MONTH(c.fecha) = ? AND YEAR(c.fecha) = ?`;
-            replacements.push(params.mes, params.anio);
-        }
-        
-        if (params.fecha_inicio && params.fecha_fin) {
-            whereClause += ` AND c.fecha BETWEEN ? AND ?`;
-            replacements.push(params.fecha_inicio, params.fecha_fin);
-        }
-        
-        if (params.psicologo_id) {
-            whereClause += ` AND c.psicologo_id = ?`;
-            replacements.push(params.psicologo_id);
-        }
-        
-        if (params.becario_id) {
-            whereClause += ` AND c.becario_id = ?`;
-            replacements.push(params.becario_id);
-        }
-        
-        const finalQuery = query + whereClause + ' ORDER BY c.fecha, c.hora';
-        
-        return await sequelize.query(finalQuery, {
-            replacements,
-            type: QueryTypes.SELECT
-        });
-    }
-    
-    static async obtenerDatosPacientesExcel(params) {
-        const query = `
-            SELECT 
-                p.nombre as NOMBRE,
-                p.apellido as APELLIDO,
-                p.matricula as MATRICULA,
-                p.telefono as TELEFONO,
-                p.carrera as CARRERA,
-                p.cuatri as CUATRI,
-                p.tipo_servicio as TIPO_DE_SERVICIO,
-                p.fecha_presentacion as FECHA_DE_PRESENTACION,
-                (SELECT COUNT(*) FROM citas c WHERE c.paciente_id = p.id AND c.estado = 'completada') as No_de_sesiones_terapeuticas_personales,
-                a.fecha_aceptacion as FECHA_DE_ACEPTACION,
-                p.mmpi2_rf as MMPI_2_RF,
-                al.fecha_alta as FECHA_DE_TERMINO,
-                al.carta_liberacion as CARTA_DE_LIBERACION,
-                p.horas_objetivo as HORAS_OBJETIVO,
-                p.horas_realizadas as HORAS_REALIZADAS,
-                p.horas_faltantes as HORAS_FALTANTES,
-                p.servicio_comunitario_liberado as SERVICIO_COMUNITARIO_LIBERADO,
-                u_psi.nombre as QUIEN_ATIENDE,
-                p.observaciones as OBSERVACIONES
-            FROM pacientes p
-            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
-            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
-            LEFT JOIN altas al ON p.id = al.paciente_id
-            WHERE p.activo = TRUE
-        `;
-        
-        const replacements = [];
-        let whereClause = '';
-        
-        if (params.fecha_inicio && params.fecha_fin) {
-            whereClause += ` AND p.created_at BETWEEN ? AND ?`;
-            replacements.push(params.fecha_inicio, params.fecha_fin);
-        }
-        
-        const finalQuery = query + whereClause + ' ORDER BY p.apellido, p.nombre';
-        
-        return await sequelize.query(finalQuery, {
-            replacements,
-            type: QueryTypes.SELECT
-        });
-    }
-    
-    // Método auxiliar para generar reporte en segundo plano
-    static async generarReporteEnSegundoPlano(reporteId, params) {
-        try {
-            // Aquí iría la lógica para generar el reporte
-            // Por ahora simulamos la generación
-            
-            setTimeout(async () => {
-                try {
-                    const reporte = await Reporte.findByPk(reporteId);
-                    if (reporte) {
-                        await reporte.update({
-                            estado: 'completado',
-                            archivo_url: `/reports/${reporteId}.${params.formato}`
-                        });
-                        
-                        // Notificar al usuario
-                        await sequelize.query(`
-                            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                            VALUES (?, 'reporte_generado', 'Reporte listo', 
-                            'Su reporte mensual ha sido generado y está listo para descargar.', NOW())
-                        `, { replacements: [params.usuarioId] });
-                    }
-                } catch (error) {
-                    console.error('Error al actualizar reporte:', error);
-                }
-            }, 5000); // Simulamos 5 segundos de procesamiento
-            
-        } catch (error) {
-            console.error('Error en generarReporteEnSegundoPlano:', error);
-        }
-    }
-    
-    // Método auxiliar para obtener último día del mes
-    static obtenerUltimoDiaMes(anio, mes) {
-        return new Date(anio, mes, 0).toISOString().split('T')[0];
     }
 }
 

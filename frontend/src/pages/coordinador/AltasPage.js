@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   FiTrendingUp, FiCheckCircle, FiXCircle, FiFilter,
   FiSearch, FiCalendar, FiUser, FiFileText, FiDownload,
-  FiUsers, FiActivity, FiBarChart2, FiClock
+  FiUsers, FiActivity, FiBarChart2, FiClock,
+  FiAlertTriangle, FiUserCheck, FiUserX, FiArchive,
+  FiRotateCw, FiPause, FiAlertCircle, FiStar
 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
@@ -255,22 +257,22 @@ const CoordinadorAltas = () => {
 
   const getTipoAltaLabel = (tipo) => {
     switch (tipo) {
-        case 'terapeutica':
-            return { text: 'Alta Terapéutica', color: 'success', icon: '✅' };
-        case 'abandono':
-            return { text: 'Abandono', color: 'danger', icon: '❌' };
-        case 'traslado':
-            return { text: 'Traslado', color: 'warning', icon: '🔄' };
-        case 'graduacion':
-            return { text: 'Graduación', color: 'primary', icon: '🎓' };
-        case 'no_continua':
-            return { text: 'No Continúa', color: 'info', icon: '⏸️' };
-        case 'no_aprobado':
-            return { text: 'No Aprobado', color: 'danger', icon: '🚫' };
-        case 'otro':
-            return { text: 'Otro', color: 'info', icon: '📋' };
-        default:
-            return { text: tipo, color: 'info', icon: '📋' };
+      case 'terapeutica':
+        return { text: 'Alta Terapéutica', color: 'success', icon: <FiCheckCircle /> };
+      case 'abandono':
+        return { text: 'Abandono', color: 'danger', icon: <FiXCircle /> };
+      case 'traslado':
+        return { text: 'Traslado', color: 'warning', icon: <FiRotateCw /> };
+      case 'graduacion':
+        return { text: 'Graduación', color: 'primary', icon: <FiUserCheck /> };
+      case 'no_continua':
+        return { text: 'No Continúa', color: 'info', icon: <FiPause /> };
+      case 'no_aprobado':
+        return { text: 'No Aprobado', color: 'danger', icon: <FiUserX /> };
+      case 'otro':
+        return { text: 'Otro', color: 'info', icon: <FiArchive /> };
+      default:
+        return { text: tipo, color: 'info', icon: <FiArchive /> };
     }
   };
 
@@ -431,7 +433,9 @@ const CoordinadorAltas = () => {
           </div>
         ) : (
           <div className="no-citas">
-            <div className="no-citas-icon">✅</div>
+            <div className="no-citas-icon">
+              <FiCheckCircle />
+            </div>
             <div>No hay candidatos a alta pendientes</div>
             <p className="text-small mt-10">Los psicólogos propondrán pacientes para alta cuando estén listos</p>
           </div>
@@ -548,11 +552,17 @@ const CoordinadorAltas = () => {
                         <div className="text-small">sesiones</div>
                       </td>
                       <td>
-                        <div className="text-small">Satisfacción:</div>
-                        <div className="flex-row align-center gap-5">
-                          {'★'.repeat(satisfaccion)}
-                          {'☆'.repeat(5 - satisfaccion)}
-                          <span className="ml-5">({satisfaccion}/5)</span>
+                        <div>
+                          <div className="text-small">Satisfacción:</div>
+                          <div className="flex-row align-center gap-5">
+                            {[...Array(satisfaccion)].map((_, i) => (
+                              <FiStar key={i} className="star-filled" />
+                            ))}
+                            {[...Array(5 - satisfaccion)].map((_, i) => (
+                              <FiStar key={i + satisfaccion} className="star-empty" />
+                            ))}
+                            <span className="ml-5">({satisfaccion}/5)</span>
+                          </div>
                         </div>
                       </td>
                       <td>
@@ -813,7 +823,7 @@ const CoordinadorAltas = () => {
               
               {selectedAltaDetalles.tipo_alta === 'no_aprobado' && (
                 <div className="mt-20 alert-message warning">
-                  <strong>⚠️ Nota:</strong> Este paciente fue marcado como "No Aprobado" para alta terapéutica. 
+                  <strong>Nota:</strong> Este paciente fue marcado como "No Aprobado" para alta terapéutica. 
                   Continuará en tratamiento y podrá ser evaluado nuevamente en el futuro.
                 </div>
               )}
@@ -826,13 +836,7 @@ const CoordinadorAltas = () => {
               }}>
                 Cerrar
               </button>
-              {selectedAltaDetalles.tipo_alta !== 'no_aprobado' && (
-                <button className="btn-primary" onClick={() => {
-                  notifications.info('Generando informe...');
-                }}>
-                  <FiDownload /> Descargar Informe
-                </button>
-              )}
+
             </div>
           </div>
         </div>

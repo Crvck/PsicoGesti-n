@@ -1204,3 +1204,24 @@ input:checked + .slider:before {
     grid-template-columns: 1fr;
   }
 }
+
+.star-filled {
+  color: var(--blu);
+  fill: var(--blu);
+}
+
+.star-empty {
+  color: var(--blub);
+  fill: var(--blub);
+}
+
+.no-citas-icon svg {
+  font-size: 48px;
+  color: #28a745;
+  margin-bottom: 15px;
+}
+
+.badge svg {
+  margin-right: 5px;
+  vertical-align: -2px;
+}

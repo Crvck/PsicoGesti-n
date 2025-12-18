@@ -356,7 +356,10 @@ INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialida
 ('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
 ('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
 ('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
-('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1),
+('alan@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Alan', 'Jassiel', '555-666', 'psicologo', 'Terapia Familiar', 1),
+('ale@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ale', 'Jandro', '555-333', 'becario', 'Practicante de Psicología', 1),
+('emanuel@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Emanuel', 'Iribe', '555-777', 'coordinador', 'Coordinación Clínica', 1);
 
 INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
 ('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   FiTrendingUp, FiCheckCircle, FiXCircle, FiFilter,
-  FiSearch, FiCalendar, FiUser, FiFileText, FiDownload
+  FiSearch, FiCalendar, FiUser, FiFileText, FiDownload,
+  FiUsers, FiActivity, FiBarChart2, FiClock
 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import ApiService from '../../services/api';
 
 const CoordinadorAltas = () => {
   const [altas, setAltas] = useState([]);
@@ -13,185 +15,276 @@ const CoordinadorAltas = () => {
   const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [selectedPaciente, setSelectedPaciente] = useState(null);
+  
+  // Estados para el modal de dar de alta
+  const [showModalAlta, setShowModalAlta] = useState(false);
+  const [selectedPacienteAlta, setSelectedPacienteAlta] = useState(null);
+  
+  // Estados para el modal de ver detalles
+  const [showModalDetalles, setShowModalDetalles] = useState(false);
+  const [selectedAltaDetalles, setSelectedAltaDetalles] = useState(null);
+  
   const [estadisticas, setEstadisticas] = useState({});
+  const [formData, setFormData] = useState({
+    paciente_id: '',
+    tipo_alta: '',
+    motivo_detallado: '',
+    recomendaciones: '',
+    evaluacion_final: '',
+    seguimiento_recomendado: false,
+    fecha_seguimiento: ''
+  });
 
   useEffect(() => {
     fetchAltas();
-    generarEstadisticas();
+    fetchEstadisticas();
+    fetchCandidatosAlta();
   }, []);
 
   const fetchAltas = async () => {
     try {
       setLoading(true);
-      
-      // Simulación de datos
-      setTimeout(() => {
-        setAltas([
-          {
-            id: 1,
-            paciente_nombre: 'Ana Rodríguez',
-            edad: 32,
-            motivo_consulta: 'Depresión',
-            fecha_ingreso: '2023-06-10',
-            fecha_alta: '2024-01-05',
-            tipo_alta: 'terapeutica',
-            sesiones_totales: 20,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Juan Pérez',
-            evaluacion_final: 'Excelente progreso, alta recomendada',
-            satisfaccion: 5
-          },
-          {
-            id: 2,
-            paciente_nombre: 'Carlos Martínez',
-            edad: 28,
-            motivo_consulta: 'Ansiedad generalizada',
-            fecha_ingreso: '2023-08-15',
-            fecha_alta: '2023-12-20',
-            tipo_alta: 'terapeutica',
-            sesiones_totales: 15,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Sofía Ramírez',
-            evaluacion_final: 'Buen manejo de técnicas de relajación',
-            satisfaccion: 4
-          },
-          {
-            id: 3,
-            paciente_nombre: 'María González',
-            edad: 45,
-            motivo_consulta: 'Duelo complicado',
-            fecha_ingreso: '2023-09-01',
-            fecha_alta: '2024-01-15',
-            tipo_alta: 'abandono',
-            sesiones_totales: 8,
-            psicologo: 'Lic. Laura Gutiérrez',
-            becario: null,
-            evaluacion_final: 'Paciente dejó de asistir sin aviso',
-            satisfaccion: 3
-          },
-          {
-            id: 4,
-            paciente_nombre: 'Roberto Sánchez',
-            edad: 22,
-            motivo_consulta: 'Problemas de adaptación',
-            fecha_ingreso: '2023-11-05',
-            fecha_alta: '2024-01-10',
-            tipo_alta: 'traslado',
-            sesiones_totales: 5,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Pedro Hernández',
-            evaluacion_final: 'Trasladado a otro especialista',
-            satisfaccion: 4
-          }
-        ]);
-
-        setCandidatosAlta([
-          {
-            id: 1,
-            paciente_nombre: 'Carlos Gómez',
-            edad: 25,
-            motivo_consulta: 'Ansiedad académica',
-            fecha_ingreso: '2023-10-15',
-            sesiones_completadas: 8,
-            progreso: 85,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Juan Pérez',
-            recomendacion: 'Posible alta en 2-3 sesiones más'
-          },
-          {
-            id: 2,
-            paciente_nombre: 'Mariana López',
-            edad: 28,
-            motivo_consulta: 'Estrés laboral',
-            fecha_ingreso: '2023-09-20',
-            sesiones_completadas: 12,
-            progreso: 90,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Sofía Ramírez',
-            recomendacion: 'Evaluar alta en próxima sesión'
-          }
-        ]);
-
-        setLoading(false);
-      }, 1000);
+      const response = await ApiService.get('/altas');
+      if (response.success) {
+        setAltas(response.data);
+      } else {
+        notifications.error(response.message || 'Error al cargar las altas');
+      }
     } catch (error) {
       console.error('Error cargando altas:', error);
+      notifications.error('Error al cargar el historial de altas');
+    } finally {
       setLoading(false);
     }
   };
 
-  const generarEstadisticas = () => {
-    const altasTerapeuticas = altas.filter(a => a.tipo_alta === 'terapeutica').length;
-    const abandonos = altas.filter(a => a.tipo_alta === 'abandono').length;
-    const traslados = altas.filter(a => a.tipo_alta === 'traslado').length;
-    const satisfaccionPromedio = altas.length > 0 
-      ? altas.reduce((sum, a) => sum + (a.satisfaccion || 0), 0) / altas.length 
-      : 0;
-    const sesionesPromedio = altas.length > 0
-      ? altas.reduce((sum, a) => sum + a.sesiones_totales, 0) / altas.length
-      : 0;
-
-    setEstadisticas({
-      altasTerapeuticas,
-      abandonos,
-      traslados,
-      satisfaccionPromedio: satisfaccionPromedio.toFixed(1),
-      sesionesPromedio: sesionesPromedio.toFixed(1),
-      tasaExito: altasTerapeuticas > 0 ? Math.round((altasTerapeuticas / (altasTerapeuticas + abandonos)) * 100) : 0
-    });
+  const fetchCandidatosAlta = async () => {
+    try {
+      const response = await ApiService.get('/pacientes/candidatos-alta');
+      if (response.success) {
+        setCandidatosAlta(response.data.map(paciente => ({
+          id: paciente.id,
+          paciente_nombre: paciente.paciente_nombre,
+          edad: paciente.edad || 'N/A',
+          motivo_consulta: paciente.motivo_consulta || 'Sin información',
+          fecha_ingreso: paciente.fecha_ingreso,
+          sesiones_completadas: paciente.sesiones_completadas || 0,
+          progreso: Math.min(100, paciente.progreso_estimado || 0),
+          psicologo: paciente.psicologo_nombre || 'Sin asignar',
+          becario: paciente.becario_nombre || 'No asignado',
+          recomendacion: paciente.sesiones_completadas >= 10 
+            ? 'Posible alta en 1-2 sesiones más' 
+            : 'Evaluar en próxima revisión'
+        })));
+      }
+    } catch (error) {
+      console.error('Error cargando candidatos:', error);
+      notifications.error('Error al cargar candidatos a alta');
+    }
   };
 
-  const filteredAltas = altas.filter(alta => {
-    const matchesEstado = !filtroEstado || alta.tipo_alta === filtroEstado;
-    const matchesMes = !filtroMes || new Date(alta.fecha_alta).getMonth() === parseInt(filtroMes);
-    return matchesEstado && matchesMes;
-  });
+  const fetchEstadisticas = async () => {
+    try {
+      const response = await ApiService.get('/altas/estadisticas');
+      if (response.success) {
+        setEstadisticas(response.data);
+      }
+    } catch (error) {
+      console.error('Error cargando estadísticas:', error);
+    }
+  };
 
   const procesarAlta = async (pacienteId, decision) => {
     try {
       if (decision === 'aprobar') {
-        // Para aprobar - usar warning (amarillo) o info (azul)
-        const confirmado = await confirmations.warning('¿Estás seguro de aprobar el alta terapéutica de este paciente?');
-        
-        if (confirmado) {
-          notifications.success('Alta aprobada exitosamente');
-          setCandidatosAlta(candidatosAlta.filter(p => p.id !== pacienteId));
+        const paciente = candidatosAlta.find(p => p.id === pacienteId);
+        if (paciente) {
+          setFormData({
+            paciente_id: paciente.id,
+            tipo_alta: 'terapeutica',
+            motivo_detallado: '',
+            recomendaciones: '',
+            evaluacion_final: '',
+            seguimiento_recomendado: false,
+            fecha_seguimiento: ''
+          });
+          setSelectedPacienteAlta(paciente);
+          setShowModalAlta(true);
         }
       } else {
-        // Para rechazar - usar danger (rojo)
-        const confirmado = await confirmations.danger('¿Estás seguro de rechazar el alta de este paciente?');
+        const confirmado = await confirmations.danger(
+          '¿Estás seguro de marcar este paciente como "No Aprobar"? ' +
+          'El paciente no será mostrado como candidato a alta por 30 días.'
+        );
         
         if (confirmado) {
-          notifications.error('Alta rechazada. Se notificará al psicólogo.');
+          try {
+            console.log(`📤 Enviando solicitud para marcar paciente ${pacienteId} como no aprobado...`);
+            
+            // Llamar al endpoint
+            const response = await ApiService.post(`/pacientes/${pacienteId}/no-aprobar-alta`);
+            
+            if (response.success) {
+              notifications.success(`✅ ${response.message}`);
+              console.log('✅ Respuesta del backend:', response.data);
+              
+              // 1. Eliminar inmediatamente del estado local
+              setCandidatosAlta(prev => prev.filter(p => p.id !== pacienteId));
+              
+              // 2. Recargar después de 2 segundos para confirmar
+              setTimeout(async () => {
+                console.log('🔄 Recargando lista de candidatos...');
+                await fetchCandidatosAlta();
+              }, 2000);
+            } else {
+              notifications.error(`❌ ${response.message || 'Error desconocido'}`);
+            }
+          } catch (error) {
+            console.error('❌ Error al marcar como no aprobado:', error);
+            notifications.error(`❌ Error: ${error.message || 'Error de conexión'}`);
+          }
         }
       }
     } catch (error) {
-      console.error('Error en el proceso de alta:', error);
-      notifications.error('Ocurrió un error al procesar la solicitud');
+      console.error('❌ Error en el proceso de alta:', error);
+      notifications.error('❌ Ocurrió un error al procesar la solicitud');
+    }
+  };
+
+  const handleSubmitAlta = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const confirmado = await confirmations.warning(
+        '¿Estás seguro de dar de alta a este paciente? Esta acción no se puede deshacer.'
+      );
+      
+      if (!confirmado) return;
+
+      const response = await ApiService.post('/altas', formData);
+      
+      if (response.success) {
+        notifications.success(response.message || 'Paciente dado de alta exitosamente');
+        
+        // Actualizar listas
+        setAltas([response.data.alta, ...altas]);
+        
+        // Recargar la lista de candidatos (para que desaparezca de la lista)
+        await fetchCandidatosAlta();
+        
+        // Recargar estadísticas
+        await fetchEstadisticas();
+        
+        // Limpiar y cerrar modal
+        setFormData({
+          paciente_id: '',
+          tipo_alta: '',
+          motivo_detallado: '',
+          recomendaciones: '',
+          evaluacion_final: '',
+          seguimiento_recomendado: false,
+          fecha_seguimiento: ''
+        });
+        setShowModalAlta(false);
+        setSelectedPacienteAlta(null);
+      } else {
+        notifications.error(response.message || 'Error al dar de alta');
+      }
+    } catch (error) {
+      console.error('Error al dar de alta:', error);
+      notifications.error('Error al procesar el alta del paciente');
+    }
+  };
+
+  const handleFilterChange = async () => {
+    try {
+      setLoading(true);
+      let url = '/altas?';
+      const params = [];
+      
+      if (filtroEstado) params.push(`tipo_alta=${filtroEstado}`);
+      if (filtroMes) {
+        const year = new Date().getFullYear();
+        params.push(`fecha_inicio=${year}-${parseInt(filtroMes) + 1}-01`);
+        params.push(`fecha_fin=${year}-${parseInt(filtroMes) + 1}-31`);
+      }
+      
+      if (params.length > 0) {
+        url += params.join('&');
+      }
+      
+      const response = await ApiService.get(url);
+      if (response.success) {
+        setAltas(response.data);
+      }
+    } catch (error) {
+      console.error('Error aplicando filtros:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportarReporteAltas = async () => {
+    try {
+      notifications.info('Generando reporte de altas...');
+      
+      // Obtener fechas del filtro actual
+      const params = new URLSearchParams();
+      if (filtroMes) {
+        const year = new Date().getFullYear();
+        const month = parseInt(filtroMes) + 1;
+        params.append('fecha_inicio', `${year}-${month.toString().padStart(2, '0')}-01`);
+        params.append('fecha_fin', `${year}-${month.toString().padStart(2, '0')}-31`);
+      }
+      if (filtroEstado) {
+        params.append('tipo_alta', filtroEstado);
+      }
+      
+      const response = await ApiService.get(`/reportes/altas?formato=excel&${params.toString()}`);
+      
+      if (response.success && response.data.archivo_url) {
+        notifications.success(`Reporte generado exitosamente (${response.data.total_registros} registros)`);
+      } else {
+        notifications.error('Error al generar el reporte');
+      }
+    } catch (error) {
+      console.error('Error exportando reporte:', error);
+      notifications.error('Error al generar el reporte de altas');
     }
   };
 
   const getTipoAltaLabel = (tipo) => {
     switch (tipo) {
-      case 'terapeutica':
-        return { text: 'Alta Terapéutica', color: 'success', icon: '✅' };
-      case 'abandono':
-        return { text: 'Abandono', color: 'danger', icon: '❌' };
-      case 'traslado':
-        return { text: 'Traslado', color: 'warning', icon: '🔄' };
-      default:
-        return { text: tipo, color: 'info', icon: '📋' };
+        case 'terapeutica':
+            return { text: 'Alta Terapéutica', color: 'success', icon: '✅' };
+        case 'abandono':
+            return { text: 'Abandono', color: 'danger', icon: '❌' };
+        case 'traslado':
+            return { text: 'Traslado', color: 'warning', icon: '🔄' };
+        case 'graduacion':
+            return { text: 'Graduación', color: 'primary', icon: '🎓' };
+        case 'no_continua':
+            return { text: 'No Continúa', color: 'info', icon: '⏸️' };
+        case 'no_aprobado':
+            return { text: 'No Aprobado', color: 'danger', icon: '🚫' };
+        case 'otro':
+            return { text: 'Otro', color: 'info', icon: '📋' };
+        default:
+            return { text: tipo, color: 'info', icon: '📋' };
     }
   };
 
-  const exportarReporteAltas = () => {
-    notifications.success('Generando reporte de altas...');
-    // En una implementación real, aquí se generaría el archivo de exportación
+  const calcularSatisfaccion = (paciente) => {
+    if (paciente.tipo_alta === 'terapeutica') {
+      return Math.min(5, Math.floor((paciente.sesiones_totales || 0) / 4) + 3);
+    } else if (paciente.tipo_alta === 'abandono') {
+      return 1;
+    } else {
+      return 3;
+    }
   };
 
-  if (loading) {
+  if (loading && altas.length === 0) {
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
@@ -207,35 +300,60 @@ const CoordinadorAltas = () => {
           <h1>Seguimiento de Altas</h1>
           <p>Gestión y seguimiento de altas terapéuticas</p>
         </div>
-        <button className="btn-secondary" onClick={exportarReporteAltas}>
-          <FiDownload /> Exportar Reporte
-        </button>
       </div>
 
       {/* Estadísticas de Altas */}
       <div className="grid-4 mb-30">
         <div className="card">
-          <h4>Altas Terapéuticas</h4>
-          <div className="stat-value">{estadisticas.altasTerapeuticas || 0}</div>
-          <div className="text-small">éxito terapéutico</div>
+          <div className="stat-box">
+            <div className="stat-icon">
+              <FiUsers />
+            </div>
+            <div className="stat-content">
+              <div className="stat-value">{estadisticas.totales?.total_altas || 0}</div>
+              <div className="stat-label">Total de Altas</div>
+            </div>
+          </div>
         </div>
         
         <div className="card">
-          <h4>Tasa de Éxito</h4>
-          <div className="stat-value">{estadisticas.tasaExito || 0}%</div>
-          <div className="text-small">de tratamientos exitosos</div>
+          <div className="stat-box">
+            <div className="stat-icon">
+              <FiCheckCircle />
+            </div>
+            <div className="stat-content">
+              <div className="stat-value">
+                {estadisticas.estadisticas?.find(e => e.tipo_alta === 'terapeutica')?.total || 0}
+              </div>
+              <div className="stat-label">Altas Terapéuticas</div>
+            </div>
+          </div>
         </div>
         
         <div className="card">
-          <h4>Sesión Promedio</h4>
-          <div className="stat-value">{estadisticas.sesionesPromedio || 0}</div>
-          <div className="text-small">sesiones por paciente</div>
+          <div className="stat-box">
+            <div className="stat-icon">
+              <FiClock />
+            </div>
+            <div className="stat-content">
+              <div className="stat-value">
+                {estadisticas.totales?.promedio_sesiones_global || 0}
+              </div>
+              <div className="stat-label">Sesiones Promedio</div>
+            </div>
+          </div>
         </div>
         
         <div className="card">
-          <h4>Satisfacción</h4>
-          <div className="stat-value">{estadisticas.satisfaccionPromedio || 0}/5</div>
-          <div className="text-small">puntuación promedio</div>
+          <div className="stat-box">
+            <div className="stat-icon">
+              <FiTrendingUp />
+            </div>
+            <div className="stat-content">
+              <div className="stat-value">{candidatosAlta.length}</div>
+              <div className="stat-label">Candidatos a Alta</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -243,7 +361,6 @@ const CoordinadorAltas = () => {
       <div className="dashboard-section mb-30">
         <div className="section-header">
           <h3>Candidatos a Alta ({candidatosAlta.length})</h3>
-          <button className="btn-text">Ver todos</button>
         </div>
         
         {candidatosAlta.length > 0 ? (
@@ -268,7 +385,7 @@ const CoordinadorAltas = () => {
                 
                 <div className="mb-15">
                   <div className="card-progress-label">
-                    <span>Sesión {paciente.sesiones_completadas}</span>
+                    <span>{paciente.sesiones_completadas} sesiones</span>
                     <span>{paciente.progreso}%</span>
                   </div>
                   <div className="progress-container">
@@ -300,13 +417,13 @@ const CoordinadorAltas = () => {
                     className="btn-primary flex-1"
                     onClick={() => procesarAlta(paciente.id, 'aprobar')}
                   >
-                    <FiCheckCircle /> Aprobar Alta
+                    <FiCheckCircle /> Procesar Alta
                   </button>
                   <button 
                     className="btn-danger flex-1"
                     onClick={() => procesarAlta(paciente.id, 'rechazar')}
                   >
-                    <FiXCircle /> Rechazar
+                    <FiXCircle /> No Aprobar
                   </button>
                 </div>
               </div>
@@ -324,18 +441,22 @@ const CoordinadorAltas = () => {
       {/* Historial de Altas */}
       <div className="dashboard-section">
         <div className="section-header">
-          <h3>Historial de Altas</h3>
+          <h3>Historial de Altas ({altas.length})</h3>
           <div className="flex-row gap-10">
             <select 
               value={filtroEstado} 
               onChange={(e) => setFiltroEstado(e.target.value)}
               className="select-field"
-              style={{ width: '150px' }}
+              style={{ width: '180px' }}
             >
               <option value="">Todos los tipos</option>
               <option value="terapeutica">Altas Terapéuticas</option>
               <option value="abandono">Abandonos</option>
               <option value="traslado">Traslados</option>
+              <option value="graduacion">Graduaciones</option>
+              <option value="no_continua">No Continúa</option>
+              <option value="no_aprobado">No Aprobado</option>
+              <option value="otro">Otro</option>
             </select>
             
             <select 
@@ -358,148 +479,264 @@ const CoordinadorAltas = () => {
               <option value="10">Noviembre</option>
               <option value="11">Diciembre</option>
             </select>
+            
+            <button 
+              className="btn-secondary" 
+              onClick={handleFilterChange}
+              disabled={loading}
+            >
+              <FiFilter /> Aplicar
+            </button>
           </div>
         </div>
         
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Paciente</th>
-                <th>Tipo de Alta</th>
-                <th>Fechas</th>
-                <th>Sesiones</th>
-                <th>Equipo</th>
-                <th>Satisfacción</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAltas.map((alta) => {
-                const tipoInfo = getTipoAltaLabel(alta.tipo_alta);
-                
-                return (
-                  <tr key={alta.id}>
-                    <td>
-                      <div className="flex-row align-center gap-10">
-                        <div className="avatar-small">
-                          {alta.paciente_nombre.split(' ').map(n => n[0]).join('')}
+        {loading ? (
+          <div className="loading-container" style={{ minHeight: '200px' }}>
+            <div className="loading-spinner"></div>
+            <div className="loading-text">Cargando altas...</div>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Paciente</th>
+                  <th>Tipo de Alta</th>
+                  <th>Fecha Alta</th>
+                  <th>Sesiones</th>
+                  <th>Profesional</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {altas.map((alta) => {
+                  const tipoInfo = getTipoAltaLabel(alta.tipo_alta);
+                  const satisfaccion = calcularSatisfaccion(alta);
+                  
+                  return (
+                    <tr key={alta.id}>
+                      <td>
+                        <div className="flex-row align-center gap-10">
+                          <div className="avatar-small">
+                            {(alta.paciente_nombre || '').split(' ').map(n => n[0]).join('')}
+                          </div>
+                          <div>
+                            <div className="font-bold">
+                              {alta.paciente_nombre || 'Nombre no disponible'} {alta.paciente_apellido || ''}
+                            </div>
+                            <div className="text-small">
+                              {alta.motivo_detallado?.substring(0, 30) || 'Sin motivo específico'}...
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-bold">{alta.paciente_nombre}</div>
-                          <div className="text-small">{alta.motivo_consulta}</div>
+                      </td>
+                      <td>
+                        <span className={`badge badge-${tipoInfo.color}`}>
+                          {tipoInfo.icon} {tipoInfo.text}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="font-bold">
+                          {new Date(alta.fecha_alta).toLocaleDateString()}
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`badge badge-${tipoInfo.color}`}>
-                        {tipoInfo.icon} {tipoInfo.text}
-                      </span>
-                    </td>
-                    <td>
-                      <div>Ingreso: {new Date(alta.fecha_ingreso).toLocaleDateString()}</div>
-                      <div className="text-small">Alta: {new Date(alta.fecha_alta).toLocaleDateString()}</div>
-                    </td>
-                    <td>
-                      <div className="font-bold">{alta.sesiones_totales}</div>
-                      <div className="text-small">sesiones</div>
-                    </td>
-                    <td>
-                      <div className="text-small">{alta.psicologo}</div>
-                      <div className="text-small">{alta.becario || 'Sin becario'}</div>
-                    </td>
-                    <td>
-                      <div className="flex-row align-center gap-5">
-                        {'★'.repeat(alta.satisfaccion)}
-                        {'☆'.repeat(5 - alta.satisfaccion)}
-                        <span className="ml-5">({alta.satisfaccion}/5)</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="flex-row gap-5">
-                        <button 
-                          className="btn-text"
-                          onClick={() => {
-                            setSelectedPaciente(alta);
-                            setShowModal(true);
-                          }}
-                        >
-                          <FiFileText /> Ver
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                        <div className="text-small">
+                          Por: {alta.usuario_nombre} {alta.usuario_apellido}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="font-bold">{alta.sesiones_totales || 0}</div>
+                        <div className="text-small">sesiones</div>
+                      </td>
+                      <td>
+                        <div className="text-small">Satisfacción:</div>
+                        <div className="flex-row align-center gap-5">
+                          {'★'.repeat(satisfaccion)}
+                          {'☆'.repeat(5 - satisfaccion)}
+                          <span className="ml-5">({satisfaccion}/5)</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="flex-row gap-5">
+                          <button 
+                            className="btn-text"
+                            onClick={async () => {
+                              try {
+                                console.log(`📋 Solicitando detalles del alta ID: ${alta.id}`);
+                                const response = await ApiService.get(`/altas/${alta.id}`);
+                                console.log('📊 Respuesta de detalles:', response);
+                                
+                                if (response.success) {
+                                  setSelectedAltaDetalles(response.data);
+                                  setShowModalDetalles(true);
+                                } else {
+                                  notifications.error('No se pudieron cargar los detalles del alta');
+                                }
+                              } catch (error) {
+                                console.error('❌ Error al cargar detalles:', error);
+                                notifications.error('Error al cargar detalles: ' + error.message);
+                              }
+                            }}
+                          >
+                            <FiFileText /> Ver
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Análisis de Tendencias */}
-      <div className="grid-2 mt-30">
-        <div className="card">
-          <h4>Tendencias de Altas por Mes</h4>
-          <div className="activity-chart" style={{ height: '200px' }}>
-            <div className="chart-bars">
-              {[65, 80, 45, 90, 75, 60, 85, 70, 95, 50, 65, 80].map((height, index) => (
-                <div key={index} className="chart-bar">
-                  <div 
-                    className="bar-fill"
-                    style={{ height: `${height}%` }}
-                  ></div>
-                  <div className="bar-label">
-                    {['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][index]}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        <div className="card">
-          <h4>Distribución por Tipo de Alta</h4>
-          <div className="flex-col gap-15 mt-20">
-            <div className="flex-row align-center justify-between">
-              <div className="flex-row align-center gap-10">
-                <div className="badge badge-success">Alta Terapéutica</div>
-                <div className="text-small">{estadisticas.altasTerapeuticas} pacientes</div>
-              </div>
-              <div className="font-bold">
-                {altas.length > 0 ? Math.round((estadisticas.altasTerapeuticas / altas.length) * 100) : 0}%
-              </div>
-            </div>
-            
-            <div className="flex-row align-center justify-between">
-              <div className="flex-row align-center gap-10">
-                <div className="badge badge-danger">Abandonos</div>
-                <div className="text-small">{estadisticas.abandonos} pacientes</div>
-              </div>
-              <div className="font-bold">
-                {altas.length > 0 ? Math.round((estadisticas.abandonos / altas.length) * 100) : 0}%
-              </div>
-            </div>
-            
-            <div className="flex-row align-center justify-between">
-              <div className="flex-row align-center gap-10">
-                <div className="badge badge-warning">Traslados</div>
-                <div className="text-small">{estadisticas.traslados} pacientes</div>
-              </div>
-              <div className="font-bold">
-                {altas.length > 0 ? Math.round((estadisticas.traslados / altas.length) * 100) : 0}%
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal de Detalles de Alta */}
-      {showModal && selectedPaciente && (
+      {/* Modal de Alta */}
+      {showModalAlta && (
         <div className="modal-overlay">
           <div className="modal-container modal-large">
             <div className="modal-header">
-              <h3>Detalles de Alta</h3>
-              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              <h3>Procesar Alta</h3>
+              <button className="modal-close" onClick={() => {
+                setShowModalAlta(false);
+                setSelectedPacienteAlta(null);
+              }}>×</button>
+            </div>
+            
+            <form onSubmit={handleSubmitAlta}>
+              <div className="modal-content">
+                {selectedPacienteAlta && (
+                  <div className="alert-message info mb-20">
+                    <strong>Paciente:</strong> {selectedPacienteAlta.paciente_nombre}
+                    <br />
+                    <strong>Psicólogo asignado:</strong> {selectedPacienteAlta.psicologo}
+                    <br />
+                    <strong>Sesiones completadas:</strong> {selectedPacienteAlta.sesiones_completadas}
+                  </div>
+                )}
+                
+                <div className="grid-2 gap-20">
+                  <div className="form-group">
+                    <label>Tipo de Alta *</label>
+                    <select
+                      value={formData.tipo_alta}
+                      onChange={(e) => setFormData({...formData, tipo_alta: e.target.value})}
+                      className="select-field"
+                      required
+                    >
+                      <option value="">Seleccionar tipo</option>
+                      <option value="terapeutica">Alta Terapéutica</option>
+                      <option value="abandono">Abandono</option>
+                      <option value="traslado">Traslado</option>
+                      <option value="graduacion">Graduación</option>
+                      <option value="no_continua">No Continúa</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Evaluación Final</label>
+                    <select
+                      value={formData.evaluacion_final}
+                      onChange={(e) => setFormData({...formData, evaluacion_final: e.target.value})}
+                      className="select-field"
+                    >
+                      <option value="">Seleccionar evaluación</option>
+                      <option value="excelente">Excelente</option>
+                      <option value="buena">Buena</option>
+                      <option value="regular">Regular</option>
+                      <option value="mala">Mala</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="form-group mt-15">
+                  <label>Motivo Detallado *</label>
+                  <textarea
+                    value={formData.motivo_detallado}
+                    onChange={(e) => setFormData({...formData, motivo_detallado: e.target.value})}
+                    className="textarea-field"
+                    rows="4"
+                    placeholder="Describa el motivo del alta..."
+                    required
+                  />
+                </div>
+                
+                <div className="form-group mt-15">
+                  <label>Recomendaciones</label>
+                  <textarea
+                    value={formData.recomendaciones}
+                    onChange={(e) => setFormData({...formData, recomendaciones: e.target.value})}
+                    className="textarea-field"
+                    rows="3"
+                    placeholder="Recomendaciones para el paciente..."
+                  />
+                </div>
+                
+                <div className="grid-2 gap-20 mt-15">
+                  <div className="form-group">
+                    <label className="flex-row align-center gap-10">
+                      <input
+                        type="checkbox"
+                        checked={formData.seguimiento_recomendado}
+                        onChange={(e) => setFormData({...formData, seguimiento_recomendado: e.target.checked})}
+                      />
+                      Seguimiento Recomendado
+                    </label>
+                  </div>
+                  
+                  {formData.seguimiento_recomendado && (
+                    <div className="form-group">
+                      <label>Fecha de Seguimiento</label>
+                      <input
+                        type="date"
+                        value={formData.fecha_seguimiento}
+                        onChange={(e) => setFormData({...formData, fecha_seguimiento: e.target.value})}
+                        className="input-field"
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn-secondary"
+                  onClick={() => {
+                    setShowModalAlta(false);  // ✅ CORREGIDO
+                    setSelectedPacienteAlta(null);  // ✅ CORREGIDO
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-primary"
+                  disabled={!formData.tipo_alta || !formData.motivo_detallado}
+                >
+                  <FiCheckCircle /> Confirmar Alta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal de Detalles de Alta */}
+      {showModalDetalles && selectedAltaDetalles && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-large">
+            <div className="modal-header">
+              <h3>
+                {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
+                  ? 'Detalles de No Aprobación' 
+                  : 'Detalles de Alta'}
+              </h3>
+              <button className="modal-close" onClick={() => {
+                setShowModalDetalles(false);
+                setSelectedAltaDetalles(null);
+              }}>×</button>
             </div>
             
             <div className="modal-content">
@@ -507,73 +744,95 @@ const CoordinadorAltas = () => {
                 <div>
                   <h4>Información del Paciente</h4>
                   <div className="detail-row">
-                    <strong>Nombre:</strong> {selectedPaciente.paciente_nombre}
+                    <strong>Nombre:</strong> {selectedAltaDetalles.paciente_nombre} {selectedAltaDetalles.paciente_apellido}
                   </div>
                   <div className="detail-row">
-                    <strong>Edad:</strong> {selectedPaciente.edad} años
+                    <strong>Edad:</strong> {selectedAltaDetalles.edad || 'N/A'} años
                   </div>
                   <div className="detail-row">
-                    <strong>Motivo de consulta:</strong> {selectedPaciente.motivo_consulta}
+                    <strong>Motivo de consulta:</strong> {selectedAltaDetalles.motivo_consulta || 'Sin información'}
                   </div>
                   <div className="detail-row">
-                    <strong>Fechas:</strong> 
+                    <strong>Fecha:</strong> 
                     <div>
-                      Ingreso: {new Date(selectedPaciente.fecha_ingreso).toLocaleDateString()}<br/>
-                      Alta: {new Date(selectedPaciente.fecha_alta).toLocaleDateString()}
+                      {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
+                        ? 'No aprobado: ' 
+                        : 'Alta: '}
+                      {new Date(selectedAltaDetalles.fecha_alta).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
                 
                 <div>
-                  <h4>Información del Tratamiento</h4>
+                  <h4>Información del Proceso</h4>
                   <div className="detail-row">
-                    <strong>Sesiones totales:</strong> {selectedPaciente.sesiones_totales}
-                  </div>
-                  <div className="detail-row">
-                    <strong>Tipo de alta:</strong>
-                    <span className={`badge ${
-                      selectedPaciente.tipo_alta === 'terapeutica' ? 'badge-success' :
-                      selectedPaciente.tipo_alta === 'abandono' ? 'badge-danger' :
-                      'badge-warning'
-                    }`}>
-                      {getTipoAltaLabel(selectedPaciente.tipo_alta).text}
+                    <strong>Tipo:</strong>
+                    <span className={`badge badge-${getTipoAltaLabel(selectedAltaDetalles.tipo_alta).color}`}>
+                      {getTipoAltaLabel(selectedAltaDetalles.tipo_alta).icon} 
+                      {getTipoAltaLabel(selectedAltaDetalles.tipo_alta).text}
                     </span>
                   </div>
                   <div className="detail-row">
-                    <strong>Psicólogo:</strong> {selectedPaciente.psicologo}
+                    <strong>Profesional:</strong> {selectedAltaDetalles.usuario_nombre} {selectedAltaDetalles.usuario_apellido}
                   </div>
                   <div className="detail-row">
-                    <strong>Becario:</strong> {selectedPaciente.becario || 'No asignado'}
+                    <strong>Sesiones completadas:</strong> {selectedAltaDetalles.sesiones_totales || 0}
                   </div>
+                  {selectedAltaDetalles.psicologo_nombre && (
+                    <div className="detail-row">
+                      <strong>Psicólogo asignado:</strong> {selectedAltaDetalles.psicologo_nombre}
+                    </div>
+                  )}
+                  {selectedAltaDetalles.evaluacion_final && (
+                    <div className="detail-row">
+                      <strong>Evaluación final:</strong> {selectedAltaDetalles.evaluacion_final}
+                    </div>
+                  )}
                 </div>
               </div>
               
               <div className="mt-20">
-                <h4>Evaluación Final</h4>
+                <h4>
+                  {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
+                    ? 'Motivo de No Aprobación' 
+                    : 'Motivo Detallado'}
+                </h4>
                 <div className="card p-15 mt-10">
-                  {selectedPaciente.evaluacion_final}
+                  {selectedAltaDetalles.motivo_detallado || 'Sin información disponible'}
                 </div>
               </div>
               
-              <div className="mt-20">
-                <h4>Satisfacción del Paciente</h4>
-                <div className="flex-row align-center gap-10 mt-10">
-                  <div className="flex-row">
-                    {'★'.repeat(selectedPaciente.satisfaccion)}
-                    {'☆'.repeat(5 - selectedPaciente.satisfaccion)}
+              {selectedAltaDetalles.recomendaciones && (
+                <div className="mt-20">
+                  <h4>Recomendaciones</h4>
+                  <div className="card p-15 mt-10">
+                    {selectedAltaDetalles.recomendaciones}
                   </div>
-                  <span className="font-bold">({selectedPaciente.satisfaccion}/5)</span>
                 </div>
-              </div>
+              )}
+              
+              {selectedAltaDetalles.tipo_alta === 'no_aprobado' && (
+                <div className="mt-20 alert-message warning">
+                  <strong>⚠️ Nota:</strong> Este paciente fue marcado como "No Aprobado" para alta terapéutica. 
+                  Continuará en tratamiento y podrá ser evaluado nuevamente en el futuro.
+                </div>
+              )}
             </div>
             
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowModal(false)}>
+              <button className="btn-secondary" onClick={() => {
+                setShowModalDetalles(false);
+                setSelectedAltaDetalles(null);
+              }}>
                 Cerrar
               </button>
-              <button className="btn-primary">
-                <FiDownload /> Descargar Informe
-              </button>
+              {selectedAltaDetalles.tipo_alta !== 'no_aprobado' && (
+                <button className="btn-primary" onClick={() => {
+                  notifications.info('Generando informe...');
+                }}>
+                  <FiDownload /> Descargar Informe
+                </button>
+              )}
             </div>
           </div>
         </div>

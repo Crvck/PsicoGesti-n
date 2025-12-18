@@ -1,25 +1,379 @@
 ARCHIVOS BACKEND PARA: COORDINADOR_REPORTES
 ================================================================================
-Generado: 2025-12-17 16:14:49
+Generado: 2025-12-18 12:44:17
 ================================================================================
 
-/backend/src/routes/reporteRoutes.js:
+/backend/src/controllers/reporteController.js:
 --------------------------------------------------------------------------------
-const express = require('express');
-const router = express.Router();
-const ReporteController = require('../controllers/reporteController');
+// backend/src/controllers/reporteController.js - Añade este método
+const { Parser } = require('json2csv');
+const fs = require('fs');
+const path = require('path');
+const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
+const User = require('../models/userModel');
+const { Op } = require('sequelize');
+const sequelize = require('../config/db');
 
-// Exportar agenda a CSV
-router.post('/exportar-agenda-csv', ReporteController.exportarAgendaCSV);
+class ReporteController {
+    // Método para exportar agenda a CSV
+    static async exportarAgendaCSV(req, res) {
+        try {
+            const { 
+                fecha_inicio, 
+                fecha_fin, 
+                psicologo_id, 
+                tipo_consulta 
+            } = req.body;
 
-// Exportar disponibilidad a CSV
-router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibilidadCSV);
+            // Construir condiciones de filtro
+            const whereClause = {};
+            
+            if (fecha_inicio && fecha_fin) {
+                whereClause.fecha = {
+                    [Op.between]: [fecha_inicio, fecha_fin]
+                };
+            }
+            
+            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
+            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
 
-// Generar reporte de conflictos
-router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
+            // Obtener citas con información relacionada
+            const citas = await Cita.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: Paciente,
+                        attributes: ['nombre', 'apellido', 'telefono', 'email']
+                    },
+                    {
+                        model: User,
+                        as: 'Psicologo',
+                        attributes: ['nombre', 'apellido', 'especialidad']
+                    },
+                    {
+                        model: User,
+                        as: 'Becario',
+                        attributes: ['nombre', 'apellido']
+                    }
+                ],
+                order: [
+                    ['fecha', 'ASC'],
+                    ['hora', 'ASC']
+                ]
+            });
+
+            // Preparar datos para CSV
+            const datosCSV = citas.map(cita => ({
+                Fecha: cita.fecha,
+                Hora: cita.hora,
+                'Duración (min)': cita.duracion,
+                Paciente: cita.Paciente ? `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : '',
+                'Teléfono Paciente': cita.Paciente?.telefono || '',
+                'Email Paciente': cita.Paciente?.email || '',
+                Psicólogo: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : '',
+                Especialidad: cita.Psicologo?.especialidad || '',
+                Becario: cita.Becario ? `${cita.Becario.nombre} ${cita.Becario.apellido}` : '',
+                'Tipo Consulta': cita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual',
+                Estado: cita.estado,
+                Notas: cita.notas || '',
+                'Motivo Cancelación': cita.motivo_cancelacion || ''
+            }));
+
+            // Convertir a CSV
+            const json2csvParser = new Parser();
+            const csv = json2csvParser.parse(datosCSV);
+
+            // Crear nombre de archivo
+            const fechaActual = new Date().toISOString().split('T')[0];
+            const nombreArchivo = `agenda_${fecha_inicio || fechaActual}_a_${fecha_fin || fechaActual}.csv`;
+
+            // Configurar headers para descarga
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+            
+            res.send(csv);
+
+        } catch (error) {
+            console.error('Error exportando agenda a CSV:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al exportar agenda',
+                error: error.message
+            });
+        }
+    }
+
+    // Método para exportar disponibilidad a CSV
+    static async exportarDisponibilidadCSV(req, res) {
+        try {
+            const { fecha } = req.body;
+            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
+            
+            // Consulta de disponibilidad
+            const disponibilidad = await sequelize.query(`
+                SELECT 
+                    u.id,
+                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
+                    u.rol,
+                    u.especialidad,
+                    d.dia_semana,
+                    TIME_FORMAT(d.hora_inicio, '%H:%i') as hora_inicio,
+                    TIME_FORMAT(d.hora_fin, '%H:%i') as hora_fin,
+                    d.max_citas_dia,
+                    (SELECT COUNT(*) FROM citas c 
+                     WHERE c.psicologo_id = u.id 
+                     AND c.fecha = ? 
+                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas
+                FROM users u
+                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
+                    AND d.activo = TRUE
+                WHERE u.rol IN ('psicologo', 'becario')
+                AND u.activo = TRUE
+                ORDER BY u.rol, u.apellido, u.nombre, d.dia_semana
+            `, {
+                replacements: [fechaConsulta],
+                type: QueryTypes.SELECT
+            });
+
+            // Preparar datos para CSV
+            const datosCSV = disponibilidad.map(item => ({
+                Profesional: item.profesional,
+                Rol: item.rol,
+                Especialidad: item.especialidad || '',
+                'Día Semana': item.dia_semana || '',
+                'Hora Inicio': item.hora_inicio || '',
+                'Hora Fin': item.hora_fin || '',
+                'Máx. Citas/Día': item.max_citas_dia || 8,
+                'Citas Programadas': item.citas_programadas || 0,
+                'Disponibilidad': item.citas_programadas >= (item.max_citas_dia || 8) ? 'Completo' : 'Disponible'
+            }));
+
+            // Convertir a CSV
+            const json2csvParser = new Parser();
+            const csv = json2csvParser.parse(datosCSV);
+
+            // Configurar headers para descarga
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="disponibilidad_${fechaConsulta}.csv"`);
+            
+            res.send(csv);
+
+        } catch (error) {
+            console.error('Error exportando disponibilidad a CSV:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al exportar disponibilidad',
+                error: error.message
+            });
+        }
+    }
+
+    static async generarReporteConflictos(req, res) {
+        try {
+            const { fecha_inicio, fecha_fin } = req.body;
+
+            // Buscar citas solapadas
+            const conflictos = await sequelize.query(`
+                SELECT 
+                    c1.id as cita1_id,
+                    c1.paciente_id as paciente1_id,
+                    p1.nombre as paciente1_nombre,
+                    p1.apellido as paciente1_apellido,
+                    c1.psicologo_id as psicologo1_id,
+                    u1.nombre as psicologo1_nombre,
+                    u1.apellido as psicologo1_apellido,
+                    c1.fecha as fecha_conflicto,
+                    c1.hora as hora_inicio1,
+                    ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)) as hora_fin1,
+                    
+                    c2.id as cita2_id,
+                    c2.paciente_id as paciente2_id,
+                    p2.nombre as paciente2_nombre,
+                    p2.apellido as paciente2_apellido,
+                    c2.psicologo_id as psicologo2_id,
+                    u2.nombre as psicologo2_nombre,
+                    u2.apellido as psicologo2_apellido,
+                    c2.hora as hora_inicio2,
+                    ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)) as hora_fin2
+                    
+                FROM citas c1
+                JOIN citas c2 ON 
+                    c1.psicologo_id = c2.psicologo_id 
+                    AND c1.fecha = c2.fecha
+                    AND c1.id < c2.id
+                    AND (
+                        (c1.hora BETWEEN c2.hora AND ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)))
+                        OR 
+                        (c2.hora BETWEEN c1.hora AND ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)))
+                    )
+                JOIN pacientes p1 ON c1.paciente_id = p1.id
+                JOIN pacientes p2 ON c2.paciente_id = p2.id
+                JOIN users u1 ON c1.psicologo_id = u1.id
+                JOIN users u2 ON c2.psicologo_id = u2.id
+                WHERE c1.estado IN ('programada', 'confirmada')
+                    AND c2.estado IN ('programada', 'confirmada')
+                    ${fecha_inicio && fecha_fin ? 'AND c1.fecha BETWEEN ? AND ?' : ''}
+                ORDER BY c1.fecha, c1.hora
+            `, {
+                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : [],
+                type: QueryTypes.SELECT
+            });
+
+            res.json({
+                success: true,
+                data: {
+                    conflictos,
+                    total_conflictos: conflictos.length,
+                    periodo: fecha_inicio && fecha_fin ? `${fecha_inicio} a ${fecha_fin}` : 'Todo el período'
+                }
+            });
+
+        } catch (error) {
+            console.error('Error generando reporte de conflictos:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al generar reporte de conflictos',
+                error: error.message
+            });
+        }
+    }
+}
+
+module.exports = ReporteController;
 
 
-module.exports = router;
+/frontend/src/services/api.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
+
+  static async get(url) {
+    return this.request(url);
+  }
+
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+      // Primero verificar si hay contenido
+      if (response.status === 204 || response.status === 205) {
+          return {};
+      }
+      
+      const contentType = response.headers.get('content-type');
+      
+      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
+      if (contentType && contentType.includes('text/csv')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Para CSV, devolvemos el texto directamente
+          return text;
+      }
+      
+      // Si no es CSV, verificar si es JSON
+      if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Intentar parsear como JSON si es posible
+          try {
+              return text ? JSON.parse(text) : {};
+          } catch {
+              return text;
+          }
+      }
+      
+      // Si es JSON, parsearlo normalmente
+      const data = await response.json();
+      
+      if (!response.ok) {
+          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+      }
+      
+      return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
+}
+
+export default ApiService;
 
 
 /backend/src/db/db.sql:
@@ -70,11 +424,13 @@ CREATE TABLE pacientes (
     activo BOOLEAN DEFAULT TRUE,
     notas TEXT,
     fundacion_id INT,
+    ultimo_no_aprobado DATE NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
     INDEX idx_activo (activo),
-    INDEX idx_apellido_nombre (apellido, nombre)
+    INDEX idx_apellido_nombre (apellido, nombre),
+    INDEX idx_ultimo_no_aprobado (ultimo_no_aprobado)
 );
 
 CREATE TABLE expedientes (
@@ -197,7 +553,7 @@ CREATE TABLE altas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     paciente_id INT NOT NULL,
     usuario_id INT NOT NULL,
-    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro') NOT NULL,
+    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro', 'no_aprobado') NOT NULL,
     fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
     motivo_detallado TEXT,
     recomendaciones TEXT,
@@ -681,858 +1037,6 @@ GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicog
 FLUSH PRIVILEGES;
 
 
-/backend/src/models/reporteModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-const User = require('./userModel');
-
-const Reporte = sequelize.define('Reporte', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    usuario_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    tipo_reporte: {
-        type: DataTypes.ENUM(
-            'mensual',
-            'trimestral',
-            'semestral',
-            'anual',
-            'personalizado',
-            'paciente',
-            'becario',
-            'psicologo'
-        ),
-        allowNull: false
-    },
-    nombre: {
-        type: DataTypes.STRING(255),
-        allowNull: false
-    },
-    descripcion: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    parametros: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        comment: 'JSON con parámetros del reporte'
-    },
-    fecha_inicio: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    fecha_fin: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    formato: {
-        type: DataTypes.ENUM('pdf', 'excel', 'csv', 'html'),
-        defaultValue: 'pdf'
-    },
-    archivo_url: {
-        type: DataTypes.STRING(500),
-        allowNull: true
-    },
-    archivo_tamano: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        comment: 'Tamaño en bytes'
-    },
-    estado: {
-        type: DataTypes.ENUM('pendiente', 'generando', 'completado', 'error'),
-        defaultValue: 'pendiente'
-    },
-    compartido_con: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        comment: 'JSON con IDs de usuarios con acceso'
-    }
-}, {
-    tableName: 'reportes',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['usuario_id']
-        },
-        {
-            fields: ['tipo_reporte', 'estado']
-        },
-        {
-            fields: ['created_at']
-        }
-    ]
-});
-
-Reporte.belongsTo(User, { foreignKey: 'usuario_id' });
-
-module.exports = Reporte;
-
-
-/backend/src/controllers/reporteController.js:
---------------------------------------------------------------------------------
-// backend/src/controllers/reporteController.js - Añade este método
-const { Parser } = require('json2csv');
-const fs = require('fs');
-const path = require('path');
-const Cita = require('../models/citaModel');
-const Paciente = require('../models/pacienteModel');
-const User = require('../models/userModel');
-const { Op } = require('sequelize');
-const sequelize = require('../config/db');
-
-class ReporteController {
-    // Método para exportar agenda a CSV
-    static async exportarAgendaCSV(req, res) {
-        try {
-            const { 
-                fecha_inicio, 
-                fecha_fin, 
-                psicologo_id, 
-                tipo_consulta 
-            } = req.body;
-
-            // Construir condiciones de filtro
-            const whereClause = {};
-            
-            if (fecha_inicio && fecha_fin) {
-                whereClause.fecha = {
-                    [Op.between]: [fecha_inicio, fecha_fin]
-                };
-            }
-            
-            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
-            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
-
-            // Obtener citas con información relacionada
-            const citas = await Cita.findAll({
-                where: whereClause,
-                include: [
-                    {
-                        model: Paciente,
-                        attributes: ['nombre', 'apellido', 'telefono', 'email']
-                    },
-                    {
-                        model: User,
-                        as: 'Psicologo',
-                        attributes: ['nombre', 'apellido', 'especialidad']
-                    },
-                    {
-                        model: User,
-                        as: 'Becario',
-                        attributes: ['nombre', 'apellido']
-                    }
-                ],
-                order: [
-                    ['fecha', 'ASC'],
-                    ['hora', 'ASC']
-                ]
-            });
-
-            // Preparar datos para CSV
-            const datosCSV = citas.map(cita => ({
-                Fecha: cita.fecha,
-                Hora: cita.hora,
-                'Duración (min)': cita.duracion,
-                Paciente: cita.Paciente ? `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : '',
-                'Teléfono Paciente': cita.Paciente?.telefono || '',
-                'Email Paciente': cita.Paciente?.email || '',
-                Psicólogo: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : '',
-                Especialidad: cita.Psicologo?.especialidad || '',
-                Becario: cita.Becario ? `${cita.Becario.nombre} ${cita.Becario.apellido}` : '',
-                'Tipo Consulta': cita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual',
-                Estado: cita.estado,
-                Notas: cita.notas || '',
-                'Motivo Cancelación': cita.motivo_cancelacion || ''
-            }));
-
-            // Convertir a CSV
-            const json2csvParser = new Parser();
-            const csv = json2csvParser.parse(datosCSV);
-
-            // Crear nombre de archivo
-            const fechaActual = new Date().toISOString().split('T')[0];
-            const nombreArchivo = `agenda_${fecha_inicio || fechaActual}_a_${fecha_fin || fechaActual}.csv`;
-
-            // Configurar headers para descarga
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
-            
-            res.send(csv);
-
-        } catch (error) {
-            console.error('Error exportando agenda a CSV:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al exportar agenda',
-                error: error.message
-            });
-        }
-    }
-
-    // Método para exportar disponibilidad a CSV
-    static async exportarDisponibilidadCSV(req, res) {
-        try {
-            const { fecha } = req.body;
-            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
-            
-            // Consulta de disponibilidad
-            const disponibilidad = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
-                    u.rol,
-                    u.especialidad,
-                    d.dia_semana,
-                    TIME_FORMAT(d.hora_inicio, '%H:%i') as hora_inicio,
-                    TIME_FORMAT(d.hora_fin, '%H:%i') as hora_fin,
-                    d.max_citas_dia,
-                    (SELECT COUNT(*) FROM citas c 
-                     WHERE c.psicologo_id = u.id 
-                     AND c.fecha = ? 
-                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas
-                FROM users u
-                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
-                    AND d.activo = TRUE
-                WHERE u.rol IN ('psicologo', 'becario')
-                AND u.activo = TRUE
-                ORDER BY u.rol, u.apellido, u.nombre, d.dia_semana
-            `, {
-                replacements: [fechaConsulta],
-                type: QueryTypes.SELECT
-            });
-
-            // Preparar datos para CSV
-            const datosCSV = disponibilidad.map(item => ({
-                Profesional: item.profesional,
-                Rol: item.rol,
-                Especialidad: item.especialidad || '',
-                'Día Semana': item.dia_semana || '',
-                'Hora Inicio': item.hora_inicio || '',
-                'Hora Fin': item.hora_fin || '',
-                'Máx. Citas/Día': item.max_citas_dia || 8,
-                'Citas Programadas': item.citas_programadas || 0,
-                'Disponibilidad': item.citas_programadas >= (item.max_citas_dia || 8) ? 'Completo' : 'Disponible'
-            }));
-
-            // Convertir a CSV
-            const json2csvParser = new Parser();
-            const csv = json2csvParser.parse(datosCSV);
-
-            // Configurar headers para descarga
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('Content-Disposition', `attachment; filename="disponibilidad_${fechaConsulta}.csv"`);
-            
-            res.send(csv);
-
-        } catch (error) {
-            console.error('Error exportando disponibilidad a CSV:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al exportar disponibilidad',
-                error: error.message
-            });
-        }
-    }
-
-    static async generarReporteConflictos(req, res) {
-        try {
-            const { fecha_inicio, fecha_fin } = req.body;
-
-            // Buscar citas solapadas
-            const conflictos = await sequelize.query(`
-                SELECT 
-                    c1.id as cita1_id,
-                    c1.paciente_id as paciente1_id,
-                    p1.nombre as paciente1_nombre,
-                    p1.apellido as paciente1_apellido,
-                    c1.psicologo_id as psicologo1_id,
-                    u1.nombre as psicologo1_nombre,
-                    u1.apellido as psicologo1_apellido,
-                    c1.fecha as fecha_conflicto,
-                    c1.hora as hora_inicio1,
-                    ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)) as hora_fin1,
-                    
-                    c2.id as cita2_id,
-                    c2.paciente_id as paciente2_id,
-                    p2.nombre as paciente2_nombre,
-                    p2.apellido as paciente2_apellido,
-                    c2.psicologo_id as psicologo2_id,
-                    u2.nombre as psicologo2_nombre,
-                    u2.apellido as psicologo2_apellido,
-                    c2.hora as hora_inicio2,
-                    ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)) as hora_fin2
-                    
-                FROM citas c1
-                JOIN citas c2 ON 
-                    c1.psicologo_id = c2.psicologo_id 
-                    AND c1.fecha = c2.fecha
-                    AND c1.id < c2.id
-                    AND (
-                        (c1.hora BETWEEN c2.hora AND ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)))
-                        OR 
-                        (c2.hora BETWEEN c1.hora AND ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)))
-                    )
-                JOIN pacientes p1 ON c1.paciente_id = p1.id
-                JOIN pacientes p2 ON c2.paciente_id = p2.id
-                JOIN users u1 ON c1.psicologo_id = u1.id
-                JOIN users u2 ON c2.psicologo_id = u2.id
-                WHERE c1.estado IN ('programada', 'confirmada')
-                    AND c2.estado IN ('programada', 'confirmada')
-                    ${fecha_inicio && fecha_fin ? 'AND c1.fecha BETWEEN ? AND ?' : ''}
-                ORDER BY c1.fecha, c1.hora
-            `, {
-                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : [],
-                type: QueryTypes.SELECT
-            });
-
-            res.json({
-                success: true,
-                data: {
-                    conflictos,
-                    total_conflictos: conflictos.length,
-                    periodo: fecha_inicio && fecha_fin ? `${fecha_inicio} a ${fecha_fin}` : 'Todo el período'
-                }
-            });
-
-        } catch (error) {
-            console.error('Error generando reporte de conflictos:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al generar reporte de conflictos',
-                error: error.message
-            });
-        }
-    }
-}
-
-module.exports = ReporteController;
-
-
-/backend/src/services/reporteService.js:
---------------------------------------------------------------------------------
-const ExcelJS = require('exceljs');
-const PDFDocument = require('pdfkit');
-const fs = require('fs').promises;
-const path = require('path');
-
-class ReporteService {
-    
-    static async generarExcel(datos, tipoReporte) {
-        try {
-            const workbook = new ExcelJS.Workbook();
-            workbook.creator = 'Sistema de Gestión Psicológica';
-            workbook.created = new Date();
-            
-            let worksheet;
-            let columns = [];
-            
-            switch (tipoReporte) {
-                case 'citas':
-                    worksheet = workbook.addWorksheet('Reporte de Citas');
-                    columns = [
-                        { header: 'MES', key: 'MES', width: 10 },
-                        { header: 'MODALIDAD', key: 'MODALIDAD', width: 15 },
-                        { header: 'Empleado', key: 'Empleado', width: 20 },
-                        { header: 'ESTUDIANTE', key: 'ESTUDIANTE', width: 25 },
-                        { header: 'CARRERA', key: 'CARRERA', width: 20 },
-                        { header: 'MATRICULA', key: 'MATRICULA', width: 15 },
-                        { header: 'NOMBRE', key: 'NOMBRE', width: 25 },
-                        { header: 'EDAD', key: 'EDAD', width: 8 },
-                        { header: 'SEXO', key: 'SEXO', width: 10 },
-                        { header: 'MOTIVO DE CONSULTA', key: 'MOTIVO_DE_CONSULTA', width: 30 },
-                        { header: 'TELEFONO', key: 'TELEFONO', width: 15 },
-                        { header: 'CORREO', key: 'CORREO', width: 25 },
-                        { header: 'DIA', key: 'DIA', width: 12 },
-                        { header: 'HORA', key: 'HORA', width: 10 },
-                        { header: 'ESTATUS', key: 'ESTATUS', width: 12 },
-                        { header: 'PRACTICANTE', key: 'PRACTICANTE', width: 20 },
-                        { header: 'OBSERVACIONES', key: 'OBSERVACIONES', width: 30 },
-                        { header: 'ATIENDE', key: 'ATIENDE', width: 20 }
-                    ];
-                    break;
-                    
-                case 'pacientes':
-                    worksheet = workbook.addWorksheet('Reporte de Pacientes');
-                    columns = [
-                        { header: 'MES', key: 'MES', width: 10 },
-                        { header: 'NOMBRE', key: 'NOMBRE', width: 25 },
-                        { header: 'TELEFONO', key: 'TELEFONO', width: 15 },
-                        { header: 'MATRICULA', key: 'MATRICULA', width: 15 },
-                        { header: 'CUATRI', key: 'CUATRI', width: 10 },
-                        { header: 'TIPO DE SERVICIO', key: 'TIPO_DE_SERVICIO', width: 20 },
-                        { header: 'FECHA DE PRESENTACION', key: 'FECHA_DE_PRESENTACION', width: 20 },
-                        { header: 'No. de sesiones terapéuticas personales', key: 'No_de_sesiones_terapeuticas_personales', width: 15 },
-                        { header: 'FECHA DE ACEPTACION', key: 'FECHA_DE_ACEPTACION', width: 20 },
-                        { header: 'MMPI-2 RF', key: 'MMPI_2_RF', width: 15 },
-                        { header: 'FECHA DE TERMINO', key: 'FECHA_DE_TERMINO', width: 20 },
-                        { header: 'CARTA DE LIBERACION', key: 'CARTA_DE_LIBERACION', width: 20 },
-                        { header: 'HORAS OBJETIVO', key: 'HORAS_OBJETIVO', width: 15 },
-                        { header: 'HORAS REALIZADAS', key: 'HORAS_REALIZADAS', width: 15 },
-                        { header: 'HORAS FALTANTES', key: 'HORAS_FALTANTES', width: 15 },
-                        { header: 'SERVICIO COMUNITARIO LIBERADO', key: 'SERVICIO_COMUNITARIO_LIBERADO', width: 20 },
-                        { header: 'QUIEN ATIENDE', key: 'QUIEN_ATIENDE', width: 20 },
-                        { header: 'OBSERVACIONES', key: 'OBSERVACIONES', width: 30 }
-                    ];
-                    break;
-                    
-                default:
-                    worksheet = workbook.addWorksheet('Reporte');
-                    columns = Object.keys(datos[0] || {}).map(key => ({
-                        header: key.toUpperCase(),
-                        key: key,
-                        width: 20
-                    }));
-            }
-            
-            worksheet.columns = columns;
-            
-            // Agregar datos
-            if (datos && datos.length > 0) {
-                datos.forEach(row => {
-                    worksheet.addRow(row);
-                });
-            }
-            
-            // Aplicar estilos a la cabecera
-            worksheet.getRow(1).font = { bold: true };
-            worksheet.getRow(1).fill = {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FFE0E0E0' }
-            };
-            
-            // Autoajustar columnas
-            worksheet.columns.forEach(column => {
-                let maxLength = 0;
-                column.eachCell({ includeEmpty: true }, cell => {
-                    const cellLength = cell.value ? cell.value.toString().length : 0;
-                    if (cellLength > maxLength) {
-                        maxLength = cellLength;
-                    }
-                });
-                column.width = Math.min(maxLength + 2, 50);
-            });
-            
-            // Generar buffer
-            const buffer = await workbook.xlsx.writeBuffer();
-            return buffer;
-            
-        } catch (error) {
-            console.error('Error en generarExcel:', error);
-            throw error;
-        }
-    }
-    
-    static async generarPDF(datos, tipoReporte, titulo) {
-        return new Promise((resolve, reject) => {
-            try {
-                const doc = new PDFDocument({ margin: 50 });
-                const chunks = [];
-                
-                doc.on('data', chunk => chunks.push(chunk));
-                doc.on('end', () => {
-                    const buffer = Buffer.concat(chunks);
-                    resolve(buffer);
-                });
-                
-                // Encabezado
-                doc.fontSize(20).text(titulo || 'Reporte del Sistema', { align: 'center' });
-                doc.moveDown();
-                doc.fontSize(12).text(`Generado: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, { align: 'center' });
-                doc.moveDown(2);
-                
-                // Contenido según tipo de reporte
-                switch (tipoReporte) {
-                    case 'resumen':
-                        this.generarPDFResumen(doc, datos);
-                        break;
-                    case 'paciente':
-                        this.generarPDFPaciente(doc, datos);
-                        break;
-                    default:
-                        this.generarPDFTabla(doc, datos);
-                }
-                
-                doc.end();
-                
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
-    
-    static generarPDFResumen(doc, datos) {
-        doc.fontSize(16).text('Resumen Estadístico', { underline: true });
-        doc.moveDown();
-        
-        if (datos.estadisticas) {
-            const stats = datos.estadisticas;
-            doc.fontSize(12);
-            doc.text(`Total de Pacientes: ${stats.total_pacientes || 0}`);
-            doc.text(`Pacientes Activos: ${stats.pacientes_activos || 0}`);
-            doc.text(`Citas del Mes: ${stats.total_citas_mes || 0}`);
-            doc.text(`Citas Completadas: ${stats.citas_completadas || 0}`);
-            doc.text(`Tasa de Completitud: ${stats.tasa_completitud || '0'}%`);
-            doc.moveDown();
-        }
-        
-        if (datos.evolucion_mensual && datos.evolucion_mensual.length > 0) {
-            doc.fontSize(14).text('Evolución Mensual:', { underline: true });
-            doc.moveDown();
-            
-            datos.evolucion_mensual.forEach(item => {
-                doc.fontSize(10).text(`${item.mes}: ${item.total_citas} citas (${item.citas_completadas} completadas)`);
-            });
-        }
-    }
-    
-    static generarPDFPaciente(doc, datos) {
-        doc.fontSize(16).text(`Expediente de ${datos.paciente?.nombre || ''} ${datos.paciente?.apellido || ''}`, { underline: true });
-        doc.moveDown();
-        
-        // Información básica
-        doc.fontSize(12).text('Información Básica:', { underline: true });
-        doc.fontSize(10);
-        if (datos.paciente) {
-            doc.text(`Nombre: ${datos.paciente.nombre} ${datos.paciente.apellido}`);
-            doc.text(`Teléfono: ${datos.paciente.telefono || 'No especificado'}`);
-            doc.text(`Email: ${datos.paciente.email || 'No especificado'}`);
-            doc.text(`Fecha de Nacimiento: ${datos.paciente.fecha_nacimiento || 'No especificado'}`);
-        }
-        doc.moveDown();
-        
-        // Historial de sesiones
-        if (datos.sesiones && datos.sesiones.length > 0) {
-            doc.fontSize(12).text('Historial de Sesiones:', { underline: true });
-            doc.moveDown();
-            
-            datos.sesiones.forEach((sesion, index) => {
-                doc.fontSize(10).text(`${index + 1}. ${sesion.fecha} - ${sesion.psicologo_nombre}`);
-                if (sesion.conclusion) {
-                    doc.fontSize(8).text(`   Conclusiones: ${sesion.conclusion.substring(0, 100)}...`);
-                }
-                doc.moveDown(0.5);
-            });
-        }
-    }
-    
-    static generarPDFTabla(doc, datos) {
-        if (!datos || datos.length === 0) {
-            doc.text('No hay datos para mostrar');
-            return;
-        }
-        
-        // Obtener columnas
-        const columnas = Object.keys(datos[0]);
-        const anchoColumna = 500 / columnas.length;
-        
-        // Encabezado de tabla
-        doc.fontSize(10).font('Helvetica-Bold');
-        let xPos = 50;
-        
-        columnas.forEach(columna => {
-            doc.text(columna.toUpperCase(), xPos, doc.y, { width: anchoColumna });
-            xPos += anchoColumna;
-        });
-        
-        doc.moveDown();
-        doc.font('Helvetica');
-        
-        // Línea separadora
-        doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-        doc.moveDown();
-        
-        // Filas de datos
-        datos.forEach(fila => {
-            xPos = 50;
-            columnas.forEach(columna => {
-                const valor = fila[columna] !== null && fila[columna] !== undefined ? 
-                            fila[columna].toString() : '';
-                doc.fontSize(8).text(valor.substring(0, 30), xPos, doc.y, { width: anchoColumna });
-                xPos += anchoColumna;
-            });
-            doc.moveDown();
-        });
-    }
-    
-    static async generarCSV(datos, delimitador = ',') {
-        if (!datos || datos.length === 0) {
-            return '';
-        }
-        
-        const columnas = Object.keys(datos[0]);
-        let csv = columnas.join(delimitador) + '\n';
-        
-        datos.forEach(fila => {
-            const valores = columnas.map(columna => {
-                const valor = fila[columna];
-                if (valor === null || valor === undefined) {
-                    return '';
-                }
-                // Escapar comillas y delimitadores
-                const valorStr = valor.toString();
-                if (valorStr.includes(delimitador) || valorStr.includes('"') || valorStr.includes('\n')) {
-                    return `"${valorStr.replace(/"/g, '""')}"`;
-                }
-                return valorStr;
-            });
-            csv += valores.join(delimitador) + '\n';
-        });
-        
-        return csv;
-    }
-    
-    static async guardarReporteArchivo(buffer, formato, nombreBase) {
-        try {
-            const timestamp = new Date().getTime();
-            const nombreArchivo = `${nombreBase}_${timestamp}.${formato}`;
-            const rutaArchivo = path.join(__dirname, '..', '..', 'reports', nombreArchivo);
-            
-            // Crear directorio si no existe
-            await fs.mkdir(path.dirname(rutaArchivo), { recursive: true });
-            
-            // Guardar archivo
-            await fs.writeFile(rutaArchivo, buffer);
-            
-            return {
-                nombre: nombreArchivo,
-                ruta: `/reports/${nombreArchivo}`,
-                tamano: buffer.length
-            };
-            
-        } catch (error) {
-            console.error('Error al guardar reporte:', error);
-            throw error;
-        }
-    }
-    
-    static async eliminarReporteAntiguos(dias = 30) {
-        try {
-            const directorio = path.join(__dirname, '..', '..', 'reports');
-            const fechaLimite = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
-            
-            const archivos = await fs.readdir(directorio);
-            
-            for (const archivo of archivos) {
-                const rutaArchivo = path.join(directorio, archivo);
-                const stats = await fs.stat(rutaArchivo);
-                
-                if (stats.mtime < fechaLimite) {
-                    await fs.unlink(rutaArchivo);
-                    console.log(`Eliminado archivo antiguo: ${archivo}`);
-                }
-            }
-            
-            return true;
-        } catch (error) {
-            console.error('Error al eliminar reportes antiguos:', error);
-            return false;
-        }
-    }
-}
-
-module.exports = ReporteService;
-
-
-/backend/server.js:
---------------------------------------------------------------------------------
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-const express = require('express');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./src/doc/swagger.json');
-const cors = require('cors');
-
-const sequelize = require('./src/config/db');
-
-// Importar modelos
-require('./src/models/userModel');
-require('./src/models/pacienteModel');
-require('./src/models/citaModel');
-// Importar otros modelos según necesites
-
-const authRoutes = require('./src/routes/authRoutes');
-const citaRoutes = require('./src/routes/citaRoutes');
-const roleRoutes = require('./src/routes/roleRoutes');
-const fundacionRoutes = require('./src/routes/fundacionRoutes');
-const asignacionRoutes = require('./src/routes/asignacionRoutes');
-const sesionRoutes = require('./src/routes/sesionRoutes');
-const notificacionRoutes = require('./src/routes/notificacionRoutes');
-const altaRoutes = require('./src/routes/altaRoutes');
-const reporteRoutes = require('./src/routes/reporteRoutes');
-const observacionRoutes = require('./src/routes/observacionRoutes');
-const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
-const expedienteRoutes = require('./src/routes/expedienteRoutes');
-const dashboardRoutes = require('./src/routes/dashboardRoutes');
-const agendaRoutes = require('./src/routes/agendaRoutes');
-const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
-const pacienteRoutes = require('./src/routes/pacienteRoutes');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-
-
-app.use(cors({
-  origin: 'http://localhost:3001',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-app.get('/', (req, res) => {
-  res.send('Server is running! Check /api-docs for documentation.');
-});
-
-app.use('/api/auth', authRoutes);
-app.use('/api/citas', citaRoutes);
-app.use('/api/fundaciones', fundacionRoutes);
-app.use('/api/asignaciones', asignacionRoutes);
-app.use('/api/sesiones', sesionRoutes);
-app.use('/api/notificaciones', notificacionRoutes);
-app.use('/api/altas', altaRoutes);
-app.use('/api/reportes', reporteRoutes);
-app.use('/api/observaciones', observacionRoutes);
-app.use('/api/disponibilidad', disponibilidadRoutes);
-app.use('/api/expedientes', expedienteRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/agenda', agendaRoutes);
-app.use('/api/estadisticas', estadisticaRoutes);
-const userRoutes = require('./src/routes/userRoutes');
-app.use('/api/users', userRoutes);
-app.use('/api/roles', roleRoutes);
-app.use('/api/pacientes', pacienteRoutes);
-// Sincronizar modelos
-sequelize.sync({ force: false, alter: false })
-    .then(() => {
-        console.log("✅ Tablas sincronizadas (base de datos lista)");
-        app.listen(PORT, () => {
-          console.log(`Backend running on http://localhost:${PORT}`);
-          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
-          console.log(`CORS permitido para: http://localhost:3001`);
-          console.log(`Endpoints disponibles:`);
-          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
-          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
-          console.log(`  POST /api/citas/alta-paciente`);
-          console.log(`  PUT  /api/citas/cita/:id`);
-        });
-    })
-    .catch((error) => {
-        console.error("❌ Error al sincronizar la base de datos:", error.message);
-    });
-
-
-/backend/src/services/api.js:
---------------------------------------------------------------------------------
-const API_BASE_URL = 'http://localhost:3000/api';
-
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
-
-  static getHeaders() {
-    const token = this.getToken();
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-  }
-
-  static async get(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async post(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async put(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async delete(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async handleResponse(response) {
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error en la petición');
-    }
-    return response.json();
-  }
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-}
-
-export default ApiService;
-
-
-/frontend/src/index.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './global.css';
-import './App.css';
-
-// Importa los estilos de los modales
-import './components/Common/ConfirmModal.css';
-import './components/Common/NotificationModal.css';
-
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-
-
 /backend/src/services/estadisticaService.js:
 --------------------------------------------------------------------------------
 const { QueryTypes } = require('sequelize');
@@ -1975,11 +1479,196 @@ class EstadisticaService {
 module.exports = EstadisticaService;
 
 
+/backend/src/models/reporteModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const User = require('./userModel');
+
+const Reporte = sequelize.define('Reporte', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    usuario_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    tipo_reporte: {
+        type: DataTypes.ENUM(
+            'mensual',
+            'trimestral',
+            'semestral',
+            'anual',
+            'personalizado',
+            'paciente',
+            'becario',
+            'psicologo'
+        ),
+        allowNull: false
+    },
+    nombre: {
+        type: DataTypes.STRING(255),
+        allowNull: false
+    },
+    descripcion: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    parametros: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'JSON con parámetros del reporte'
+    },
+    fecha_inicio: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
+    fecha_fin: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
+    formato: {
+        type: DataTypes.ENUM('pdf', 'excel', 'csv', 'html'),
+        defaultValue: 'pdf'
+    },
+    archivo_url: {
+        type: DataTypes.STRING(500),
+        allowNull: true
+    },
+    archivo_tamano: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: 'Tamaño en bytes'
+    },
+    estado: {
+        type: DataTypes.ENUM('pendiente', 'generando', 'completado', 'error'),
+        defaultValue: 'pendiente'
+    },
+    compartido_con: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'JSON con IDs de usuarios con acceso'
+    }
+}, {
+    tableName: 'reportes',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['usuario_id']
+        },
+        {
+            fields: ['tipo_reporte', 'estado']
+        },
+        {
+            fields: ['created_at']
+        }
+    ]
+});
+
+Reporte.belongsTo(User, { foreignKey: 'usuario_id' });
+
+module.exports = Reporte;
+
+
+/backend/src/routes/reporteRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const ReporteController = require('../controllers/reporteController');
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const verifyToken = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
+
+// Exportar agenda a CSV
+router.post('/exportar-agenda-csv', ReporteController.exportarAgendaCSV);
+
+// Exportar disponibilidad a CSV
+router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibilidadCSV);
+
+// Generar reporte de conflictos
+router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
+
+router.get('/altas', verifyToken, requireRole(['coordinador']), async (req, res) => {
+    try {
+        const { formato = 'excel', fecha_inicio, fecha_fin } = req.query;
+        
+        let query = `
+            SELECT 
+                a.*,
+                CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                p.fecha_nacimiento,
+                p.genero,
+                p.telefono,
+                CONCAT(u.nombre, ' ', u.apellido) as profesional_alta,
+                e.motivo_consulta,
+                COUNT(DISTINCT c.id) as sesiones_completadas
+            FROM altas a
+            JOIN pacientes p ON a.paciente_id = p.id
+            JOIN users u ON a.usuario_id = u.id
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE 1=1
+        `;
+        
+        const replacements = [];
+        
+        if (fecha_inicio) {
+            query += ` AND a.fecha_alta >= ?`;
+            replacements.push(fecha_inicio);
+        }
+        
+        if (fecha_fin) {
+            query += ` AND a.fecha_alta <= ?`;
+            replacements.push(fecha_fin);
+        }
+        
+        query += ` GROUP BY a.id, p.id, u.id, e.id
+                  ORDER BY a.fecha_alta DESC`;
+        
+        const altas = await sequelize.query(query, {
+            replacements,
+            type: QueryTypes.SELECT
+        });
+        
+        // Para una implementación real, aquí generarías el archivo Excel/PDF
+        // Por ahora, simulamos la URL
+        const archivoUrl = `/temp/reporte-altas-${Date.now()}.${formato}`;
+        
+        res.json({
+            success: true,
+            data: {
+                archivo_url: archivoUrl,
+                total_registros: altas.length,
+                fecha_generacion: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error generando reporte de altas:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al generar reporte de altas'
+        });
+    }
+});
+module.exports = router;
+
+
 /frontend/src/global.css:
 --------------------------------------------------------------------------------
 :root {
   /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
+  --grnb: #29ce6e;   /* Verde azulado oscuro */
   --blub: #2c3138;   /* Azul claro */
   --blud: #1B1E23;   /* Azul oscuro */
   --white: #ffffff;
@@ -1996,8 +1685,8 @@ module.exports = EstadisticaService;
   --bludd: #1B6DA7;
   --blub-dark: #131923; /* BLUD - Azul más oscuro */
   --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
+  --grnd: #37b670;     /* GRND - Verde */
+  --grnl: #30ff64;     /* GRNL - Verde claro */
   --rr: #fa3144;       /* RR - Rojo */
   --yy: #ffa631;       /* YY - Amarillo */
   --rl: #ff5363;       /* RL - Rojo claro */
@@ -2007,7 +1696,6 @@ module.exports = EstadisticaService;
 
 [data-theme="light"] {
   /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
   --blub: #fff;   /* Azul claro */
   --blud: #e8f1fa;   /* Azul oscuro */
   --white: #1B1E23;
@@ -2017,19 +1705,6 @@ module.exports = EstadisticaService;
 
   --whiteSET: #ffffff;
   --bludSET: #1B1E23;
-  
-  /* Colores adicionales */
-  --blu: #1F85BA;      /* GRNB - Azul */
-  --bludd: #1B6DA7;
-  --blub-dark: #131923; /* BLUD - Azul más oscuro */
-  --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
-  --rr: #fa3144;       /* RR - Rojo */
-  --yy: #ffa631;       /* YY - Amarillo */
-  --rl: #ff5363;       /* RL - Rojo claro */
-  --yl: #ffdd55;       /* YL - Amarillo claro */
-  --wt: #ffffff;       /* WT - Blanco */
 }
 
 * {
@@ -2381,13 +2056,13 @@ body {
   width: 100%;
   padding: 10px;
   border-radius: 5px;
-  border: 2px solid var(--blu);
+  border: 1px solid var(--blu);
   background: var(--blud);
   color: var(--white);
 }
 
 .search-input:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -2404,7 +2079,7 @@ body {
 }
 
 .textarea-field:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -2419,7 +2094,7 @@ body {
 }
 
 .select-field:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -2499,12 +2174,12 @@ body {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 2px solid var(--grnb);
+  border-bottom: 2px solid var(--blu);
 }
 
 .modal-title {
   margin: 0;
-  color: var(--grnb);
+  color: var(--blu);
   font-size: 1.5em;
 }
 
@@ -2538,7 +2213,7 @@ body {
   justify-content: flex-end;
   margin-top: 20px;
   padding-top: 15px;
-  border-top: 2px solid var(--grnb);
+  border-top: 2px solid var(--blu);
 }
 
 /* ===== GRIDS Y LAYOUTS ===== */
@@ -2799,7 +2474,7 @@ body {
 }
 
 .data-table th {
-  background: var(--bluDSET);
+  background: var(--bludSET);
   padding: 12px 15px;
   text-align: left;
   font-weight: bold;
@@ -2830,7 +2505,7 @@ body {
 }
 
 .badge-success {
-  background: rgba(31, 133, 186, 0.2);
+  background: rgba(31, 186, 121, 0.2);
   color: var(--grnb);
   border: 1px solid var(--grnb);
 }
@@ -2864,7 +2539,7 @@ body {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--grnd) 0%, var(--grnb) 100%);
+  background: linear-gradient(90deg, var(--blu) 0%, var(--bludd) 100%);
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -2919,8 +2594,8 @@ body {
 }
 
 .tab.active {
-  color: var(--grnb);
-  border-bottom: 2px solid var(--grnb);
+  color: var(--blu);
+  border-bottom: 2px solid var(--blu);
 }
 
 /* Accordion */
@@ -3238,7 +2913,7 @@ body {
 
 .progreso-text {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--blu);
   min-width: 40px;
 }
 
@@ -3265,7 +2940,7 @@ body {
 
 .bar-fill {
   width: 20px;
-  background: linear-gradient(to top, var(--grnd), var(--grnb));
+  background: linear-gradient(to top, var(--blu), var(--bludd));
   border-radius: 4px 4px 0 0;
   transition: height 0.3s ease;
 }
@@ -3407,13 +3082,13 @@ body {
 
 .event-type {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--blu);
   margin-top: 2px;
 }
 
 .event-notes {
   font-size: 11px;
-  color: var(--grayl);
+  color: var(--white);
   margin-top: 2px;
 }
 
@@ -3446,7 +3121,7 @@ body {
 }
 
 .cita-card:hover {
-  border-color: var(--grnb);
+
   transform: translateY(-2px);
 }
 
@@ -3513,8 +3188,8 @@ body {
 
 .config-tab.active {
   background: rgba(31, 133, 186, 0.2);
-  color: var(--grnb);
-  border-left: 3px solid var(--grnb);
+  color: var(--blu);
+  border: 3px solid var(--blu);
 }
 
 .config-tab svg {
@@ -3643,7 +3318,7 @@ body {
 }
 
 input:checked + .slider {
-  background-color: var(--grnb);
+  background-color: var(--blu);
 }
 
 input:checked + .slider:before {
@@ -3780,14 +3455,14 @@ input:checked + .slider:before {
   overflow-y: auto;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
-  border: 2px solid var(--grnd);
+  border: 2px solid var(--blu);
 }
 
 .modal-title-nueva-cita {
-  color: var(--grnd);
+  color: var(--blu);
   margin-bottom: 20px;
   font-size: 24px;
-  border-bottom: 2px solid var(--grnd);
+  border-bottom: 2px solid var(--blu);
   padding-bottom: 10px;
   display: flex;
   align-items: center;
@@ -3808,8 +3483,8 @@ input:checked + .slider:before {
 
 .form-input-nueva-cita:focus {
   outline: none;
-  border-color: var(--grnd);
-  box-shadow: 0 0 0 2px rgba(55, 182, 156, 0.2);
+  border-color: var(--blu);
+
 }
 
 .form-select-nueva-cita {
@@ -3826,7 +3501,7 @@ input:checked + .slider:before {
 
 .form-select-nueva-cita:focus {
   outline: none;
-  border-color: var(--grnd);
+  border-color: var(--blu);
 }
 
 .form-textarea-nueva-cita {
@@ -3863,12 +3538,11 @@ input:checked + .slider:before {
 }
 
 .button-success-nueva-cita {
-  background: var(--grnd);
+  background: var(--grnb);
   color: var(--white);
 }
 
 .button-success-nueva-cita:hover {
-  background: var(--grnb);
   transform: translateY(-2px);
 }
 
@@ -3896,8 +3570,8 @@ input:checked + .slider:before {
   padding: 15px;
   border-radius: 5px;
   margin-bottom: 15px;
-  color: var(--grnl);
-  border-left: 4px solid var(--grnd);
+  color: var(--blu);
+  border-left: 4px solid var(--blu);
 }
 
 /* Animaciones */
@@ -4012,7 +3686,7 @@ input:checked + .slider:before {
 /* Expedientes */
 .diagnostico-tag {
   background: rgba(31, 133, 186, 0.1);
-  color: var(--grnb);
+  color: var(--blu);
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
@@ -4083,7 +3757,7 @@ input:checked + .slider:before {
 }
 
 .detail-row strong {
-  color: var(--grnb);
+  color: var(--blu);
 }
 
 .detail-row.notes {
@@ -4254,7 +3928,7 @@ input:checked + .slider:before {
   width: 60px;
   height: 60px;
   border: 5px solid rgba(255, 255, 255, 0.1);
-  border-top: 5px solid var(--grnb);
+  border-top: 5px solid var(--blu);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px;
@@ -4262,7 +3936,7 @@ input:checked + .slider:before {
 
 .global-loader-text {
   font-size: 18px;
-  color: var(--grnb);
+  color: var(--blu);
   font-weight: bold;
 }
 
@@ -4369,9 +4043,29 @@ input:checked + .slider:before {
 
 
 
-/frontend/src/services/api.js:
+/frontend/src/index.js:
 --------------------------------------------------------------------------------
-// frontend/src/services/api.js
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
+
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
+
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+/backend/src/services/api.js:
+--------------------------------------------------------------------------------
 const API_BASE_URL = 'http://localhost:3000/api';
 
 class ApiService {
@@ -4381,106 +4075,52 @@ class ApiService {
 
   static getHeaders() {
     const token = this.getToken();
-    const headers = {
+    return {
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     };
-    
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
-    return headers;
-  }
-
-  static async request(url, options = {}) {
-    const { method = 'GET', data } = options;
-    
-    const config = {
-      method,
-      headers: this.getHeaders(),
-      credentials: 'include' // Importante para cookies si las usas
-    };
-    
-    if (data) {
-      config.body = JSON.stringify(data);
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}${url}`, config);
-      return this.handleResponse(response);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      throw error;
-    }
   }
 
   static async get(url) {
-    return this.request(url);
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
   }
 
   static async post(url, data) {
-    return this.request(url, { method: 'POST', data });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
   }
 
   static async put(url, data) {
-    return this.request(url, { method: 'PUT', data });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
   }
 
   static async delete(url) {
-    return this.request(url, { method: 'DELETE' });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
   }
 
   static async handleResponse(response) {
-      // Primero verificar si hay contenido
-      if (response.status === 204 || response.status === 205) {
-          return {};
-      }
-      
-      const contentType = response.headers.get('content-type');
-      
-      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
-      if (contentType && contentType.includes('text/csv')) {
-          const text = await response.text();
-          
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
-          
-          // Para CSV, devolvemos el texto directamente
-          return text;
-      }
-      
-      // Si no es CSV, verificar si es JSON
-      if (!contentType || !contentType.includes('application/json')) {
-          const text = await response.text();
-          
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
-          
-          // Intentar parsear como JSON si es posible
-          try {
-              return text ? JSON.parse(text) : {};
-          } catch {
-              return text;
-          }
-      }
-      
-      // Si es JSON, parsearlo normalmente
-      const data = await response.json();
-      
-      if (!response.ok) {
-          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
-          const error = new Error(errorMessage);
-          error.status = response.status;
-          error.data = data;
-          throw error;
-      }
-      
-      return data;
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
   }
-
-  // Métodos específicos para el dashboard
   static async getDashboardCoordinador() {
     return this.get('/dashboard/coordinador');
   }
@@ -4492,14 +4132,101 @@ class ApiService {
   static async getEstadisticas() {
     return this.get('/estadisticas/generales');
   }
-
-  // Método para obtener información del usuario actual
-  static async getCurrentUser() {
-    return this.get('/auth/me');
-  }
 }
 
 export default ApiService;
+
+
+/backend/server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
+
+const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes');
+const roleRoutes = require('./src/routes/roleRoutes');
+const fundacionRoutes = require('./src/routes/fundacionRoutes');
+const asignacionRoutes = require('./src/routes/asignacionRoutes');
+const sesionRoutes = require('./src/routes/sesionRoutes');
+const notificacionRoutes = require('./src/routes/notificacionRoutes');
+const altaRoutes = require('./src/routes/altaRoutes');
+const reporteRoutes = require('./src/routes/reporteRoutes');
+const observacionRoutes = require('./src/routes/observacionRoutes');
+const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
+const expedienteRoutes = require('./src/routes/expedienteRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const agendaRoutes = require('./src/routes/agendaRoutes');
+const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
+app.use('/api/fundaciones', fundacionRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/sesiones', sesionRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/altas', altaRoutes);
+app.use('/api/reportes', reporteRoutes);
+app.use('/api/observaciones', observacionRoutes);
+app.use('/api/disponibilidad', disponibilidadRoutes);
+app.use('/api/expedientes', expedienteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agenda', agendaRoutes);
+app.use('/api/estadisticas', estadisticaRoutes);
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
 
 
 /frontend/src/App.js:
@@ -4590,6 +4317,332 @@ function App() {
 }
 
 export default App;
+
+
+/backend/src/services/reporteService.js:
+--------------------------------------------------------------------------------
+const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
+const fs = require('fs').promises;
+const path = require('path');
+
+class ReporteService {
+    
+    static async generarExcel(datos, tipoReporte) {
+        try {
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator = 'Sistema de Gestión Psicológica';
+            workbook.created = new Date();
+            
+            let worksheet;
+            let columns = [];
+            
+            switch (tipoReporte) {
+                case 'citas':
+                    worksheet = workbook.addWorksheet('Reporte de Citas');
+                    columns = [
+                        { header: 'MES', key: 'MES', width: 10 },
+                        { header: 'MODALIDAD', key: 'MODALIDAD', width: 15 },
+                        { header: 'Empleado', key: 'Empleado', width: 20 },
+                        { header: 'ESTUDIANTE', key: 'ESTUDIANTE', width: 25 },
+                        { header: 'CARRERA', key: 'CARRERA', width: 20 },
+                        { header: 'MATRICULA', key: 'MATRICULA', width: 15 },
+                        { header: 'NOMBRE', key: 'NOMBRE', width: 25 },
+                        { header: 'EDAD', key: 'EDAD', width: 8 },
+                        { header: 'SEXO', key: 'SEXO', width: 10 },
+                        { header: 'MOTIVO DE CONSULTA', key: 'MOTIVO_DE_CONSULTA', width: 30 },
+                        { header: 'TELEFONO', key: 'TELEFONO', width: 15 },
+                        { header: 'CORREO', key: 'CORREO', width: 25 },
+                        { header: 'DIA', key: 'DIA', width: 12 },
+                        { header: 'HORA', key: 'HORA', width: 10 },
+                        { header: 'ESTATUS', key: 'ESTATUS', width: 12 },
+                        { header: 'PRACTICANTE', key: 'PRACTICANTE', width: 20 },
+                        { header: 'OBSERVACIONES', key: 'OBSERVACIONES', width: 30 },
+                        { header: 'ATIENDE', key: 'ATIENDE', width: 20 }
+                    ];
+                    break;
+                    
+                case 'pacientes':
+                    worksheet = workbook.addWorksheet('Reporte de Pacientes');
+                    columns = [
+                        { header: 'MES', key: 'MES', width: 10 },
+                        { header: 'NOMBRE', key: 'NOMBRE', width: 25 },
+                        { header: 'TELEFONO', key: 'TELEFONO', width: 15 },
+                        { header: 'MATRICULA', key: 'MATRICULA', width: 15 },
+                        { header: 'CUATRI', key: 'CUATRI', width: 10 },
+                        { header: 'TIPO DE SERVICIO', key: 'TIPO_DE_SERVICIO', width: 20 },
+                        { header: 'FECHA DE PRESENTACION', key: 'FECHA_DE_PRESENTACION', width: 20 },
+                        { header: 'No. de sesiones terapéuticas personales', key: 'No_de_sesiones_terapeuticas_personales', width: 15 },
+                        { header: 'FECHA DE ACEPTACION', key: 'FECHA_DE_ACEPTACION', width: 20 },
+                        { header: 'MMPI-2 RF', key: 'MMPI_2_RF', width: 15 },
+                        { header: 'FECHA DE TERMINO', key: 'FECHA_DE_TERMINO', width: 20 },
+                        { header: 'CARTA DE LIBERACION', key: 'CARTA_DE_LIBERACION', width: 20 },
+                        { header: 'HORAS OBJETIVO', key: 'HORAS_OBJETIVO', width: 15 },
+                        { header: 'HORAS REALIZADAS', key: 'HORAS_REALIZADAS', width: 15 },
+                        { header: 'HORAS FALTANTES', key: 'HORAS_FALTANTES', width: 15 },
+                        { header: 'SERVICIO COMUNITARIO LIBERADO', key: 'SERVICIO_COMUNITARIO_LIBERADO', width: 20 },
+                        { header: 'QUIEN ATIENDE', key: 'QUIEN_ATIENDE', width: 20 },
+                        { header: 'OBSERVACIONES', key: 'OBSERVACIONES', width: 30 }
+                    ];
+                    break;
+                    
+                default:
+                    worksheet = workbook.addWorksheet('Reporte');
+                    columns = Object.keys(datos[0] || {}).map(key => ({
+                        header: key.toUpperCase(),
+                        key: key,
+                        width: 20
+                    }));
+            }
+            
+            worksheet.columns = columns;
+            
+            // Agregar datos
+            if (datos && datos.length > 0) {
+                datos.forEach(row => {
+                    worksheet.addRow(row);
+                });
+            }
+            
+            // Aplicar estilos a la cabecera
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.getRow(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE0E0E0' }
+            };
+            
+            // Autoajustar columnas
+            worksheet.columns.forEach(column => {
+                let maxLength = 0;
+                column.eachCell({ includeEmpty: true }, cell => {
+                    const cellLength = cell.value ? cell.value.toString().length : 0;
+                    if (cellLength > maxLength) {
+                        maxLength = cellLength;
+                    }
+                });
+                column.width = Math.min(maxLength + 2, 50);
+            });
+            
+            // Generar buffer
+            const buffer = await workbook.xlsx.writeBuffer();
+            return buffer;
+            
+        } catch (error) {
+            console.error('Error en generarExcel:', error);
+            throw error;
+        }
+    }
+    
+    static async generarPDF(datos, tipoReporte, titulo) {
+        return new Promise((resolve, reject) => {
+            try {
+                const doc = new PDFDocument({ margin: 50 });
+                const chunks = [];
+                
+                doc.on('data', chunk => chunks.push(chunk));
+                doc.on('end', () => {
+                    const buffer = Buffer.concat(chunks);
+                    resolve(buffer);
+                });
+                
+                // Encabezado
+                doc.fontSize(20).text(titulo || 'Reporte del Sistema', { align: 'center' });
+                doc.moveDown();
+                doc.fontSize(12).text(`Generado: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, { align: 'center' });
+                doc.moveDown(2);
+                
+                // Contenido según tipo de reporte
+                switch (tipoReporte) {
+                    case 'resumen':
+                        this.generarPDFResumen(doc, datos);
+                        break;
+                    case 'paciente':
+                        this.generarPDFPaciente(doc, datos);
+                        break;
+                    default:
+                        this.generarPDFTabla(doc, datos);
+                }
+                
+                doc.end();
+                
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+    
+    static generarPDFResumen(doc, datos) {
+        doc.fontSize(16).text('Resumen Estadístico', { underline: true });
+        doc.moveDown();
+        
+        if (datos.estadisticas) {
+            const stats = datos.estadisticas;
+            doc.fontSize(12);
+            doc.text(`Total de Pacientes: ${stats.total_pacientes || 0}`);
+            doc.text(`Pacientes Activos: ${stats.pacientes_activos || 0}`);
+            doc.text(`Citas del Mes: ${stats.total_citas_mes || 0}`);
+            doc.text(`Citas Completadas: ${stats.citas_completadas || 0}`);
+            doc.text(`Tasa de Completitud: ${stats.tasa_completitud || '0'}%`);
+            doc.moveDown();
+        }
+        
+        if (datos.evolucion_mensual && datos.evolucion_mensual.length > 0) {
+            doc.fontSize(14).text('Evolución Mensual:', { underline: true });
+            doc.moveDown();
+            
+            datos.evolucion_mensual.forEach(item => {
+                doc.fontSize(10).text(`${item.mes}: ${item.total_citas} citas (${item.citas_completadas} completadas)`);
+            });
+        }
+    }
+    
+    static generarPDFPaciente(doc, datos) {
+        doc.fontSize(16).text(`Expediente de ${datos.paciente?.nombre || ''} ${datos.paciente?.apellido || ''}`, { underline: true });
+        doc.moveDown();
+        
+        // Información básica
+        doc.fontSize(12).text('Información Básica:', { underline: true });
+        doc.fontSize(10);
+        if (datos.paciente) {
+            doc.text(`Nombre: ${datos.paciente.nombre} ${datos.paciente.apellido}`);
+            doc.text(`Teléfono: ${datos.paciente.telefono || 'No especificado'}`);
+            doc.text(`Email: ${datos.paciente.email || 'No especificado'}`);
+            doc.text(`Fecha de Nacimiento: ${datos.paciente.fecha_nacimiento || 'No especificado'}`);
+        }
+        doc.moveDown();
+        
+        // Historial de sesiones
+        if (datos.sesiones && datos.sesiones.length > 0) {
+            doc.fontSize(12).text('Historial de Sesiones:', { underline: true });
+            doc.moveDown();
+            
+            datos.sesiones.forEach((sesion, index) => {
+                doc.fontSize(10).text(`${index + 1}. ${sesion.fecha} - ${sesion.psicologo_nombre}`);
+                if (sesion.conclusion) {
+                    doc.fontSize(8).text(`   Conclusiones: ${sesion.conclusion.substring(0, 100)}...`);
+                }
+                doc.moveDown(0.5);
+            });
+        }
+    }
+    
+    static generarPDFTabla(doc, datos) {
+        if (!datos || datos.length === 0) {
+            doc.text('No hay datos para mostrar');
+            return;
+        }
+        
+        // Obtener columnas
+        const columnas = Object.keys(datos[0]);
+        const anchoColumna = 500 / columnas.length;
+        
+        // Encabezado de tabla
+        doc.fontSize(10).font('Helvetica-Bold');
+        let xPos = 50;
+        
+        columnas.forEach(columna => {
+            doc.text(columna.toUpperCase(), xPos, doc.y, { width: anchoColumna });
+            xPos += anchoColumna;
+        });
+        
+        doc.moveDown();
+        doc.font('Helvetica');
+        
+        // Línea separadora
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+        doc.moveDown();
+        
+        // Filas de datos
+        datos.forEach(fila => {
+            xPos = 50;
+            columnas.forEach(columna => {
+                const valor = fila[columna] !== null && fila[columna] !== undefined ? 
+                            fila[columna].toString() : '';
+                doc.fontSize(8).text(valor.substring(0, 30), xPos, doc.y, { width: anchoColumna });
+                xPos += anchoColumna;
+            });
+            doc.moveDown();
+        });
+    }
+    
+    static async generarCSV(datos, delimitador = ',') {
+        if (!datos || datos.length === 0) {
+            return '';
+        }
+        
+        const columnas = Object.keys(datos[0]);
+        let csv = columnas.join(delimitador) + '\n';
+        
+        datos.forEach(fila => {
+            const valores = columnas.map(columna => {
+                const valor = fila[columna];
+                if (valor === null || valor === undefined) {
+                    return '';
+                }
+                // Escapar comillas y delimitadores
+                const valorStr = valor.toString();
+                if (valorStr.includes(delimitador) || valorStr.includes('"') || valorStr.includes('\n')) {
+                    return `"${valorStr.replace(/"/g, '""')}"`;
+                }
+                return valorStr;
+            });
+            csv += valores.join(delimitador) + '\n';
+        });
+        
+        return csv;
+    }
+    
+    static async guardarReporteArchivo(buffer, formato, nombreBase) {
+        try {
+            const timestamp = new Date().getTime();
+            const nombreArchivo = `${nombreBase}_${timestamp}.${formato}`;
+            const rutaArchivo = path.join(__dirname, '..', '..', 'reports', nombreArchivo);
+            
+            // Crear directorio si no existe
+            await fs.mkdir(path.dirname(rutaArchivo), { recursive: true });
+            
+            // Guardar archivo
+            await fs.writeFile(rutaArchivo, buffer);
+            
+            return {
+                nombre: nombreArchivo,
+                ruta: `/reports/${nombreArchivo}`,
+                tamano: buffer.length
+            };
+            
+        } catch (error) {
+            console.error('Error al guardar reporte:', error);
+            throw error;
+        }
+    }
+    
+    static async eliminarReporteAntiguos(dias = 30) {
+        try {
+            const directorio = path.join(__dirname, '..', '..', 'reports');
+            const fechaLimite = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+            
+            const archivos = await fs.readdir(directorio);
+            
+            for (const archivo of archivos) {
+                const rutaArchivo = path.join(directorio, archivo);
+                const stats = await fs.stat(rutaArchivo);
+                
+                if (stats.mtime < fechaLimite) {
+                    await fs.unlink(rutaArchivo);
+                    console.log(`Eliminado archivo antiguo: ${archivo}`);
+                }
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error al eliminar reportes antiguos:', error);
+            return false;
+        }
+    }
+}
+
+module.exports = ReporteService;
 
 
 ================================================================================

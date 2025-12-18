@@ -2,7 +2,7 @@ const Alta = require('../models/altaModel');
 const Paciente = require('../models/pacienteModel');
 const Cita = require('../models/citaModel');
 const Asignacion = require('../models/asignacionModel');
-const { QueryTypes } = require('sequelize');
+const { QueryTypes, Op } = require('sequelize'); // AÑADE Op aquí
 const sequelize = require('../config/db');
 
 class AltaController {
@@ -20,16 +20,6 @@ class AltaController {
                 return res.status(404).json({
                     success: false,
                     message: 'Paciente no encontrado o ya dado de alta'
-                });
-            }
-            
-            // Verificar que el usuario tiene permisos
-            const tienePermiso = await this.verificarPermisoAlta(usuarioId, paciente_id);
-            
-            if (!tienePermiso) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para dar de alta a este paciente'
                 });
             }
             
@@ -83,7 +73,9 @@ class AltaController {
                     transaction
                 });
                 
-                // 4. Cancelar citas futuras
+                // 4. Cancelar citas futuras - VERSIÓN CORREGIDA
+                const fechaHoy = new Date().toISOString().split('T')[0];
+                
                 await Cita.update({
                     estado: 'cancelada',
                     motivo_cancelacion: `Paciente dado de alta (${tipo_alta})`,
@@ -91,8 +83,8 @@ class AltaController {
                 }, {
                     where: {
                         paciente_id,
-                        fecha: { [sequelize.Op.gte]: new Date().toISOString().split('T')[0] },
-                        estado: { [sequelize.Op.in]: ['programada', 'confirmada'] }
+                        fecha: { [Op.gte]: fechaHoy },
+                        estado: { [Op.in]: ['programada', 'confirmada'] }
                     },
                     transaction
                 });
@@ -165,6 +157,7 @@ class AltaController {
                 
             } catch (error) {
                 await transaction.rollback();
+                console.error('Error en transacción de alta:', error);
                 throw error;
             }
             
@@ -267,12 +260,12 @@ class AltaController {
                     u_psi.apellido AS psicologo_apellido,
                     (SELECT COUNT(*) FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada') AS total_sesiones,
                     (SELECT GROUP_CONCAT(DISTINCT DATE_FORMAT(fecha, '%Y-%m-%d') ORDER BY fecha DESC SEPARATOR ', ') 
-                     FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada' LIMIT 10) AS ultimas_sesiones
+                    FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada' LIMIT 10) AS ultimas_sesiones
                 FROM altas a
                 JOIN pacientes p ON a.paciente_id = p.id
                 JOIN users u ON a.usuario_id = u.id
                 LEFT JOIN (
-                    SELECT DISTINCT paciente_id, psicologo_id 
+                    SELECT paciente_id, psicologo_id 
                     FROM asignaciones 
                     WHERE paciente_id = ? 
                     ORDER BY fecha_inicio DESC 
@@ -312,7 +305,7 @@ class AltaController {
         try {
             const { fecha_inicio, fecha_fin } = req.query;
             
-            const query = `
+            let query = `
                 SELECT 
                     tipo_alta,
                     COUNT(*) as total,
@@ -324,7 +317,7 @@ class AltaController {
                 WHERE 1=1
             `;
             
-            const replacements = [];
+            let replacements = [];
             
             if (fecha_inicio) {
                 query += ` AND fecha_alta >= ?`;
@@ -337,25 +330,39 @@ class AltaController {
             }
             
             query += ` GROUP BY tipo_alta, YEAR(fecha_alta), MONTH(fecha_alta)
-                      ORDER BY anio DESC, mes DESC, total DESC`;
+                    ORDER BY anio DESC, mes DESC, total DESC`;
             
             const estadisticas = await sequelize.query(query, {
                 replacements,
                 type: QueryTypes.SELECT
             });
             
-            // Totales generales
-            const [totales] = await sequelize.query(`
+            // Totales generales - AQUÍ ESTABA EL ERROR PRINCIPAL
+            // Crear la query para totales de forma dinámica
+            let totalesQuery = `
                 SELECT 
                     COUNT(*) as total_altas,
                     AVG(sesiones_totales) as promedio_sesiones_global,
                     MIN(fecha_alta) as primera_alta,
                     MAX(fecha_alta) as ultima_alta
                 FROM altas
-                WHERE 1=1 ${fecha_inicio ? 'AND fecha_alta >= ?' : ''} ${fecha_fin ? 'AND fecha_alta <= ?' : ''}
-            `, {
-                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : 
-                            fecha_inicio ? [fecha_inicio] : fecha_fin ? [fecha_fin] : [],
+                WHERE 1=1
+            `;
+            
+            let totalesReplacements = [];
+            
+            if (fecha_inicio) {
+                totalesQuery += ` AND fecha_alta >= ?`;
+                totalesReplacements.push(fecha_inicio);
+            }
+            
+            if (fecha_fin) {
+                totalesQuery += ` AND fecha_alta <= ?`;
+                totalesReplacements.push(fecha_fin);
+            }
+            
+            const [totales] = await sequelize.query(totalesQuery, {
+                replacements: totalesReplacements,
                 type: QueryTypes.SELECT
             });
             

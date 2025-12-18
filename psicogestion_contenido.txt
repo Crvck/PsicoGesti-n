@@ -1271,7 +1271,7 @@ const Alta = require('../models/altaModel');
 const Paciente = require('../models/pacienteModel');
 const Cita = require('../models/citaModel');
 const Asignacion = require('../models/asignacionModel');
-const { QueryTypes } = require('sequelize');
+const { QueryTypes, Op } = require('sequelize'); // AÑADE Op aquí
 const sequelize = require('../config/db');
 
 class AltaController {
@@ -1289,16 +1289,6 @@ class AltaController {
                 return res.status(404).json({
                     success: false,
                     message: 'Paciente no encontrado o ya dado de alta'
-                });
-            }
-            
-            // Verificar que el usuario tiene permisos
-            const tienePermiso = await this.verificarPermisoAlta(usuarioId, paciente_id);
-            
-            if (!tienePermiso) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para dar de alta a este paciente'
                 });
             }
             
@@ -1352,7 +1342,9 @@ class AltaController {
                     transaction
                 });
                 
-                // 4. Cancelar citas futuras
+                // 4. Cancelar citas futuras - VERSIÓN CORREGIDA
+                const fechaHoy = new Date().toISOString().split('T')[0];
+                
                 await Cita.update({
                     estado: 'cancelada',
                     motivo_cancelacion: `Paciente dado de alta (${tipo_alta})`,
@@ -1360,8 +1352,8 @@ class AltaController {
                 }, {
                     where: {
                         paciente_id,
-                        fecha: { [sequelize.Op.gte]: new Date().toISOString().split('T')[0] },
-                        estado: { [sequelize.Op.in]: ['programada', 'confirmada'] }
+                        fecha: { [Op.gte]: fechaHoy },
+                        estado: { [Op.in]: ['programada', 'confirmada'] }
                     },
                     transaction
                 });
@@ -1434,6 +1426,7 @@ class AltaController {
                 
             } catch (error) {
                 await transaction.rollback();
+                console.error('Error en transacción de alta:', error);
                 throw error;
             }
             
@@ -1536,12 +1529,12 @@ class AltaController {
                     u_psi.apellido AS psicologo_apellido,
                     (SELECT COUNT(*) FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada') AS total_sesiones,
                     (SELECT GROUP_CONCAT(DISTINCT DATE_FORMAT(fecha, '%Y-%m-%d') ORDER BY fecha DESC SEPARATOR ', ') 
-                     FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada' LIMIT 10) AS ultimas_sesiones
+                    FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada' LIMIT 10) AS ultimas_sesiones
                 FROM altas a
                 JOIN pacientes p ON a.paciente_id = p.id
                 JOIN users u ON a.usuario_id = u.id
                 LEFT JOIN (
-                    SELECT DISTINCT paciente_id, psicologo_id 
+                    SELECT paciente_id, psicologo_id 
                     FROM asignaciones 
                     WHERE paciente_id = ? 
                     ORDER BY fecha_inicio DESC 
@@ -1581,7 +1574,7 @@ class AltaController {
         try {
             const { fecha_inicio, fecha_fin } = req.query;
             
-            const query = `
+            let query = `
                 SELECT 
                     tipo_alta,
                     COUNT(*) as total,
@@ -1593,7 +1586,7 @@ class AltaController {
                 WHERE 1=1
             `;
             
-            const replacements = [];
+            let replacements = [];
             
             if (fecha_inicio) {
                 query += ` AND fecha_alta >= ?`;
@@ -1606,25 +1599,39 @@ class AltaController {
             }
             
             query += ` GROUP BY tipo_alta, YEAR(fecha_alta), MONTH(fecha_alta)
-                      ORDER BY anio DESC, mes DESC, total DESC`;
+                    ORDER BY anio DESC, mes DESC, total DESC`;
             
             const estadisticas = await sequelize.query(query, {
                 replacements,
                 type: QueryTypes.SELECT
             });
             
-            // Totales generales
-            const [totales] = await sequelize.query(`
+            // Totales generales - AQUÍ ESTABA EL ERROR PRINCIPAL
+            // Crear la query para totales de forma dinámica
+            let totalesQuery = `
                 SELECT 
                     COUNT(*) as total_altas,
                     AVG(sesiones_totales) as promedio_sesiones_global,
                     MIN(fecha_alta) as primera_alta,
                     MAX(fecha_alta) as ultima_alta
                 FROM altas
-                WHERE 1=1 ${fecha_inicio ? 'AND fecha_alta >= ?' : ''} ${fecha_fin ? 'AND fecha_alta <= ?' : ''}
-            `, {
-                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : 
-                            fecha_inicio ? [fecha_inicio] : fecha_fin ? [fecha_fin] : [],
+                WHERE 1=1
+            `;
+            
+            let totalesReplacements = [];
+            
+            if (fecha_inicio) {
+                totalesQuery += ` AND fecha_alta >= ?`;
+                totalesReplacements.push(fecha_inicio);
+            }
+            
+            if (fecha_fin) {
+                totalesQuery += ` AND fecha_alta <= ?`;
+                totalesReplacements.push(fecha_fin);
+            }
+            
+            const [totales] = await sequelize.query(totalesQuery, {
+                replacements: totalesReplacements,
                 type: QueryTypes.SELECT
             });
             
@@ -6466,11 +6473,13 @@ CREATE TABLE pacientes (
     activo BOOLEAN DEFAULT TRUE,
     notas TEXT,
     fundacion_id INT,
+    ultimo_no_aprobado DATE NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
     INDEX idx_activo (activo),
-    INDEX idx_apellido_nombre (apellido, nombre)
+    INDEX idx_apellido_nombre (apellido, nombre),
+    INDEX idx_ultimo_no_aprobado (ultimo_no_aprobado)
 );
 
 CREATE TABLE expedientes (
@@ -6593,7 +6602,7 @@ CREATE TABLE altas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     paciente_id INT NOT NULL,
     usuario_id INT NOT NULL,
-    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro') NOT NULL,
+    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro', 'no_aprobado') NOT NULL,
     fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
     motivo_detallado TEXT,
     recomendaciones TEXT,
@@ -9473,6 +9482,8 @@ const router = express.Router();
 const verifyToken = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
 const Paciente = require('../models/pacienteModel');
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db'); // AÑADE ESTA IMPORTACIÓN
 
 // Listar pacientes (solo coordinadores)
 router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
@@ -9495,7 +9506,7 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
       notas: p.notas,
       fundacion_id: p.fundacion_id,
       fecha_ingreso: p.created_at,
-      fecha_alta: p.deleted_at || null // placeholder if needed
+      fecha_alta: p.deleted_at || null
     }));
 
     res.json(mapped);
@@ -9604,6 +9615,344 @@ router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res
   }
 });
 
+// Obtener pacientes activos
+router.get('/activos', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                p.*,
+                CONCAT(p.nombre, ' ', p.apellido) as nombre_completo,
+                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
+                COUNT(DISTINCT c.id) as sesiones_completadas,
+                CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
+                a.fecha_inicio,
+                e.motivo_consulta
+            FROM pacientes p
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
+            LEFT JOIN users u_bec ON a.becario_id = u_bec.id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE p.activo = true
+            GROUP BY p.id, e.id, u_psi.id, u_bec.id, a.id
+            ORDER BY p.apellido, p.nombre
+        `;
+        
+        const pacientes = await sequelize.query(query, {
+            type: QueryTypes.SELECT
+        });
+        
+        res.json({
+            success: true,
+            data: pacientes
+        });
+        
+    } catch (error) {
+        console.error('Error al obtener pacientes activos:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener pacientes activos',
+            error: error.message
+        });
+    }
+});
+
+router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        console.log('🔍 Solicitando candidatos a alta...');
+        
+        // Query CORREGIDA - solo agrupa por las columnas del SELECT
+        const query = `
+            SELECT 
+                p.id,
+                CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
+                e.motivo_consulta,
+                DATE(p.created_at) as fecha_ingreso,
+                COUNT(DISTINCT c.id) as sesiones_completadas,
+                CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
+                CASE 
+                    WHEN COUNT(DISTINCT c.id) >= 15 THEN 85
+                    WHEN COUNT(DISTINCT c.id) >= 10 THEN 70
+                    WHEN COUNT(DISTINCT c.id) >= 5 THEN 50
+                    ELSE 30
+                END as progreso_estimado
+            FROM pacientes p
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
+            LEFT JOIN users u_bec ON a.becario_id = u_bec.id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE p.activo = true
+            -- EXCLUIR pacientes marcados como no aprobados en los últimos 30 días
+            AND (p.ultimo_no_aprobado IS NULL OR p.ultimo_no_aprobado < DATE_SUB(CURDATE(), INTERVAL 30 DAY))
+            GROUP BY p.id, e.motivo_consulta, u_psi.nombre, u_psi.apellido, u_bec.nombre, u_bec.apellido
+            HAVING COUNT(DISTINCT c.id) >= 3
+            ORDER BY COUNT(DISTINCT c.id) DESC
+            LIMIT 10
+        `;
+        
+        console.log('📊 Ejecutando query de candidatos a alta...');
+        const candidatos = await sequelize.query(query, {
+            type: QueryTypes.SELECT
+        });
+        
+        console.log(`✅ Candidatos encontrados: ${candidatos.length}`);
+        
+        // Para debugging: mostrar qué pacientes se encontraron
+        if (candidatos.length > 0) {
+            console.log('📋 Lista de candidatos encontrados:');
+            candidatos.forEach((c, i) => {
+                console.log(`${i + 1}. ${c.paciente_nombre} - ${c.sesiones_completadas} sesiones`);
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: candidatos
+        });
+        
+    } catch (error) {
+        console.error('❌ Error CRÍTICO al obtener candidatos a alta:', error);
+        console.error('📌 Mensaje de error:', error.message);
+        console.error('📌 Stack trace:', error.stack);
+        
+        // Para debugging: probar una query más simple
+        try {
+            console.log('🔄 Probando query alternativa...');
+            const querySimple = `
+                SELECT p.id, CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre, 
+                       p.ultimo_no_aprobado
+                FROM pacientes p
+                WHERE p.activo = true
+                LIMIT 5
+            `;
+            const prueba = await sequelize.query(querySimple, { type: QueryTypes.SELECT });
+            console.log('🔍 Resultado de prueba:', prueba);
+        } catch (err) {
+            console.error('❌ Error en query de prueba:', err.message);
+        }
+        
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener candidatos a alta: ' + error.message,
+            debug: process.env.NODE_ENV === 'development' ? {
+                error: error.message,
+                stack: error.stack
+            } : undefined
+        });
+    }
+});
+
+// Obtener paciente por ID con detalles
+router.get('/:id', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const query = `
+            SELECT 
+                p.*,
+                CONCAT(p.nombre, ' ', p.apellido) as nombre_completo,
+                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
+                COUNT(DISTINCT c.id) as sesiones_completadas,
+                CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
+                a.fecha_inicio,
+                a.estado as estado_asignacion,
+                e.motivo_consulta,
+                e.diagnostico_presuntivo,
+                e.riesgo_suicida
+            FROM pacientes p
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
+            LEFT JOIN users u_bec ON a.becario_id = u_bec.id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE p.id = ?
+            GROUP BY p.id, e.id, u_psi.id, u_bec.id, a.id
+        `;
+        
+        const [paciente] = await sequelize.query(query, {
+            replacements: [id],
+            type: QueryTypes.SELECT
+        });
+        
+        if (!paciente) {
+            return res.status(404).json({
+                success: false,
+                message: 'Paciente no encontrado'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: paciente
+        });
+        
+    } catch (error) {
+        console.error('Error al obtener paciente:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener paciente'
+        });
+    }
+});
+
+// backend/src/routes/pacienteRoutes.js - Agrega este endpoint
+router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { motivo } = req.body;
+        
+        // Registrar en logs o en una tabla específica
+        await sequelize.query(`
+            INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
+            VALUES (?, 'modificacion', 'altas', 'No aprobar alta paciente', ?, NOW())
+        `, {
+            replacements: [req.user.id, `Paciente ${id} no aprobado para alta - Motivo: ${motivo || 'Sin motivo especificado'}`]
+        });
+        
+        // También podrías crear una notificación para el psicólogo
+        const [pacienteInfo] = await sequelize.query(`
+            SELECT CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                   a.psicologo_id
+            FROM pacientes p
+            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+            WHERE p.id = ?
+        `, {
+            replacements: [id],
+            type: QueryTypes.SELECT
+        });
+        
+        if (pacienteInfo && pacienteInfo.psicologo_id) {
+            await sequelize.query(`
+                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                VALUES (?, 'observacion_nueva', 'Paciente no aprobado para alta', 
+                        CONCAT('El paciente ', ?, ' no fue aprobado para alta terapéutica. Continuar tratamiento.'), NOW())
+            `, {
+                replacements: [pacienteInfo.psicologo_id, pacienteInfo.paciente_nombre]
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Paciente marcado como no aprobado para alta'
+        });
+        
+    } catch (error) {
+        console.error('Error al marcar paciente como no aprobado:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al procesar la solicitud'
+        });
+    }
+});
+
+router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { motivo } = req.body || {}; // Agregar campo para motivo
+        
+        console.log(`📝 Marcando paciente ${id} como no aprobado...`);
+        
+        // Verificar que el paciente existe y está activo
+        const paciente = await Paciente.findByPk(id);
+        
+        if (!paciente || !paciente.activo) {
+            return res.status(404).json({
+                success: false,
+                message: 'Paciente no encontrado o ya inactivo'
+            });
+        }
+        
+        // 1. Obtener estadísticas del paciente
+        const [estadisticas] = await sequelize.query(`
+            SELECT 
+                COUNT(*) as total_sesiones,
+                COUNT(CASE WHEN estado = 'completada' THEN 1 END) as sesiones_completadas
+            FROM citas 
+            WHERE paciente_id = ?
+            AND estado IN ('completada', 'cancelada')
+        `, {
+            replacements: [id],
+            type: QueryTypes.SELECT
+        });
+        
+        // 2. Crear registro en la tabla altas con tipo 'no_aprobado'
+        await sequelize.query(`
+            INSERT INTO altas (
+                paciente_id, 
+                usuario_id, 
+                tipo_alta, 
+                fecha_alta, 
+                motivo_detallado, 
+                sesiones_totales,
+                created_at
+            ) VALUES (?, ?, ?, CURDATE(), ?, ?, NOW())
+        `, {
+            replacements: [
+                id,
+                req.user.id,
+                'no_aprobado',  // Nuevo tipo de alta
+                motivo || 'Paciente no aprobado para alta terapéutica por el coordinador',
+                estadisticas?.sesiones_completadas || 0
+            ]
+        });
+        
+        // 3. Actualizar la columna ultimo_no_aprobado (para no mostrarlo en candidatos)
+        await sequelize.query(`
+            UPDATE pacientes 
+            SET ultimo_no_aprobado = CURDATE()
+            WHERE id = ?
+        `, {
+            replacements: [id]
+        });
+        
+        // 4. Registrar en logs
+        await sequelize.query(`
+            INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
+            VALUES (?, 'modificacion', 'altas', 'No aprobar alta', ?, NOW())
+        `, {
+            replacements: [req.user.id, `Paciente ${id} (${paciente.nombre} ${paciente.apellido}) NO APROBADO para alta`]
+        });
+        
+        // 5. Obtener el ID del registro de alta creado
+        const [altaCreada] = await sequelize.query(`
+            SELECT * FROM altas 
+            WHERE paciente_id = ? 
+            AND tipo_alta = 'no_aprobado'
+            ORDER BY created_at DESC 
+            LIMIT 1
+        `, {
+            replacements: [id],
+            type: QueryTypes.SELECT
+        });
+        
+        console.log(`✅ Paciente ${id} registrado como NO APROBADO en tabla altas`);
+        
+        res.json({
+            success: true,
+            message: 'Paciente registrado como no aprobado para alta',
+            data: {
+                paciente_id: id,
+                alta_id: altaCreada?.id,
+                fecha_no_aprobado: new Date().toISOString().split('T')[0],
+                paciente_nombre: `${paciente.nombre} ${paciente.apellido}`,
+                tipo_alta: 'no_aprobado'
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Error al marcar paciente como no aprobado:', error);
+        console.error('📌 Detalles del error:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Error al procesar la solicitud: ' + error.message
+        });
+    }
+});
 module.exports = router;
 
 /backend\src\routes\reporteRoutes.js:
@@ -9611,6 +9960,10 @@ module.exports = router;
 const express = require('express');
 const router = express.Router();
 const ReporteController = require('../controllers/reporteController');
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const verifyToken = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
 
 // Exportar agenda a CSV
 router.post('/exportar-agenda-csv', ReporteController.exportarAgendaCSV);
@@ -9621,7 +9974,69 @@ router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibil
 // Generar reporte de conflictos
 router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
 
-
+router.get('/altas', verifyToken, requireRole(['coordinador']), async (req, res) => {
+    try {
+        const { formato = 'excel', fecha_inicio, fecha_fin } = req.query;
+        
+        let query = `
+            SELECT 
+                a.*,
+                CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                p.fecha_nacimiento,
+                p.genero,
+                p.telefono,
+                CONCAT(u.nombre, ' ', u.apellido) as profesional_alta,
+                e.motivo_consulta,
+                COUNT(DISTINCT c.id) as sesiones_completadas
+            FROM altas a
+            JOIN pacientes p ON a.paciente_id = p.id
+            JOIN users u ON a.usuario_id = u.id
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE 1=1
+        `;
+        
+        const replacements = [];
+        
+        if (fecha_inicio) {
+            query += ` AND a.fecha_alta >= ?`;
+            replacements.push(fecha_inicio);
+        }
+        
+        if (fecha_fin) {
+            query += ` AND a.fecha_alta <= ?`;
+            replacements.push(fecha_fin);
+        }
+        
+        query += ` GROUP BY a.id, p.id, u.id, e.id
+                  ORDER BY a.fecha_alta DESC`;
+        
+        const altas = await sequelize.query(query, {
+            replacements,
+            type: QueryTypes.SELECT
+        });
+        
+        // Para una implementación real, aquí generarías el archivo Excel/PDF
+        // Por ahora, simulamos la URL
+        const archivoUrl = `/temp/reporte-altas-${Date.now()}.${formato}`;
+        
+        res.json({
+            success: true,
+            data: {
+                archivo_url: archivoUrl,
+                total_registros: altas.length,
+                fecha_generacion: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error generando reporte de altas:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al generar reporte de altas'
+        });
+    }
+});
 module.exports = router;
 
 /backend\src\routes\roleRoutes.js:
@@ -12876,7 +13291,7 @@ BROWSER=none
   width: 60px;
   height: 60px;
   border: 4px solid var(--blub);
-  border-top: 4px solid var(--grnb);
+  border-top: 4px solid var(--blu);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -13047,7 +13462,7 @@ export default App;
 --------------------------------------------------------------------------------
 :root {
   /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
+  --grnb: #29ce6e;   /* Verde azulado oscuro */
   --blub: #2c3138;   /* Azul claro */
   --blud: #1B1E23;   /* Azul oscuro */
   --white: #ffffff;
@@ -13064,8 +13479,8 @@ export default App;
   --bludd: #1B6DA7;
   --blub-dark: #131923; /* BLUD - Azul más oscuro */
   --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
+  --grnd: #37b670;     /* GRND - Verde */
+  --grnl: #30ff64;     /* GRNL - Verde claro */
   --rr: #fa3144;       /* RR - Rojo */
   --yy: #ffa631;       /* YY - Amarillo */
   --rl: #ff5363;       /* RL - Rojo claro */
@@ -13075,7 +13490,6 @@ export default App;
 
 [data-theme="light"] {
   /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
   --blub: #fff;   /* Azul claro */
   --blud: #e8f1fa;   /* Azul oscuro */
   --white: #1B1E23;
@@ -13085,19 +13499,6 @@ export default App;
 
   --whiteSET: #ffffff;
   --bludSET: #1B1E23;
-  
-  /* Colores adicionales */
-  --blu: #1F85BA;      /* GRNB - Azul */
-  --bludd: #1B6DA7;
-  --blub-dark: #131923; /* BLUD - Azul más oscuro */
-  --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
-  --rr: #fa3144;       /* RR - Rojo */
-  --yy: #ffa631;       /* YY - Amarillo */
-  --rl: #ff5363;       /* RL - Rojo claro */
-  --yl: #ffdd55;       /* YL - Amarillo claro */
-  --wt: #ffffff;       /* WT - Blanco */
 }
 
 * {
@@ -13449,13 +13850,13 @@ body {
   width: 100%;
   padding: 10px;
   border-radius: 5px;
-  border: 2px solid var(--blu);
+  border: 1px solid var(--blu);
   background: var(--blud);
   color: var(--white);
 }
 
 .search-input:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -13472,7 +13873,7 @@ body {
 }
 
 .textarea-field:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -13487,7 +13888,7 @@ body {
 }
 
 .select-field:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -13567,12 +13968,12 @@ body {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 2px solid var(--grnb);
+  border-bottom: 2px solid var(--blu);
 }
 
 .modal-title {
   margin: 0;
-  color: var(--grnb);
+  color: var(--blu);
   font-size: 1.5em;
 }
 
@@ -13606,7 +14007,7 @@ body {
   justify-content: flex-end;
   margin-top: 20px;
   padding-top: 15px;
-  border-top: 2px solid var(--grnb);
+  border-top: 2px solid var(--blu);
 }
 
 /* ===== GRIDS Y LAYOUTS ===== */
@@ -13867,7 +14268,7 @@ body {
 }
 
 .data-table th {
-  background: var(--bluDSET);
+  background: var(--bludSET);
   padding: 12px 15px;
   text-align: left;
   font-weight: bold;
@@ -13898,7 +14299,7 @@ body {
 }
 
 .badge-success {
-  background: rgba(31, 133, 186, 0.2);
+  background: rgba(31, 186, 121, 0.2);
   color: var(--grnb);
   border: 1px solid var(--grnb);
 }
@@ -13932,7 +14333,7 @@ body {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--grnd) 0%, var(--grnb) 100%);
+  background: linear-gradient(90deg, var(--blu) 0%, var(--bludd) 100%);
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -13987,8 +14388,8 @@ body {
 }
 
 .tab.active {
-  color: var(--grnb);
-  border-bottom: 2px solid var(--grnb);
+  color: var(--blu);
+  border-bottom: 2px solid var(--blu);
 }
 
 /* Accordion */
@@ -14306,7 +14707,7 @@ body {
 
 .progreso-text {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--blu);
   min-width: 40px;
 }
 
@@ -14333,7 +14734,7 @@ body {
 
 .bar-fill {
   width: 20px;
-  background: linear-gradient(to top, var(--grnd), var(--grnb));
+  background: linear-gradient(to top, var(--blu), var(--bludd));
   border-radius: 4px 4px 0 0;
   transition: height 0.3s ease;
 }
@@ -14475,13 +14876,13 @@ body {
 
 .event-type {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--blu);
   margin-top: 2px;
 }
 
 .event-notes {
   font-size: 11px;
-  color: var(--grayl);
+  color: var(--white);
   margin-top: 2px;
 }
 
@@ -14514,7 +14915,7 @@ body {
 }
 
 .cita-card:hover {
-  border-color: var(--grnb);
+
   transform: translateY(-2px);
 }
 
@@ -14581,8 +14982,8 @@ body {
 
 .config-tab.active {
   background: rgba(31, 133, 186, 0.2);
-  color: var(--grnb);
-  border-left: 3px solid var(--grnb);
+  color: var(--blu);
+  border: 3px solid var(--blu);
 }
 
 .config-tab svg {
@@ -14711,7 +15112,7 @@ body {
 }
 
 input:checked + .slider {
-  background-color: var(--grnb);
+  background-color: var(--blu);
 }
 
 input:checked + .slider:before {
@@ -14848,14 +15249,14 @@ input:checked + .slider:before {
   overflow-y: auto;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
-  border: 2px solid var(--grnd);
+  border: 2px solid var(--blu);
 }
 
 .modal-title-nueva-cita {
-  color: var(--grnd);
+  color: var(--blu);
   margin-bottom: 20px;
   font-size: 24px;
-  border-bottom: 2px solid var(--grnd);
+  border-bottom: 2px solid var(--blu);
   padding-bottom: 10px;
   display: flex;
   align-items: center;
@@ -14876,8 +15277,8 @@ input:checked + .slider:before {
 
 .form-input-nueva-cita:focus {
   outline: none;
-  border-color: var(--grnd);
-  box-shadow: 0 0 0 2px rgba(55, 182, 156, 0.2);
+  border-color: var(--blu);
+
 }
 
 .form-select-nueva-cita {
@@ -14894,7 +15295,7 @@ input:checked + .slider:before {
 
 .form-select-nueva-cita:focus {
   outline: none;
-  border-color: var(--grnd);
+  border-color: var(--blu);
 }
 
 .form-textarea-nueva-cita {
@@ -14931,12 +15332,11 @@ input:checked + .slider:before {
 }
 
 .button-success-nueva-cita {
-  background: var(--grnd);
+  background: var(--grnb);
   color: var(--white);
 }
 
 .button-success-nueva-cita:hover {
-  background: var(--grnb);
   transform: translateY(-2px);
 }
 
@@ -14964,8 +15364,8 @@ input:checked + .slider:before {
   padding: 15px;
   border-radius: 5px;
   margin-bottom: 15px;
-  color: var(--grnl);
-  border-left: 4px solid var(--grnd);
+  color: var(--blu);
+  border-left: 4px solid var(--blu);
 }
 
 /* Animaciones */
@@ -15080,7 +15480,7 @@ input:checked + .slider:before {
 /* Expedientes */
 .diagnostico-tag {
   background: rgba(31, 133, 186, 0.1);
-  color: var(--grnb);
+  color: var(--blu);
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
@@ -15151,7 +15551,7 @@ input:checked + .slider:before {
 }
 
 .detail-row strong {
-  color: var(--grnb);
+  color: var(--blu);
 }
 
 .detail-row.notes {
@@ -15322,7 +15722,7 @@ input:checked + .slider:before {
   width: 60px;
   height: 60px;
   border: 5px solid rgba(255, 255, 255, 0.1);
-  border-top: 5px solid var(--grnb);
+  border-top: 5px solid var(--blu);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px;
@@ -15330,7 +15730,7 @@ input:checked + .slider:before {
 
 .global-loader-text {
   font-size: 18px;
-  color: var(--grnb);
+  color: var(--blu);
   font-weight: bold;
 }
 
@@ -19766,11 +20166,13 @@ export default CoordinadorAgenda;
 import React, { useState, useEffect } from 'react';
 import { 
   FiTrendingUp, FiCheckCircle, FiXCircle, FiFilter,
-  FiSearch, FiCalendar, FiUser, FiFileText, FiDownload
+  FiSearch, FiCalendar, FiUser, FiFileText, FiDownload,
+  FiUsers, FiActivity, FiBarChart2, FiClock
 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import ApiService from '../../services/api';
 
 const CoordinadorAltas = () => {
   const [altas, setAltas] = useState([]);
@@ -19778,185 +20180,276 @@ const CoordinadorAltas = () => {
   const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [selectedPaciente, setSelectedPaciente] = useState(null);
+  
+  // Estados para el modal de dar de alta
+  const [showModalAlta, setShowModalAlta] = useState(false);
+  const [selectedPacienteAlta, setSelectedPacienteAlta] = useState(null);
+  
+  // Estados para el modal de ver detalles
+  const [showModalDetalles, setShowModalDetalles] = useState(false);
+  const [selectedAltaDetalles, setSelectedAltaDetalles] = useState(null);
+  
   const [estadisticas, setEstadisticas] = useState({});
+  const [formData, setFormData] = useState({
+    paciente_id: '',
+    tipo_alta: '',
+    motivo_detallado: '',
+    recomendaciones: '',
+    evaluacion_final: '',
+    seguimiento_recomendado: false,
+    fecha_seguimiento: ''
+  });
 
   useEffect(() => {
     fetchAltas();
-    generarEstadisticas();
+    fetchEstadisticas();
+    fetchCandidatosAlta();
   }, []);
 
   const fetchAltas = async () => {
     try {
       setLoading(true);
-      
-      // Simulación de datos
-      setTimeout(() => {
-        setAltas([
-          {
-            id: 1,
-            paciente_nombre: 'Ana Rodríguez',
-            edad: 32,
-            motivo_consulta: 'Depresión',
-            fecha_ingreso: '2023-06-10',
-            fecha_alta: '2024-01-05',
-            tipo_alta: 'terapeutica',
-            sesiones_totales: 20,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Juan Pérez',
-            evaluacion_final: 'Excelente progreso, alta recomendada',
-            satisfaccion: 5
-          },
-          {
-            id: 2,
-            paciente_nombre: 'Carlos Martínez',
-            edad: 28,
-            motivo_consulta: 'Ansiedad generalizada',
-            fecha_ingreso: '2023-08-15',
-            fecha_alta: '2023-12-20',
-            tipo_alta: 'terapeutica',
-            sesiones_totales: 15,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Sofía Ramírez',
-            evaluacion_final: 'Buen manejo de técnicas de relajación',
-            satisfaccion: 4
-          },
-          {
-            id: 3,
-            paciente_nombre: 'María González',
-            edad: 45,
-            motivo_consulta: 'Duelo complicado',
-            fecha_ingreso: '2023-09-01',
-            fecha_alta: '2024-01-15',
-            tipo_alta: 'abandono',
-            sesiones_totales: 8,
-            psicologo: 'Lic. Laura Gutiérrez',
-            becario: null,
-            evaluacion_final: 'Paciente dejó de asistir sin aviso',
-            satisfaccion: 3
-          },
-          {
-            id: 4,
-            paciente_nombre: 'Roberto Sánchez',
-            edad: 22,
-            motivo_consulta: 'Problemas de adaptación',
-            fecha_ingreso: '2023-11-05',
-            fecha_alta: '2024-01-10',
-            tipo_alta: 'traslado',
-            sesiones_totales: 5,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Pedro Hernández',
-            evaluacion_final: 'Trasladado a otro especialista',
-            satisfaccion: 4
-          }
-        ]);
-
-        setCandidatosAlta([
-          {
-            id: 1,
-            paciente_nombre: 'Carlos Gómez',
-            edad: 25,
-            motivo_consulta: 'Ansiedad académica',
-            fecha_ingreso: '2023-10-15',
-            sesiones_completadas: 8,
-            progreso: 85,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Juan Pérez',
-            recomendacion: 'Posible alta en 2-3 sesiones más'
-          },
-          {
-            id: 2,
-            paciente_nombre: 'Mariana López',
-            edad: 28,
-            motivo_consulta: 'Estrés laboral',
-            fecha_ingreso: '2023-09-20',
-            sesiones_completadas: 12,
-            progreso: 90,
-            psicologo: 'Lic. Luis Fernández',
-            becario: 'Sofía Ramírez',
-            recomendacion: 'Evaluar alta en próxima sesión'
-          }
-        ]);
-
-        setLoading(false);
-      }, 1000);
+      const response = await ApiService.get('/altas');
+      if (response.success) {
+        setAltas(response.data);
+      } else {
+        notifications.error(response.message || 'Error al cargar las altas');
+      }
     } catch (error) {
       console.error('Error cargando altas:', error);
+      notifications.error('Error al cargar el historial de altas');
+    } finally {
       setLoading(false);
     }
   };
 
-  const generarEstadisticas = () => {
-    const altasTerapeuticas = altas.filter(a => a.tipo_alta === 'terapeutica').length;
-    const abandonos = altas.filter(a => a.tipo_alta === 'abandono').length;
-    const traslados = altas.filter(a => a.tipo_alta === 'traslado').length;
-    const satisfaccionPromedio = altas.length > 0 
-      ? altas.reduce((sum, a) => sum + (a.satisfaccion || 0), 0) / altas.length 
-      : 0;
-    const sesionesPromedio = altas.length > 0
-      ? altas.reduce((sum, a) => sum + a.sesiones_totales, 0) / altas.length
-      : 0;
-
-    setEstadisticas({
-      altasTerapeuticas,
-      abandonos,
-      traslados,
-      satisfaccionPromedio: satisfaccionPromedio.toFixed(1),
-      sesionesPromedio: sesionesPromedio.toFixed(1),
-      tasaExito: altasTerapeuticas > 0 ? Math.round((altasTerapeuticas / (altasTerapeuticas + abandonos)) * 100) : 0
-    });
+  const fetchCandidatosAlta = async () => {
+    try {
+      const response = await ApiService.get('/pacientes/candidatos-alta');
+      if (response.success) {
+        setCandidatosAlta(response.data.map(paciente => ({
+          id: paciente.id,
+          paciente_nombre: paciente.paciente_nombre,
+          edad: paciente.edad || 'N/A',
+          motivo_consulta: paciente.motivo_consulta || 'Sin información',
+          fecha_ingreso: paciente.fecha_ingreso,
+          sesiones_completadas: paciente.sesiones_completadas || 0,
+          progreso: Math.min(100, paciente.progreso_estimado || 0),
+          psicologo: paciente.psicologo_nombre || 'Sin asignar',
+          becario: paciente.becario_nombre || 'No asignado',
+          recomendacion: paciente.sesiones_completadas >= 10 
+            ? 'Posible alta en 1-2 sesiones más' 
+            : 'Evaluar en próxima revisión'
+        })));
+      }
+    } catch (error) {
+      console.error('Error cargando candidatos:', error);
+      notifications.error('Error al cargar candidatos a alta');
+    }
   };
 
-  const filteredAltas = altas.filter(alta => {
-    const matchesEstado = !filtroEstado || alta.tipo_alta === filtroEstado;
-    const matchesMes = !filtroMes || new Date(alta.fecha_alta).getMonth() === parseInt(filtroMes);
-    return matchesEstado && matchesMes;
-  });
+  const fetchEstadisticas = async () => {
+    try {
+      const response = await ApiService.get('/altas/estadisticas');
+      if (response.success) {
+        setEstadisticas(response.data);
+      }
+    } catch (error) {
+      console.error('Error cargando estadísticas:', error);
+    }
+  };
 
   const procesarAlta = async (pacienteId, decision) => {
     try {
       if (decision === 'aprobar') {
-        // Para aprobar - usar warning (amarillo) o info (azul)
-        const confirmado = await confirmations.warning('¿Estás seguro de aprobar el alta terapéutica de este paciente?');
-        
-        if (confirmado) {
-          notifications.success('Alta aprobada exitosamente');
-          setCandidatosAlta(candidatosAlta.filter(p => p.id !== pacienteId));
+        const paciente = candidatosAlta.find(p => p.id === pacienteId);
+        if (paciente) {
+          setFormData({
+            paciente_id: paciente.id,
+            tipo_alta: 'terapeutica',
+            motivo_detallado: '',
+            recomendaciones: '',
+            evaluacion_final: '',
+            seguimiento_recomendado: false,
+            fecha_seguimiento: ''
+          });
+          setSelectedPacienteAlta(paciente);
+          setShowModalAlta(true);
         }
       } else {
-        // Para rechazar - usar danger (rojo)
-        const confirmado = await confirmations.danger('¿Estás seguro de rechazar el alta de este paciente?');
+        const confirmado = await confirmations.danger(
+          '¿Estás seguro de marcar este paciente como "No Aprobar"? ' +
+          'El paciente no será mostrado como candidato a alta por 30 días.'
+        );
         
         if (confirmado) {
-          notifications.error('Alta rechazada. Se notificará al psicólogo.');
+          try {
+            console.log(`📤 Enviando solicitud para marcar paciente ${pacienteId} como no aprobado...`);
+            
+            // Llamar al endpoint
+            const response = await ApiService.post(`/pacientes/${pacienteId}/no-aprobar-alta`);
+            
+            if (response.success) {
+              notifications.success(`✅ ${response.message}`);
+              console.log('✅ Respuesta del backend:', response.data);
+              
+              // 1. Eliminar inmediatamente del estado local
+              setCandidatosAlta(prev => prev.filter(p => p.id !== pacienteId));
+              
+              // 2. Recargar después de 2 segundos para confirmar
+              setTimeout(async () => {
+                console.log('🔄 Recargando lista de candidatos...');
+                await fetchCandidatosAlta();
+              }, 2000);
+            } else {
+              notifications.error(`❌ ${response.message || 'Error desconocido'}`);
+            }
+          } catch (error) {
+            console.error('❌ Error al marcar como no aprobado:', error);
+            notifications.error(`❌ Error: ${error.message || 'Error de conexión'}`);
+          }
         }
       }
     } catch (error) {
-      console.error('Error en el proceso de alta:', error);
-      notifications.error('Ocurrió un error al procesar la solicitud');
+      console.error('❌ Error en el proceso de alta:', error);
+      notifications.error('❌ Ocurrió un error al procesar la solicitud');
+    }
+  };
+
+  const handleSubmitAlta = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const confirmado = await confirmations.warning(
+        '¿Estás seguro de dar de alta a este paciente? Esta acción no se puede deshacer.'
+      );
+      
+      if (!confirmado) return;
+
+      const response = await ApiService.post('/altas', formData);
+      
+      if (response.success) {
+        notifications.success(response.message || 'Paciente dado de alta exitosamente');
+        
+        // Actualizar listas
+        setAltas([response.data.alta, ...altas]);
+        
+        // Recargar la lista de candidatos (para que desaparezca de la lista)
+        await fetchCandidatosAlta();
+        
+        // Recargar estadísticas
+        await fetchEstadisticas();
+        
+        // Limpiar y cerrar modal
+        setFormData({
+          paciente_id: '',
+          tipo_alta: '',
+          motivo_detallado: '',
+          recomendaciones: '',
+          evaluacion_final: '',
+          seguimiento_recomendado: false,
+          fecha_seguimiento: ''
+        });
+        setShowModalAlta(false);
+        setSelectedPacienteAlta(null);
+      } else {
+        notifications.error(response.message || 'Error al dar de alta');
+      }
+    } catch (error) {
+      console.error('Error al dar de alta:', error);
+      notifications.error('Error al procesar el alta del paciente');
+    }
+  };
+
+  const handleFilterChange = async () => {
+    try {
+      setLoading(true);
+      let url = '/altas?';
+      const params = [];
+      
+      if (filtroEstado) params.push(`tipo_alta=${filtroEstado}`);
+      if (filtroMes) {
+        const year = new Date().getFullYear();
+        params.push(`fecha_inicio=${year}-${parseInt(filtroMes) + 1}-01`);
+        params.push(`fecha_fin=${year}-${parseInt(filtroMes) + 1}-31`);
+      }
+      
+      if (params.length > 0) {
+        url += params.join('&');
+      }
+      
+      const response = await ApiService.get(url);
+      if (response.success) {
+        setAltas(response.data);
+      }
+    } catch (error) {
+      console.error('Error aplicando filtros:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportarReporteAltas = async () => {
+    try {
+      notifications.info('Generando reporte de altas...');
+      
+      // Obtener fechas del filtro actual
+      const params = new URLSearchParams();
+      if (filtroMes) {
+        const year = new Date().getFullYear();
+        const month = parseInt(filtroMes) + 1;
+        params.append('fecha_inicio', `${year}-${month.toString().padStart(2, '0')}-01`);
+        params.append('fecha_fin', `${year}-${month.toString().padStart(2, '0')}-31`);
+      }
+      if (filtroEstado) {
+        params.append('tipo_alta', filtroEstado);
+      }
+      
+      const response = await ApiService.get(`/reportes/altas?formato=excel&${params.toString()}`);
+      
+      if (response.success && response.data.archivo_url) {
+        notifications.success(`Reporte generado exitosamente (${response.data.total_registros} registros)`);
+      } else {
+        notifications.error('Error al generar el reporte');
+      }
+    } catch (error) {
+      console.error('Error exportando reporte:', error);
+      notifications.error('Error al generar el reporte de altas');
     }
   };
 
   const getTipoAltaLabel = (tipo) => {
     switch (tipo) {
-      case 'terapeutica':
-        return { text: 'Alta Terapéutica', color: 'success', icon: '✅' };
-      case 'abandono':
-        return { text: 'Abandono', color: 'danger', icon: '❌' };
-      case 'traslado':
-        return { text: 'Traslado', color: 'warning', icon: '🔄' };
-      default:
-        return { text: tipo, color: 'info', icon: '📋' };
+        case 'terapeutica':
+            return { text: 'Alta Terapéutica', color: 'success', icon: '✅' };
+        case 'abandono':
+            return { text: 'Abandono', color: 'danger', icon: '❌' };
+        case 'traslado':
+            return { text: 'Traslado', color: 'warning', icon: '🔄' };
+        case 'graduacion':
+            return { text: 'Graduación', color: 'primary', icon: '🎓' };
+        case 'no_continua':
+            return { text: 'No Continúa', color: 'info', icon: '⏸️' };
+        case 'no_aprobado':
+            return { text: 'No Aprobado', color: 'danger', icon: '🚫' };
+        case 'otro':
+            return { text: 'Otro', color: 'info', icon: '📋' };
+        default:
+            return { text: tipo, color: 'info', icon: '📋' };
     }
   };
 
-  const exportarReporteAltas = () => {
-    notifications.success('Generando reporte de altas...');
-    // En una implementación real, aquí se generaría el archivo de exportación
+  const calcularSatisfaccion = (paciente) => {
+    if (paciente.tipo_alta === 'terapeutica') {
+      return Math.min(5, Math.floor((paciente.sesiones_totales || 0) / 4) + 3);
+    } else if (paciente.tipo_alta === 'abandono') {
+      return 1;
+    } else {
+      return 3;
+    }
   };
 
-  if (loading) {
+  if (loading && altas.length === 0) {
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
@@ -19972,35 +20465,60 @@ const CoordinadorAltas = () => {
           <h1>Seguimiento de Altas</h1>
           <p>Gestión y seguimiento de altas terapéuticas</p>
         </div>
-        <button className="btn-secondary" onClick={exportarReporteAltas}>
-          <FiDownload /> Exportar Reporte
-        </button>
       </div>
 
       {/* Estadísticas de Altas */}
       <div className="grid-4 mb-30">
         <div className="card">
-          <h4>Altas Terapéuticas</h4>
-          <div className="stat-value">{estadisticas.altasTerapeuticas || 0}</div>
-          <div className="text-small">éxito terapéutico</div>
+          <div className="stat-box">
+            <div className="stat-icon">
+              <FiUsers />
+            </div>
+            <div className="stat-content">
+              <div className="stat-value">{estadisticas.totales?.total_altas || 0}</div>
+              <div className="stat-label">Total de Altas</div>
+            </div>
+          </div>
         </div>
         
         <div className="card">
-          <h4>Tasa de Éxito</h4>
-          <div className="stat-value">{estadisticas.tasaExito || 0}%</div>
-          <div className="text-small">de tratamientos exitosos</div>
+          <div className="stat-box">
+            <div className="stat-icon">
+              <FiCheckCircle />
+            </div>
+            <div className="stat-content">
+              <div className="stat-value">
+                {estadisticas.estadisticas?.find(e => e.tipo_alta === 'terapeutica')?.total || 0}
+              </div>
+              <div className="stat-label">Altas Terapéuticas</div>
+            </div>
+          </div>
         </div>
         
         <div className="card">
-          <h4>Sesión Promedio</h4>
-          <div className="stat-value">{estadisticas.sesionesPromedio || 0}</div>
-          <div className="text-small">sesiones por paciente</div>
+          <div className="stat-box">
+            <div className="stat-icon">
+              <FiClock />
+            </div>
+            <div className="stat-content">
+              <div className="stat-value">
+                {estadisticas.totales?.promedio_sesiones_global || 0}
+              </div>
+              <div className="stat-label">Sesiones Promedio</div>
+            </div>
+          </div>
         </div>
         
         <div className="card">
-          <h4>Satisfacción</h4>
-          <div className="stat-value">{estadisticas.satisfaccionPromedio || 0}/5</div>
-          <div className="text-small">puntuación promedio</div>
+          <div className="stat-box">
+            <div className="stat-icon">
+              <FiTrendingUp />
+            </div>
+            <div className="stat-content">
+              <div className="stat-value">{candidatosAlta.length}</div>
+              <div className="stat-label">Candidatos a Alta</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -20008,7 +20526,6 @@ const CoordinadorAltas = () => {
       <div className="dashboard-section mb-30">
         <div className="section-header">
           <h3>Candidatos a Alta ({candidatosAlta.length})</h3>
-          <button className="btn-text">Ver todos</button>
         </div>
         
         {candidatosAlta.length > 0 ? (
@@ -20033,7 +20550,7 @@ const CoordinadorAltas = () => {
                 
                 <div className="mb-15">
                   <div className="card-progress-label">
-                    <span>Sesión {paciente.sesiones_completadas}</span>
+                    <span>{paciente.sesiones_completadas} sesiones</span>
                     <span>{paciente.progreso}%</span>
                   </div>
                   <div className="progress-container">
@@ -20065,13 +20582,13 @@ const CoordinadorAltas = () => {
                     className="btn-primary flex-1"
                     onClick={() => procesarAlta(paciente.id, 'aprobar')}
                   >
-                    <FiCheckCircle /> Aprobar Alta
+                    <FiCheckCircle /> Procesar Alta
                   </button>
                   <button 
                     className="btn-danger flex-1"
                     onClick={() => procesarAlta(paciente.id, 'rechazar')}
                   >
-                    <FiXCircle /> Rechazar
+                    <FiXCircle /> No Aprobar
                   </button>
                 </div>
               </div>
@@ -20089,18 +20606,22 @@ const CoordinadorAltas = () => {
       {/* Historial de Altas */}
       <div className="dashboard-section">
         <div className="section-header">
-          <h3>Historial de Altas</h3>
+          <h3>Historial de Altas ({altas.length})</h3>
           <div className="flex-row gap-10">
             <select 
               value={filtroEstado} 
               onChange={(e) => setFiltroEstado(e.target.value)}
               className="select-field"
-              style={{ width: '150px' }}
+              style={{ width: '180px' }}
             >
               <option value="">Todos los tipos</option>
               <option value="terapeutica">Altas Terapéuticas</option>
               <option value="abandono">Abandonos</option>
               <option value="traslado">Traslados</option>
+              <option value="graduacion">Graduaciones</option>
+              <option value="no_continua">No Continúa</option>
+              <option value="no_aprobado">No Aprobado</option>
+              <option value="otro">Otro</option>
             </select>
             
             <select 
@@ -20123,148 +20644,264 @@ const CoordinadorAltas = () => {
               <option value="10">Noviembre</option>
               <option value="11">Diciembre</option>
             </select>
+            
+            <button 
+              className="btn-secondary" 
+              onClick={handleFilterChange}
+              disabled={loading}
+            >
+              <FiFilter /> Aplicar
+            </button>
           </div>
         </div>
         
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Paciente</th>
-                <th>Tipo de Alta</th>
-                <th>Fechas</th>
-                <th>Sesiones</th>
-                <th>Equipo</th>
-                <th>Satisfacción</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAltas.map((alta) => {
-                const tipoInfo = getTipoAltaLabel(alta.tipo_alta);
-                
-                return (
-                  <tr key={alta.id}>
-                    <td>
-                      <div className="flex-row align-center gap-10">
-                        <div className="avatar-small">
-                          {alta.paciente_nombre.split(' ').map(n => n[0]).join('')}
+        {loading ? (
+          <div className="loading-container" style={{ minHeight: '200px' }}>
+            <div className="loading-spinner"></div>
+            <div className="loading-text">Cargando altas...</div>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Paciente</th>
+                  <th>Tipo de Alta</th>
+                  <th>Fecha Alta</th>
+                  <th>Sesiones</th>
+                  <th>Profesional</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {altas.map((alta) => {
+                  const tipoInfo = getTipoAltaLabel(alta.tipo_alta);
+                  const satisfaccion = calcularSatisfaccion(alta);
+                  
+                  return (
+                    <tr key={alta.id}>
+                      <td>
+                        <div className="flex-row align-center gap-10">
+                          <div className="avatar-small">
+                            {(alta.paciente_nombre || '').split(' ').map(n => n[0]).join('')}
+                          </div>
+                          <div>
+                            <div className="font-bold">
+                              {alta.paciente_nombre || 'Nombre no disponible'} {alta.paciente_apellido || ''}
+                            </div>
+                            <div className="text-small">
+                              {alta.motivo_detallado?.substring(0, 30) || 'Sin motivo específico'}...
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-bold">{alta.paciente_nombre}</div>
-                          <div className="text-small">{alta.motivo_consulta}</div>
+                      </td>
+                      <td>
+                        <span className={`badge badge-${tipoInfo.color}`}>
+                          {tipoInfo.icon} {tipoInfo.text}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="font-bold">
+                          {new Date(alta.fecha_alta).toLocaleDateString()}
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`badge badge-${tipoInfo.color}`}>
-                        {tipoInfo.icon} {tipoInfo.text}
-                      </span>
-                    </td>
-                    <td>
-                      <div>Ingreso: {new Date(alta.fecha_ingreso).toLocaleDateString()}</div>
-                      <div className="text-small">Alta: {new Date(alta.fecha_alta).toLocaleDateString()}</div>
-                    </td>
-                    <td>
-                      <div className="font-bold">{alta.sesiones_totales}</div>
-                      <div className="text-small">sesiones</div>
-                    </td>
-                    <td>
-                      <div className="text-small">{alta.psicologo}</div>
-                      <div className="text-small">{alta.becario || 'Sin becario'}</div>
-                    </td>
-                    <td>
-                      <div className="flex-row align-center gap-5">
-                        {'★'.repeat(alta.satisfaccion)}
-                        {'☆'.repeat(5 - alta.satisfaccion)}
-                        <span className="ml-5">({alta.satisfaccion}/5)</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="flex-row gap-5">
-                        <button 
-                          className="btn-text"
-                          onClick={() => {
-                            setSelectedPaciente(alta);
-                            setShowModal(true);
-                          }}
-                        >
-                          <FiFileText /> Ver
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                        <div className="text-small">
+                          Por: {alta.usuario_nombre} {alta.usuario_apellido}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="font-bold">{alta.sesiones_totales || 0}</div>
+                        <div className="text-small">sesiones</div>
+                      </td>
+                      <td>
+                        <div className="text-small">Satisfacción:</div>
+                        <div className="flex-row align-center gap-5">
+                          {'★'.repeat(satisfaccion)}
+                          {'☆'.repeat(5 - satisfaccion)}
+                          <span className="ml-5">({satisfaccion}/5)</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="flex-row gap-5">
+                          <button 
+                            className="btn-text"
+                            onClick={async () => {
+                              try {
+                                console.log(`📋 Solicitando detalles del alta ID: ${alta.id}`);
+                                const response = await ApiService.get(`/altas/${alta.id}`);
+                                console.log('📊 Respuesta de detalles:', response);
+                                
+                                if (response.success) {
+                                  setSelectedAltaDetalles(response.data);
+                                  setShowModalDetalles(true);
+                                } else {
+                                  notifications.error('No se pudieron cargar los detalles del alta');
+                                }
+                              } catch (error) {
+                                console.error('❌ Error al cargar detalles:', error);
+                                notifications.error('Error al cargar detalles: ' + error.message);
+                              }
+                            }}
+                          >
+                            <FiFileText /> Ver
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Análisis de Tendencias */}
-      <div className="grid-2 mt-30">
-        <div className="card">
-          <h4>Tendencias de Altas por Mes</h4>
-          <div className="activity-chart" style={{ height: '200px' }}>
-            <div className="chart-bars">
-              {[65, 80, 45, 90, 75, 60, 85, 70, 95, 50, 65, 80].map((height, index) => (
-                <div key={index} className="chart-bar">
-                  <div 
-                    className="bar-fill"
-                    style={{ height: `${height}%` }}
-                  ></div>
-                  <div className="bar-label">
-                    {['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][index]}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        <div className="card">
-          <h4>Distribución por Tipo de Alta</h4>
-          <div className="flex-col gap-15 mt-20">
-            <div className="flex-row align-center justify-between">
-              <div className="flex-row align-center gap-10">
-                <div className="badge badge-success">Alta Terapéutica</div>
-                <div className="text-small">{estadisticas.altasTerapeuticas} pacientes</div>
-              </div>
-              <div className="font-bold">
-                {altas.length > 0 ? Math.round((estadisticas.altasTerapeuticas / altas.length) * 100) : 0}%
-              </div>
-            </div>
-            
-            <div className="flex-row align-center justify-between">
-              <div className="flex-row align-center gap-10">
-                <div className="badge badge-danger">Abandonos</div>
-                <div className="text-small">{estadisticas.abandonos} pacientes</div>
-              </div>
-              <div className="font-bold">
-                {altas.length > 0 ? Math.round((estadisticas.abandonos / altas.length) * 100) : 0}%
-              </div>
-            </div>
-            
-            <div className="flex-row align-center justify-between">
-              <div className="flex-row align-center gap-10">
-                <div className="badge badge-warning">Traslados</div>
-                <div className="text-small">{estadisticas.traslados} pacientes</div>
-              </div>
-              <div className="font-bold">
-                {altas.length > 0 ? Math.round((estadisticas.traslados / altas.length) * 100) : 0}%
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal de Detalles de Alta */}
-      {showModal && selectedPaciente && (
+      {/* Modal de Alta */}
+      {showModalAlta && (
         <div className="modal-overlay">
           <div className="modal-container modal-large">
             <div className="modal-header">
-              <h3>Detalles de Alta</h3>
-              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              <h3>Procesar Alta</h3>
+              <button className="modal-close" onClick={() => {
+                setShowModalAlta(false);
+                setSelectedPacienteAlta(null);
+              }}>×</button>
+            </div>
+            
+            <form onSubmit={handleSubmitAlta}>
+              <div className="modal-content">
+                {selectedPacienteAlta && (
+                  <div className="alert-message info mb-20">
+                    <strong>Paciente:</strong> {selectedPacienteAlta.paciente_nombre}
+                    <br />
+                    <strong>Psicólogo asignado:</strong> {selectedPacienteAlta.psicologo}
+                    <br />
+                    <strong>Sesiones completadas:</strong> {selectedPacienteAlta.sesiones_completadas}
+                  </div>
+                )}
+                
+                <div className="grid-2 gap-20">
+                  <div className="form-group">
+                    <label>Tipo de Alta *</label>
+                    <select
+                      value={formData.tipo_alta}
+                      onChange={(e) => setFormData({...formData, tipo_alta: e.target.value})}
+                      className="select-field"
+                      required
+                    >
+                      <option value="">Seleccionar tipo</option>
+                      <option value="terapeutica">Alta Terapéutica</option>
+                      <option value="abandono">Abandono</option>
+                      <option value="traslado">Traslado</option>
+                      <option value="graduacion">Graduación</option>
+                      <option value="no_continua">No Continúa</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Evaluación Final</label>
+                    <select
+                      value={formData.evaluacion_final}
+                      onChange={(e) => setFormData({...formData, evaluacion_final: e.target.value})}
+                      className="select-field"
+                    >
+                      <option value="">Seleccionar evaluación</option>
+                      <option value="excelente">Excelente</option>
+                      <option value="buena">Buena</option>
+                      <option value="regular">Regular</option>
+                      <option value="mala">Mala</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="form-group mt-15">
+                  <label>Motivo Detallado *</label>
+                  <textarea
+                    value={formData.motivo_detallado}
+                    onChange={(e) => setFormData({...formData, motivo_detallado: e.target.value})}
+                    className="textarea-field"
+                    rows="4"
+                    placeholder="Describa el motivo del alta..."
+                    required
+                  />
+                </div>
+                
+                <div className="form-group mt-15">
+                  <label>Recomendaciones</label>
+                  <textarea
+                    value={formData.recomendaciones}
+                    onChange={(e) => setFormData({...formData, recomendaciones: e.target.value})}
+                    className="textarea-field"
+                    rows="3"
+                    placeholder="Recomendaciones para el paciente..."
+                  />
+                </div>
+                
+                <div className="grid-2 gap-20 mt-15">
+                  <div className="form-group">
+                    <label className="flex-row align-center gap-10">
+                      <input
+                        type="checkbox"
+                        checked={formData.seguimiento_recomendado}
+                        onChange={(e) => setFormData({...formData, seguimiento_recomendado: e.target.checked})}
+                      />
+                      Seguimiento Recomendado
+                    </label>
+                  </div>
+                  
+                  {formData.seguimiento_recomendado && (
+                    <div className="form-group">
+                      <label>Fecha de Seguimiento</label>
+                      <input
+                        type="date"
+                        value={formData.fecha_seguimiento}
+                        onChange={(e) => setFormData({...formData, fecha_seguimiento: e.target.value})}
+                        className="input-field"
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn-secondary"
+                  onClick={() => {
+                    setShowModalAlta(false);  // ✅ CORREGIDO
+                    setSelectedPacienteAlta(null);  // ✅ CORREGIDO
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-primary"
+                  disabled={!formData.tipo_alta || !formData.motivo_detallado}
+                >
+                  <FiCheckCircle /> Confirmar Alta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal de Detalles de Alta */}
+      {showModalDetalles && selectedAltaDetalles && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-large">
+            <div className="modal-header">
+              <h3>
+                {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
+                  ? 'Detalles de No Aprobación' 
+                  : 'Detalles de Alta'}
+              </h3>
+              <button className="modal-close" onClick={() => {
+                setShowModalDetalles(false);
+                setSelectedAltaDetalles(null);
+              }}>×</button>
             </div>
             
             <div className="modal-content">
@@ -20272,73 +20909,95 @@ const CoordinadorAltas = () => {
                 <div>
                   <h4>Información del Paciente</h4>
                   <div className="detail-row">
-                    <strong>Nombre:</strong> {selectedPaciente.paciente_nombre}
+                    <strong>Nombre:</strong> {selectedAltaDetalles.paciente_nombre} {selectedAltaDetalles.paciente_apellido}
                   </div>
                   <div className="detail-row">
-                    <strong>Edad:</strong> {selectedPaciente.edad} años
+                    <strong>Edad:</strong> {selectedAltaDetalles.edad || 'N/A'} años
                   </div>
                   <div className="detail-row">
-                    <strong>Motivo de consulta:</strong> {selectedPaciente.motivo_consulta}
+                    <strong>Motivo de consulta:</strong> {selectedAltaDetalles.motivo_consulta || 'Sin información'}
                   </div>
                   <div className="detail-row">
-                    <strong>Fechas:</strong> 
+                    <strong>Fecha:</strong> 
                     <div>
-                      Ingreso: {new Date(selectedPaciente.fecha_ingreso).toLocaleDateString()}<br/>
-                      Alta: {new Date(selectedPaciente.fecha_alta).toLocaleDateString()}
+                      {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
+                        ? 'No aprobado: ' 
+                        : 'Alta: '}
+                      {new Date(selectedAltaDetalles.fecha_alta).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
                 
                 <div>
-                  <h4>Información del Tratamiento</h4>
+                  <h4>Información del Proceso</h4>
                   <div className="detail-row">
-                    <strong>Sesiones totales:</strong> {selectedPaciente.sesiones_totales}
-                  </div>
-                  <div className="detail-row">
-                    <strong>Tipo de alta:</strong>
-                    <span className={`badge ${
-                      selectedPaciente.tipo_alta === 'terapeutica' ? 'badge-success' :
-                      selectedPaciente.tipo_alta === 'abandono' ? 'badge-danger' :
-                      'badge-warning'
-                    }`}>
-                      {getTipoAltaLabel(selectedPaciente.tipo_alta).text}
+                    <strong>Tipo:</strong>
+                    <span className={`badge badge-${getTipoAltaLabel(selectedAltaDetalles.tipo_alta).color}`}>
+                      {getTipoAltaLabel(selectedAltaDetalles.tipo_alta).icon} 
+                      {getTipoAltaLabel(selectedAltaDetalles.tipo_alta).text}
                     </span>
                   </div>
                   <div className="detail-row">
-                    <strong>Psicólogo:</strong> {selectedPaciente.psicologo}
+                    <strong>Profesional:</strong> {selectedAltaDetalles.usuario_nombre} {selectedAltaDetalles.usuario_apellido}
                   </div>
                   <div className="detail-row">
-                    <strong>Becario:</strong> {selectedPaciente.becario || 'No asignado'}
+                    <strong>Sesiones completadas:</strong> {selectedAltaDetalles.sesiones_totales || 0}
                   </div>
+                  {selectedAltaDetalles.psicologo_nombre && (
+                    <div className="detail-row">
+                      <strong>Psicólogo asignado:</strong> {selectedAltaDetalles.psicologo_nombre}
+                    </div>
+                  )}
+                  {selectedAltaDetalles.evaluacion_final && (
+                    <div className="detail-row">
+                      <strong>Evaluación final:</strong> {selectedAltaDetalles.evaluacion_final}
+                    </div>
+                  )}
                 </div>
               </div>
               
               <div className="mt-20">
-                <h4>Evaluación Final</h4>
+                <h4>
+                  {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
+                    ? 'Motivo de No Aprobación' 
+                    : 'Motivo Detallado'}
+                </h4>
                 <div className="card p-15 mt-10">
-                  {selectedPaciente.evaluacion_final}
+                  {selectedAltaDetalles.motivo_detallado || 'Sin información disponible'}
                 </div>
               </div>
               
-              <div className="mt-20">
-                <h4>Satisfacción del Paciente</h4>
-                <div className="flex-row align-center gap-10 mt-10">
-                  <div className="flex-row">
-                    {'★'.repeat(selectedPaciente.satisfaccion)}
-                    {'☆'.repeat(5 - selectedPaciente.satisfaccion)}
+              {selectedAltaDetalles.recomendaciones && (
+                <div className="mt-20">
+                  <h4>Recomendaciones</h4>
+                  <div className="card p-15 mt-10">
+                    {selectedAltaDetalles.recomendaciones}
                   </div>
-                  <span className="font-bold">({selectedPaciente.satisfaccion}/5)</span>
                 </div>
-              </div>
+              )}
+              
+              {selectedAltaDetalles.tipo_alta === 'no_aprobado' && (
+                <div className="mt-20 alert-message warning">
+                  <strong>⚠️ Nota:</strong> Este paciente fue marcado como "No Aprobado" para alta terapéutica. 
+                  Continuará en tratamiento y podrá ser evaluado nuevamente en el futuro.
+                </div>
+              )}
             </div>
             
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowModal(false)}>
+              <button className="btn-secondary" onClick={() => {
+                setShowModalDetalles(false);
+                setSelectedAltaDetalles(null);
+              }}>
                 Cerrar
               </button>
-              <button className="btn-primary">
-                <FiDownload /> Descargar Informe
-              </button>
+              {selectedAltaDetalles.tipo_alta !== 'no_aprobado' && (
+                <button className="btn-primary" onClick={() => {
+                  notifications.info('Generando informe...');
+                }}>
+                  <FiDownload /> Descargar Informe
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -21773,7 +22432,6 @@ export default CoordinadorConfiguracion;
 
 /frontend\src\pages\coordinador\coordinador.css:
 --------------------------------------------------------------------------------
-/* ===== ESTILOS ADICIONALES PARA COORDINADOR ===== */
 
 /* Mejoras para tablas */
 .table-container {
@@ -21794,7 +22452,7 @@ export default CoordinadorConfiguracion;
   text-align: left;
   font-weight: 600;
   color: var(--white);
-  border-bottom: 2px solid var(--grnd);
+  border-bottom: 2px solid var(--blu);
 }
 
 .data-table td {
@@ -21898,7 +22556,7 @@ export default CoordinadorConfiguracion;
 .week-header {
   display: flex;
   background: var(--blub);
-  border-bottom: 2px solid var(--grnd);
+  border-bottom: 2px solid var(--blu);
 }
 
 .week-header > div {
@@ -22128,7 +22786,7 @@ export default CoordinadorConfiguracion;
 }
 
 input:checked + .slider {
-  background-color: var(--grnd);
+  background-color: var(--blu);
 }
 
 input:checked + .slider:before {
@@ -22264,8 +22922,8 @@ input:checked + .slider:before {
 }
 
 .page-item.active {
-  background: var(--grnd);
-  border-color: var(--grnd);
+  background: var(--blu);
+  border-color: var(--blu);
   color: var(--blud);
 }
 
@@ -22643,7 +23301,7 @@ input:checked + .slider:before {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--grnd), var(--grnl));
+  background: linear-gradient(90deg, var(--blu), var(--blull));
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -22746,7 +23404,7 @@ input:checked + .slider:before {
 }
 
 .btn-text-modal:hover {
-  color: var(--grnb);
+  background: none;
   text-decoration: none;
 }
 
@@ -22764,11 +23422,7 @@ input:checked + .slider:before {
   text-align: center;
 }
 
-.stat-value {
-  font-size: 20px;
-  font-weight: bold;
-  color: var(--grnb);
-}
+
 
 .stat-label {
   font-size: 11px;
@@ -22836,30 +23490,6 @@ input:checked + .slider:before {
   min-height: 50px;
 }
 
-.action-btn-primary {
-  background: linear-gradient(135deg, var(--blu) 0%, var(--bludd) 100%);
-  color: var(--white);
-}
-
-.action-btn-secondary {
-  background: linear-gradient(135deg, var(--grnb) 0%, var(--grnd) 100%);
-  color: var(--white);
-}
-
-.action-btn-warning {
-  background: linear-gradient(135deg, var(--yy) 0%, var(--yl) 100%);
-  color: var(--blub);
-}
-
-.action-btn-info {
-  background: linear-gradient(135deg, var(--blu) 0%, var(--grnb) 100%);
-  color: var(--white);
-}
-
-.action-btn:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-}
 
 /* Formularios mejorados */
 .form-label {

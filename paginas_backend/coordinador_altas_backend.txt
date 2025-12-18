@@ -1,7 +1,140 @@
 ARCHIVOS BACKEND PARA: COORDINADOR_ALTAS
 ================================================================================
-Generado: 2025-12-17 16:14:49
+Generado: 2025-12-18 12:44:17
 ================================================================================
+
+/frontend/src/services/api.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
+
+  static async get(url) {
+    return this.request(url);
+  }
+
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+      // Primero verificar si hay contenido
+      if (response.status === 204 || response.status === 205) {
+          return {};
+      }
+      
+      const contentType = response.headers.get('content-type');
+      
+      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
+      if (contentType && contentType.includes('text/csv')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Para CSV, devolvemos el texto directamente
+          return text;
+      }
+      
+      // Si no es CSV, verificar si es JSON
+      if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Intentar parsear como JSON si es posible
+          try {
+              return text ? JSON.parse(text) : {};
+          } catch {
+              return text;
+          }
+      }
+      
+      // Si es JSON, parsearlo normalmente
+      const data = await response.json();
+      
+      if (!response.ok) {
+          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+      }
+      
+      return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
+}
+
+export default ApiService;
+
 
 /backend/src/db/db.sql:
 --------------------------------------------------------------------------------
@@ -51,11 +184,13 @@ CREATE TABLE pacientes (
     activo BOOLEAN DEFAULT TRUE,
     notas TEXT,
     fundacion_id INT,
+    ultimo_no_aprobado DATE NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
     INDEX idx_activo (activo),
-    INDEX idx_apellido_nombre (apellido, nombre)
+    INDEX idx_apellido_nombre (apellido, nombre),
+    INDEX idx_ultimo_no_aprobado (ultimo_no_aprobado)
 );
 
 CREATE TABLE expedientes (
@@ -178,7 +313,7 @@ CREATE TABLE altas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     paciente_id INT NOT NULL,
     usuario_id INT NOT NULL,
-    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro') NOT NULL,
+    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro', 'no_aprobado') NOT NULL,
     fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
     motivo_detallado TEXT,
     recomendaciones TEXT,
@@ -662,293 +797,6 @@ GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicog
 FLUSH PRIVILEGES;
 
 
-/backend/src/models/pacienteModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-const Paciente = sequelize.define('Paciente', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    nombre: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    apellido: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    email: {
-        type: DataTypes.STRING(255),
-        allowNull: true,
-        validate: {
-            isEmail: true
-        }
-    },
-    telefono: {
-        type: DataTypes.STRING(20),
-        allowNull: true
-    },
-    fecha_nacimiento: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    genero: {
-        type: DataTypes.ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
-        allowNull: true
-    },
-    direccion: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    estado: {
-        type: DataTypes.STRING(50),
-        allowNull: false,
-        defaultValue: 'activo'
-    },
-    activo: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: true
-    },
-    notas: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    fundacion_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true
-    }
-}, {
-    tableName: 'pacientes',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['activo']
-        },
-        {
-            fields: ['apellido', 'nombre']
-        }
-    ]
-});
-
-module.exports = Paciente;
-
-
-/backend/src/models/altaModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-const Paciente = require('./pacienteModel');
-const User = require('./userModel');
-
-const Alta = sequelize.define('Alta', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    paciente_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-            model: Paciente,
-            key: 'id'
-        }
-    },
-    usuario_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    tipo_alta: {
-        type: DataTypes.ENUM(
-            'terapeutica',
-            'abandono',
-            'traslado',
-            'graduacion',
-            'no_continua',
-            'otro'
-        ),
-        allowNull: false
-    },
-    fecha_alta: {
-        type: DataTypes.DATEONLY,
-        allowNull: false,
-        defaultValue: DataTypes.NOW
-    },
-    motivo_detallado: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    recomendaciones: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    sesiones_totales: {
-        type: DataTypes.INTEGER,
-        allowNull: true
-    },
-    evaluacion_final: {
-        type: DataTypes.ENUM('excelente', 'buena', 'regular', 'mala'),
-        allowNull: true
-    },
-    seguimiento_recomendado: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false
-    },
-    fecha_seguimiento: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    }
-}, {
-    tableName: 'altas',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['paciente_id']
-        },
-        {
-            fields: ['fecha_alta']
-        },
-        {
-            fields: ['tipo_alta']
-        }
-    ]
-});
-
-Alta.belongsTo(Paciente, { foreignKey: 'paciente_id' });
-Alta.belongsTo(User, { foreignKey: 'usuario_id' });
-
-module.exports = Alta;
-
-
-/backend/src/routes/altaRoutes.js:
---------------------------------------------------------------------------------
-const express = require('express');
-const router = express.Router();
-const AltaController = require('../controllers/altaController');
-const verifyToken = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
-
-// Todas las rutas requieren autenticación
-router.use(verifyToken);
-
-// Dar de alta paciente
-router.post('/', requireRole(['psicologo', 'coordinador']), AltaController.darAltaPaciente);
-
-// Obtener altas
-router.get('/', requireRole(['coordinador', 'psicologo']), AltaController.obtenerAltas);
-router.get('/estadisticas', requireRole(['coordinador']), AltaController.obtenerEstadisticasAltas);
-router.get('/:id', requireRole(['coordinador', 'psicologo']), AltaController.obtenerAltaDetalle);
-
-module.exports = router;
-
-
-/backend/server.js:
---------------------------------------------------------------------------------
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-const express = require('express');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./src/doc/swagger.json');
-const cors = require('cors');
-
-const sequelize = require('./src/config/db');
-
-// Importar modelos
-require('./src/models/userModel');
-require('./src/models/pacienteModel');
-require('./src/models/citaModel');
-// Importar otros modelos según necesites
-
-const authRoutes = require('./src/routes/authRoutes');
-const citaRoutes = require('./src/routes/citaRoutes');
-const roleRoutes = require('./src/routes/roleRoutes');
-const fundacionRoutes = require('./src/routes/fundacionRoutes');
-const asignacionRoutes = require('./src/routes/asignacionRoutes');
-const sesionRoutes = require('./src/routes/sesionRoutes');
-const notificacionRoutes = require('./src/routes/notificacionRoutes');
-const altaRoutes = require('./src/routes/altaRoutes');
-const reporteRoutes = require('./src/routes/reporteRoutes');
-const observacionRoutes = require('./src/routes/observacionRoutes');
-const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
-const expedienteRoutes = require('./src/routes/expedienteRoutes');
-const dashboardRoutes = require('./src/routes/dashboardRoutes');
-const agendaRoutes = require('./src/routes/agendaRoutes');
-const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
-const pacienteRoutes = require('./src/routes/pacienteRoutes');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-
-
-app.use(cors({
-  origin: 'http://localhost:3001',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-app.get('/', (req, res) => {
-  res.send('Server is running! Check /api-docs for documentation.');
-});
-
-app.use('/api/auth', authRoutes);
-app.use('/api/citas', citaRoutes);
-app.use('/api/fundaciones', fundacionRoutes);
-app.use('/api/asignaciones', asignacionRoutes);
-app.use('/api/sesiones', sesionRoutes);
-app.use('/api/notificaciones', notificacionRoutes);
-app.use('/api/altas', altaRoutes);
-app.use('/api/reportes', reporteRoutes);
-app.use('/api/observaciones', observacionRoutes);
-app.use('/api/disponibilidad', disponibilidadRoutes);
-app.use('/api/expedientes', expedienteRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/agenda', agendaRoutes);
-app.use('/api/estadisticas', estadisticaRoutes);
-const userRoutes = require('./src/routes/userRoutes');
-app.use('/api/users', userRoutes);
-app.use('/api/roles', roleRoutes);
-app.use('/api/pacientes', pacienteRoutes);
-// Sincronizar modelos
-sequelize.sync({ force: false, alter: false })
-    .then(() => {
-        console.log("✅ Tablas sincronizadas (base de datos lista)");
-        app.listen(PORT, () => {
-          console.log(`Backend running on http://localhost:${PORT}`);
-          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
-          console.log(`CORS permitido para: http://localhost:3001`);
-          console.log(`Endpoints disponibles:`);
-          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
-          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
-          console.log(`  POST /api/citas/alta-paciente`);
-          console.log(`  PUT  /api/citas/cita/:id`);
-        });
-    })
-    .catch((error) => {
-        console.error("❌ Error al sincronizar la base de datos:", error.message);
-    });
-
-
 /backend/src/services/api.js:
 --------------------------------------------------------------------------------
 const API_BASE_URL = 'http://localhost:3000/api';
@@ -1022,448 +870,11 @@ class ApiService {
 export default ApiService;
 
 
-/frontend/src/index.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './global.css';
-import './App.css';
-
-// Importa los estilos de los modales
-import './components/Common/ConfirmModal.css';
-import './components/Common/NotificationModal.css';
-
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-
-
-/backend/src/controllers/altaController.js:
---------------------------------------------------------------------------------
-const Alta = require('../models/altaModel');
-const Paciente = require('../models/pacienteModel');
-const Cita = require('../models/citaModel');
-const Asignacion = require('../models/asignacionModel');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-class AltaController {
-    
-    static async darAltaPaciente(req, res) {
-        try {
-            const { paciente_id, tipo_alta, motivo_detallado, recomendaciones, 
-                    evaluacion_final, seguimiento_recomendado, fecha_seguimiento } = req.body;
-            const usuarioId = req.user.id;
-            
-            // Verificar que el paciente existe y está activo
-            const paciente = await Paciente.findByPk(paciente_id);
-            
-            if (!paciente || !paciente.activo) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Paciente no encontrado o ya dado de alta'
-                });
-            }
-            
-            // Verificar que el usuario tiene permisos
-            const tienePermiso = await this.verificarPermisoAlta(usuarioId, paciente_id);
-            
-            if (!tienePermiso) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para dar de alta a este paciente'
-                });
-            }
-            
-            // Obtener estadísticas del paciente
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    COUNT(*) as total_sesiones,
-                    COUNT(CASE WHEN estado = 'completada' THEN 1 END) as sesiones_completadas,
-                    MIN(fecha) as primera_sesion,
-                    MAX(fecha) as ultima_sesion
-                FROM citas 
-                WHERE paciente_id = ?
-                AND estado IN ('completada', 'cancelada')
-            `, {
-                replacements: [paciente_id],
-                type: QueryTypes.SELECT
-            });
-            
-            // Iniciar transacción
-            const transaction = await sequelize.transaction();
-            
-            try {
-                // 1. Registrar el alta
-                const alta = await Alta.create({
-                    paciente_id,
-                    usuario_id: usuarioId,
-                    tipo_alta,
-                    fecha_alta: new Date().toISOString().split('T')[0],
-                    motivo_detallado,
-                    recomendaciones,
-                    sesiones_totales: estadisticas?.sesiones_completadas || 0,
-                    evaluacion_final,
-                    seguimiento_recomendado,
-                    fecha_seguimiento: seguimiento_recomendado ? fecha_seguimiento : null
-                }, { transaction });
-                
-                // 2. Desactivar paciente
-                await paciente.update({
-                    activo: false,
-                    estado: `alta_${tipo_alta}`,
-                    updated_at: new Date()
-                }, { transaction });
-                
-                // 3. Finalizar asignaciones activas
-                await Asignacion.update({
-                    estado: 'finalizada',
-                    fecha_fin: new Date().toISOString().split('T')[0],
-                    motivo_fin: `Paciente dado de alta (${tipo_alta})`
-                }, {
-                    where: { paciente_id, estado: 'activa' },
-                    transaction
-                });
-                
-                // 4. Cancelar citas futuras
-                await Cita.update({
-                    estado: 'cancelada',
-                    motivo_cancelacion: `Paciente dado de alta (${tipo_alta})`,
-                    updated_at: new Date()
-                }, {
-                    where: {
-                        paciente_id,
-                        fecha: { [sequelize.Op.gte]: new Date().toISOString().split('T')[0] },
-                        estado: { [sequelize.Op.in]: ['programada', 'confirmada'] }
-                    },
-                    transaction
-                });
-                
-                // 5. Obtener profesionales asignados para notificaciones
-                const [profesionales] = await sequelize.query(`
-                    SELECT DISTINCT 
-                        a.psicologo_id,
-                        a.becario_id
-                    FROM asignaciones a
-                    WHERE a.paciente_id = ?
-                    AND a.estado = 'activa'
-                `, {
-                    replacements: [paciente_id],
-                    type: QueryTypes.SELECT,
-                    transaction
-                });
-                
-                // 6. Crear notificaciones
-                if (profesionales) {
-                    const notificaciones = [];
-                    const titulo = 'Paciente dado de alta';
-                    const mensaje = `El paciente ${paciente.nombre} ${paciente.apellido} ha sido dado de alta (${tipo_alta}).`;
-                    
-                    if (profesionales.psicologo_id) {
-                        notificaciones.push([profesionales.psicologo_id, 'alerta_sistema', titulo, mensaje]);
-                    }
-                    
-                    if (profesionales.becario_id) {
-                        notificaciones.push([profesionales.becario_id, 'alerta_sistema', titulo, mensaje]);
-                    }
-                    
-                    for (const [usuarioIdNotif, tipo, tituloNotif, mensajeNotif] of notificaciones) {
-                        await sequelize.query(`
-                            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                            VALUES (?, ?, ?, ?, NOW())
-                        `, {
-                            replacements: [usuarioIdNotif, tipo, tituloNotif, mensajeNotif],
-                            transaction
-                        });
-                    }
-                }
-                
-                // 7. Registrar log
-                await sequelize.query(`
-                    INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                    VALUES (?, 'modificacion', 'altas', 'Dar de alta paciente', ?, NOW())
-                `, {
-                    replacements: [usuarioId, `Alta paciente ${paciente_id} - Tipo: ${tipo_alta}`],
-                    transaction
-                });
-                
-                // Commit transacción
-                await transaction.commit();
-                
-                res.json({
-                    success: true,
-                    message: 'Paciente dado de alta exitosamente',
-                    data: {
-                        alta,
-                        paciente: {
-                            id: paciente.id,
-                            nombre: paciente.nombre,
-                            apellido: paciente.apellido,
-                            estado: paciente.estado
-                        },
-                        estadisticas
-                    }
-                });
-                
-            } catch (error) {
-                await transaction.rollback();
-                throw error;
-            }
-            
-        } catch (error) {
-            console.error('Error en darAltaPaciente:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al dar de alta paciente',
-                error: error.message
-            });
-        }
-    }
-    
-    static async obtenerAltas(req, res) {
-        try {
-            const { fecha_inicio, fecha_fin, tipo_alta, psicologo_id } = req.query;
-            
-            let query = `
-                SELECT 
-                    a.*,
-                    p.nombre AS paciente_nombre,
-                    p.apellido AS paciente_apellido,
-                    p.telefono AS paciente_telefono,
-                    u.nombre AS usuario_nombre,
-                    u.apellido AS usuario_apellido,
-                    COUNT(DISTINCT c.id) AS total_sesiones
-                FROM altas a
-                JOIN pacientes p ON a.paciente_id = p.id
-                JOIN users u ON a.usuario_id = u.id
-                LEFT JOIN citas c ON a.paciente_id = c.paciente_id AND c.estado = 'completada'
-                WHERE 1=1
-            `;
-            
-            const replacements = [];
-            
-            if (fecha_inicio) {
-                query += ` AND a.fecha_alta >= ?`;
-                replacements.push(fecha_inicio);
-            }
-            
-            if (fecha_fin) {
-                query += ` AND a.fecha_alta <= ?`;
-                replacements.push(fecha_fin);
-            }
-            
-            if (tipo_alta) {
-                query += ` AND a.tipo_alta = ?`;
-                replacements.push(tipo_alta);
-            }
-            
-            if (psicologo_id) {
-                query += ` AND EXISTS (
-                    SELECT 1 FROM asignaciones asig 
-                    WHERE asig.paciente_id = a.paciente_id 
-                    AND asig.psicologo_id = ?
-                    AND asig.estado = 'finalizada'
-                )`;
-                replacements.push(psicologo_id);
-            }
-            
-            query += ` GROUP BY a.id, p.id, u.id
-                      ORDER BY a.fecha_alta DESC, p.apellido, p.nombre`;
-            
-            const altas = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: altas,
-                count: altas.length
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerAltas:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener altas'
-            });
-        }
-    }
-    
-    static async obtenerAltaDetalle(req, res) {
-        try {
-            const { id } = req.params;
-            
-            const query = `
-                SELECT 
-                    a.*,
-                    p.nombre AS paciente_nombre,
-                    p.apellido AS paciente_apellido,
-                    p.fecha_nacimiento,
-                    p.genero,
-                    p.email AS paciente_email,
-                    p.telefono AS paciente_telefono,
-                    u.nombre AS usuario_nombre,
-                    u.apellido AS usuario_apellido,
-                    u_psi.nombre AS psicologo_nombre,
-                    u_psi.apellido AS psicologo_apellido,
-                    (SELECT COUNT(*) FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada') AS total_sesiones,
-                    (SELECT GROUP_CONCAT(DISTINCT DATE_FORMAT(fecha, '%Y-%m-%d') ORDER BY fecha DESC SEPARATOR ', ') 
-                     FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada' LIMIT 10) AS ultimas_sesiones
-                FROM altas a
-                JOIN pacientes p ON a.paciente_id = p.id
-                JOIN users u ON a.usuario_id = u.id
-                LEFT JOIN (
-                    SELECT DISTINCT paciente_id, psicologo_id 
-                    FROM asignaciones 
-                    WHERE paciente_id = ? 
-                    ORDER BY fecha_inicio DESC 
-                    LIMIT 1
-                ) asig ON p.id = asig.paciente_id
-                LEFT JOIN users u_psi ON asig.psicologo_id = u_psi.id
-                WHERE a.id = ?
-            `;
-            
-            const [alta] = await sequelize.query(query, {
-                replacements: [id, id],
-                type: QueryTypes.SELECT
-            });
-            
-            if (!alta) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Alta no encontrada'
-                });
-            }
-            
-            res.json({
-                success: true,
-                data: alta
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerAltaDetalle:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener detalle de alta'
-            });
-        }
-    }
-    
-    static async obtenerEstadisticasAltas(req, res) {
-        try {
-            const { fecha_inicio, fecha_fin } = req.query;
-            
-            const query = `
-                SELECT 
-                    tipo_alta,
-                    COUNT(*) as total,
-                    MONTH(fecha_alta) as mes,
-                    YEAR(fecha_alta) as anio,
-                    AVG(sesiones_totales) as promedio_sesiones,
-                    SUM(CASE WHEN seguimiento_recomendado = TRUE THEN 1 ELSE 0 END) as seguimientos_recomendados
-                FROM altas
-                WHERE 1=1
-            `;
-            
-            const replacements = [];
-            
-            if (fecha_inicio) {
-                query += ` AND fecha_alta >= ?`;
-                replacements.push(fecha_inicio);
-            }
-            
-            if (fecha_fin) {
-                query += ` AND fecha_alta <= ?`;
-                replacements.push(fecha_fin);
-            }
-            
-            query += ` GROUP BY tipo_alta, YEAR(fecha_alta), MONTH(fecha_alta)
-                      ORDER BY anio DESC, mes DESC, total DESC`;
-            
-            const estadisticas = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
-            });
-            
-            // Totales generales
-            const [totales] = await sequelize.query(`
-                SELECT 
-                    COUNT(*) as total_altas,
-                    AVG(sesiones_totales) as promedio_sesiones_global,
-                    MIN(fecha_alta) as primera_alta,
-                    MAX(fecha_alta) as ultima_alta
-                FROM altas
-                WHERE 1=1 ${fecha_inicio ? 'AND fecha_alta >= ?' : ''} ${fecha_fin ? 'AND fecha_alta <= ?' : ''}
-            `, {
-                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : 
-                            fecha_inicio ? [fecha_inicio] : fecha_fin ? [fecha_fin] : [],
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: {
-                    estadisticas,
-                    totales
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerEstadisticasAltas:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener estadísticas de altas'
-            });
-        }
-    }
-    
-    // Método auxiliar para verificar permisos
-    static async verificarPermisoAlta(usuarioId, pacienteId) {
-        const usuarioRol = await this.obtenerRolUsuario(usuarioId);
-        
-        if (usuarioRol === 'coordinador') return true;
-        
-        if (usuarioRol === 'psicologo') {
-            const [asignacion] = await sequelize.query(`
-                SELECT 1 FROM asignaciones 
-                WHERE paciente_id = ? 
-                AND psicologo_id = ?
-                AND estado = 'activa'
-            `, {
-                replacements: [pacienteId, usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            return !!asignacion;
-        }
-        
-        return false;
-    }
-    
-    static async obtenerRolUsuario(usuarioId) {
-        const [usuario] = await sequelize.query(
-            'SELECT rol FROM users WHERE id = ?',
-            { replacements: [usuarioId], type: QueryTypes.SELECT }
-        );
-        
-        return usuario?.rol;
-    }
-}
-
-module.exports = AltaController;
-
-
 /frontend/src/global.css:
 --------------------------------------------------------------------------------
 :root {
   /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
+  --grnb: #29ce6e;   /* Verde azulado oscuro */
   --blub: #2c3138;   /* Azul claro */
   --blud: #1B1E23;   /* Azul oscuro */
   --white: #ffffff;
@@ -1480,8 +891,8 @@ module.exports = AltaController;
   --bludd: #1B6DA7;
   --blub-dark: #131923; /* BLUD - Azul más oscuro */
   --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
+  --grnd: #37b670;     /* GRND - Verde */
+  --grnl: #30ff64;     /* GRNL - Verde claro */
   --rr: #fa3144;       /* RR - Rojo */
   --yy: #ffa631;       /* YY - Amarillo */
   --rl: #ff5363;       /* RL - Rojo claro */
@@ -1491,7 +902,6 @@ module.exports = AltaController;
 
 [data-theme="light"] {
   /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
   --blub: #fff;   /* Azul claro */
   --blud: #e8f1fa;   /* Azul oscuro */
   --white: #1B1E23;
@@ -1501,19 +911,6 @@ module.exports = AltaController;
 
   --whiteSET: #ffffff;
   --bludSET: #1B1E23;
-  
-  /* Colores adicionales */
-  --blu: #1F85BA;      /* GRNB - Azul */
-  --bludd: #1B6DA7;
-  --blub-dark: #131923; /* BLUD - Azul más oscuro */
-  --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
-  --rr: #fa3144;       /* RR - Rojo */
-  --yy: #ffa631;       /* YY - Amarillo */
-  --rl: #ff5363;       /* RL - Rojo claro */
-  --yl: #ffdd55;       /* YL - Amarillo claro */
-  --wt: #ffffff;       /* WT - Blanco */
 }
 
 * {
@@ -1865,13 +1262,13 @@ body {
   width: 100%;
   padding: 10px;
   border-radius: 5px;
-  border: 2px solid var(--blu);
+  border: 1px solid var(--blu);
   background: var(--blud);
   color: var(--white);
 }
 
 .search-input:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -1888,7 +1285,7 @@ body {
 }
 
 .textarea-field:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -1903,7 +1300,7 @@ body {
 }
 
 .select-field:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -1983,12 +1380,12 @@ body {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 2px solid var(--grnb);
+  border-bottom: 2px solid var(--blu);
 }
 
 .modal-title {
   margin: 0;
-  color: var(--grnb);
+  color: var(--blu);
   font-size: 1.5em;
 }
 
@@ -2022,7 +1419,7 @@ body {
   justify-content: flex-end;
   margin-top: 20px;
   padding-top: 15px;
-  border-top: 2px solid var(--grnb);
+  border-top: 2px solid var(--blu);
 }
 
 /* ===== GRIDS Y LAYOUTS ===== */
@@ -2283,7 +1680,7 @@ body {
 }
 
 .data-table th {
-  background: var(--bluDSET);
+  background: var(--bludSET);
   padding: 12px 15px;
   text-align: left;
   font-weight: bold;
@@ -2314,7 +1711,7 @@ body {
 }
 
 .badge-success {
-  background: rgba(31, 133, 186, 0.2);
+  background: rgba(31, 186, 121, 0.2);
   color: var(--grnb);
   border: 1px solid var(--grnb);
 }
@@ -2348,7 +1745,7 @@ body {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--grnd) 0%, var(--grnb) 100%);
+  background: linear-gradient(90deg, var(--blu) 0%, var(--bludd) 100%);
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -2403,8 +1800,8 @@ body {
 }
 
 .tab.active {
-  color: var(--grnb);
-  border-bottom: 2px solid var(--grnb);
+  color: var(--blu);
+  border-bottom: 2px solid var(--blu);
 }
 
 /* Accordion */
@@ -2722,7 +2119,7 @@ body {
 
 .progreso-text {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--blu);
   min-width: 40px;
 }
 
@@ -2749,7 +2146,7 @@ body {
 
 .bar-fill {
   width: 20px;
-  background: linear-gradient(to top, var(--grnd), var(--grnb));
+  background: linear-gradient(to top, var(--blu), var(--bludd));
   border-radius: 4px 4px 0 0;
   transition: height 0.3s ease;
 }
@@ -2891,13 +2288,13 @@ body {
 
 .event-type {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--blu);
   margin-top: 2px;
 }
 
 .event-notes {
   font-size: 11px;
-  color: var(--grayl);
+  color: var(--white);
   margin-top: 2px;
 }
 
@@ -2930,7 +2327,7 @@ body {
 }
 
 .cita-card:hover {
-  border-color: var(--grnb);
+
   transform: translateY(-2px);
 }
 
@@ -2997,8 +2394,8 @@ body {
 
 .config-tab.active {
   background: rgba(31, 133, 186, 0.2);
-  color: var(--grnb);
-  border-left: 3px solid var(--grnb);
+  color: var(--blu);
+  border: 3px solid var(--blu);
 }
 
 .config-tab svg {
@@ -3127,7 +2524,7 @@ body {
 }
 
 input:checked + .slider {
-  background-color: var(--grnb);
+  background-color: var(--blu);
 }
 
 input:checked + .slider:before {
@@ -3264,14 +2661,14 @@ input:checked + .slider:before {
   overflow-y: auto;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
-  border: 2px solid var(--grnd);
+  border: 2px solid var(--blu);
 }
 
 .modal-title-nueva-cita {
-  color: var(--grnd);
+  color: var(--blu);
   margin-bottom: 20px;
   font-size: 24px;
-  border-bottom: 2px solid var(--grnd);
+  border-bottom: 2px solid var(--blu);
   padding-bottom: 10px;
   display: flex;
   align-items: center;
@@ -3292,8 +2689,8 @@ input:checked + .slider:before {
 
 .form-input-nueva-cita:focus {
   outline: none;
-  border-color: var(--grnd);
-  box-shadow: 0 0 0 2px rgba(55, 182, 156, 0.2);
+  border-color: var(--blu);
+
 }
 
 .form-select-nueva-cita {
@@ -3310,7 +2707,7 @@ input:checked + .slider:before {
 
 .form-select-nueva-cita:focus {
   outline: none;
-  border-color: var(--grnd);
+  border-color: var(--blu);
 }
 
 .form-textarea-nueva-cita {
@@ -3347,12 +2744,11 @@ input:checked + .slider:before {
 }
 
 .button-success-nueva-cita {
-  background: var(--grnd);
+  background: var(--grnb);
   color: var(--white);
 }
 
 .button-success-nueva-cita:hover {
-  background: var(--grnb);
   transform: translateY(-2px);
 }
 
@@ -3380,8 +2776,8 @@ input:checked + .slider:before {
   padding: 15px;
   border-radius: 5px;
   margin-bottom: 15px;
-  color: var(--grnl);
-  border-left: 4px solid var(--grnd);
+  color: var(--blu);
+  border-left: 4px solid var(--blu);
 }
 
 /* Animaciones */
@@ -3496,7 +2892,7 @@ input:checked + .slider:before {
 /* Expedientes */
 .diagnostico-tag {
   background: rgba(31, 133, 186, 0.1);
-  color: var(--grnb);
+  color: var(--blu);
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
@@ -3567,7 +2963,7 @@ input:checked + .slider:before {
 }
 
 .detail-row strong {
-  color: var(--grnb);
+  color: var(--blu);
 }
 
 .detail-row.notes {
@@ -3738,7 +3134,7 @@ input:checked + .slider:before {
   width: 60px;
   height: 60px;
   border: 5px solid rgba(255, 255, 255, 0.1);
-  border-top: 5px solid var(--grnb);
+  border-top: 5px solid var(--blu);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px;
@@ -3746,7 +3142,7 @@ input:checked + .slider:before {
 
 .global-loader-text {
   font-size: 18px;
-  color: var(--grnb);
+  color: var(--blu);
   font-weight: bold;
 }
 
@@ -3853,137 +3249,735 @@ input:checked + .slider:before {
 
 
 
-/frontend/src/services/api.js:
+/backend/src/routes/altaRoutes.js:
 --------------------------------------------------------------------------------
-// frontend/src/services/api.js
-const API_BASE_URL = 'http://localhost:3000/api';
+const express = require('express');
+const router = express.Router();
+const AltaController = require('../controllers/altaController');
+const verifyToken = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
 
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
+// Todas las rutas requieren autenticación
+router.use(verifyToken);
 
-  static getHeaders() {
-    const token = this.getToken();
-    const headers = {
-      'Content-Type': 'application/json',
-    };
+// Dar de alta paciente
+router.post('/', requireRole(['psicologo', 'coordinador']), AltaController.darAltaPaciente);
+
+// Obtener altas
+router.get('/', requireRole(['coordinador', 'psicologo']), AltaController.obtenerAltas);
+router.get('/estadisticas', requireRole(['coordinador']), AltaController.obtenerEstadisticasAltas);
+router.get('/:id', requireRole(['coordinador', 'psicologo']), AltaController.obtenerAltaDetalle);
+
+module.exports = router;
+
+
+/backend/src/models/pacienteModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+const Paciente = sequelize.define('Paciente', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    nombre: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    apellido: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    email: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        validate: {
+            isEmail: true
+        }
+    },
+    telefono: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    fecha_nacimiento: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
+    genero: {
+        type: DataTypes.ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
+        allowNull: true
+    },
+    direccion: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    estado: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+        defaultValue: 'activo'
+    },
+    activo: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    },
+    notas: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    fundacion_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    }
+}, {
+    tableName: 'pacientes',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['activo']
+        },
+        {
+            fields: ['apellido', 'nombre']
+        }
+    ]
+});
+
+module.exports = Paciente;
+
+
+/frontend/src/index.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
+
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
+
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+/backend/src/models/altaModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const Paciente = require('./pacienteModel');
+const User = require('./userModel');
+
+const Alta = sequelize.define('Alta', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    paciente_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: Paciente,
+            key: 'id'
+        }
+    },
+    usuario_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    tipo_alta: {
+        type: DataTypes.ENUM(
+            'terapeutica',
+            'abandono',
+            'traslado',
+            'graduacion',
+            'no_continua',
+            'otro'
+        ),
+        allowNull: false
+    },
+    fecha_alta: {
+        type: DataTypes.DATEONLY,
+        allowNull: false,
+        defaultValue: DataTypes.NOW
+    },
+    motivo_detallado: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    recomendaciones: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    sesiones_totales: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    evaluacion_final: {
+        type: DataTypes.ENUM('excelente', 'buena', 'regular', 'mala'),
+        allowNull: true
+    },
+    seguimiento_recomendado: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
+    fecha_seguimiento: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    }
+}, {
+    tableName: 'altas',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['paciente_id']
+        },
+        {
+            fields: ['fecha_alta']
+        },
+        {
+            fields: ['tipo_alta']
+        }
+    ]
+});
+
+Alta.belongsTo(Paciente, { foreignKey: 'paciente_id' });
+Alta.belongsTo(User, { foreignKey: 'usuario_id' });
+
+module.exports = Alta;
+
+
+/backend/server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
+
+const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes');
+const roleRoutes = require('./src/routes/roleRoutes');
+const fundacionRoutes = require('./src/routes/fundacionRoutes');
+const asignacionRoutes = require('./src/routes/asignacionRoutes');
+const sesionRoutes = require('./src/routes/sesionRoutes');
+const notificacionRoutes = require('./src/routes/notificacionRoutes');
+const altaRoutes = require('./src/routes/altaRoutes');
+const reporteRoutes = require('./src/routes/reporteRoutes');
+const observacionRoutes = require('./src/routes/observacionRoutes');
+const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
+const expedienteRoutes = require('./src/routes/expedienteRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const agendaRoutes = require('./src/routes/agendaRoutes');
+const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
+app.use('/api/fundaciones', fundacionRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/sesiones', sesionRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/altas', altaRoutes);
+app.use('/api/reportes', reporteRoutes);
+app.use('/api/observaciones', observacionRoutes);
+app.use('/api/disponibilidad', disponibilidadRoutes);
+app.use('/api/expedientes', expedienteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agenda', agendaRoutes);
+app.use('/api/estadisticas', estadisticaRoutes);
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
+
+
+/backend/src/controllers/altaController.js:
+--------------------------------------------------------------------------------
+const Alta = require('../models/altaModel');
+const Paciente = require('../models/pacienteModel');
+const Cita = require('../models/citaModel');
+const Asignacion = require('../models/asignacionModel');
+const { QueryTypes, Op } = require('sequelize'); // AÑADE Op aquí
+const sequelize = require('../config/db');
+
+class AltaController {
     
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+    static async darAltaPaciente(req, res) {
+        try {
+            const { paciente_id, tipo_alta, motivo_detallado, recomendaciones, 
+                    evaluacion_final, seguimiento_recomendado, fecha_seguimiento } = req.body;
+            const usuarioId = req.user.id;
+            
+            // Verificar que el paciente existe y está activo
+            const paciente = await Paciente.findByPk(paciente_id);
+            
+            if (!paciente || !paciente.activo) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Paciente no encontrado o ya dado de alta'
+                });
+            }
+            
+            // Obtener estadísticas del paciente
+            const [estadisticas] = await sequelize.query(`
+                SELECT 
+                    COUNT(*) as total_sesiones,
+                    COUNT(CASE WHEN estado = 'completada' THEN 1 END) as sesiones_completadas,
+                    MIN(fecha) as primera_sesion,
+                    MAX(fecha) as ultima_sesion
+                FROM citas 
+                WHERE paciente_id = ?
+                AND estado IN ('completada', 'cancelada')
+            `, {
+                replacements: [paciente_id],
+                type: QueryTypes.SELECT
+            });
+            
+            // Iniciar transacción
+            const transaction = await sequelize.transaction();
+            
+            try {
+                // 1. Registrar el alta
+                const alta = await Alta.create({
+                    paciente_id,
+                    usuario_id: usuarioId,
+                    tipo_alta,
+                    fecha_alta: new Date().toISOString().split('T')[0],
+                    motivo_detallado,
+                    recomendaciones,
+                    sesiones_totales: estadisticas?.sesiones_completadas || 0,
+                    evaluacion_final,
+                    seguimiento_recomendado,
+                    fecha_seguimiento: seguimiento_recomendado ? fecha_seguimiento : null
+                }, { transaction });
+                
+                // 2. Desactivar paciente
+                await paciente.update({
+                    activo: false,
+                    estado: `alta_${tipo_alta}`,
+                    updated_at: new Date()
+                }, { transaction });
+                
+                // 3. Finalizar asignaciones activas
+                await Asignacion.update({
+                    estado: 'finalizada',
+                    fecha_fin: new Date().toISOString().split('T')[0],
+                    motivo_fin: `Paciente dado de alta (${tipo_alta})`
+                }, {
+                    where: { paciente_id, estado: 'activa' },
+                    transaction
+                });
+                
+                // 4. Cancelar citas futuras - VERSIÓN CORREGIDA
+                const fechaHoy = new Date().toISOString().split('T')[0];
+                
+                await Cita.update({
+                    estado: 'cancelada',
+                    motivo_cancelacion: `Paciente dado de alta (${tipo_alta})`,
+                    updated_at: new Date()
+                }, {
+                    where: {
+                        paciente_id,
+                        fecha: { [Op.gte]: fechaHoy },
+                        estado: { [Op.in]: ['programada', 'confirmada'] }
+                    },
+                    transaction
+                });
+                
+                // 5. Obtener profesionales asignados para notificaciones
+                const [profesionales] = await sequelize.query(`
+                    SELECT DISTINCT 
+                        a.psicologo_id,
+                        a.becario_id
+                    FROM asignaciones a
+                    WHERE a.paciente_id = ?
+                    AND a.estado = 'activa'
+                `, {
+                    replacements: [paciente_id],
+                    type: QueryTypes.SELECT,
+                    transaction
+                });
+                
+                // 6. Crear notificaciones
+                if (profesionales) {
+                    const notificaciones = [];
+                    const titulo = 'Paciente dado de alta';
+                    const mensaje = `El paciente ${paciente.nombre} ${paciente.apellido} ha sido dado de alta (${tipo_alta}).`;
+                    
+                    if (profesionales.psicologo_id) {
+                        notificaciones.push([profesionales.psicologo_id, 'alerta_sistema', titulo, mensaje]);
+                    }
+                    
+                    if (profesionales.becario_id) {
+                        notificaciones.push([profesionales.becario_id, 'alerta_sistema', titulo, mensaje]);
+                    }
+                    
+                    for (const [usuarioIdNotif, tipo, tituloNotif, mensajeNotif] of notificaciones) {
+                        await sequelize.query(`
+                            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                            VALUES (?, ?, ?, ?, NOW())
+                        `, {
+                            replacements: [usuarioIdNotif, tipo, tituloNotif, mensajeNotif],
+                            transaction
+                        });
+                    }
+                }
+                
+                // 7. Registrar log
+                await sequelize.query(`
+                    INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
+                    VALUES (?, 'modificacion', 'altas', 'Dar de alta paciente', ?, NOW())
+                `, {
+                    replacements: [usuarioId, `Alta paciente ${paciente_id} - Tipo: ${tipo_alta}`],
+                    transaction
+                });
+                
+                // Commit transacción
+                await transaction.commit();
+                
+                res.json({
+                    success: true,
+                    message: 'Paciente dado de alta exitosamente',
+                    data: {
+                        alta,
+                        paciente: {
+                            id: paciente.id,
+                            nombre: paciente.nombre,
+                            apellido: paciente.apellido,
+                            estado: paciente.estado
+                        },
+                        estadisticas
+                    }
+                });
+                
+            } catch (error) {
+                await transaction.rollback();
+                console.error('Error en transacción de alta:', error);
+                throw error;
+            }
+            
+        } catch (error) {
+            console.error('Error en darAltaPaciente:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al dar de alta paciente',
+                error: error.message
+            });
+        }
     }
     
-    return headers;
-  }
-
-  static async request(url, options = {}) {
-    const { method = 'GET', data } = options;
-    
-    const config = {
-      method,
-      headers: this.getHeaders(),
-      credentials: 'include' // Importante para cookies si las usas
-    };
-    
-    if (data) {
-      config.body = JSON.stringify(data);
+    static async obtenerAltas(req, res) {
+        try {
+            const { fecha_inicio, fecha_fin, tipo_alta, psicologo_id } = req.query;
+            
+            let query = `
+                SELECT 
+                    a.*,
+                    p.nombre AS paciente_nombre,
+                    p.apellido AS paciente_apellido,
+                    p.telefono AS paciente_telefono,
+                    u.nombre AS usuario_nombre,
+                    u.apellido AS usuario_apellido,
+                    COUNT(DISTINCT c.id) AS total_sesiones
+                FROM altas a
+                JOIN pacientes p ON a.paciente_id = p.id
+                JOIN users u ON a.usuario_id = u.id
+                LEFT JOIN citas c ON a.paciente_id = c.paciente_id AND c.estado = 'completada'
+                WHERE 1=1
+            `;
+            
+            const replacements = [];
+            
+            if (fecha_inicio) {
+                query += ` AND a.fecha_alta >= ?`;
+                replacements.push(fecha_inicio);
+            }
+            
+            if (fecha_fin) {
+                query += ` AND a.fecha_alta <= ?`;
+                replacements.push(fecha_fin);
+            }
+            
+            if (tipo_alta) {
+                query += ` AND a.tipo_alta = ?`;
+                replacements.push(tipo_alta);
+            }
+            
+            if (psicologo_id) {
+                query += ` AND EXISTS (
+                    SELECT 1 FROM asignaciones asig 
+                    WHERE asig.paciente_id = a.paciente_id 
+                    AND asig.psicologo_id = ?
+                    AND asig.estado = 'finalizada'
+                )`;
+                replacements.push(psicologo_id);
+            }
+            
+            query += ` GROUP BY a.id, p.id, u.id
+                      ORDER BY a.fecha_alta DESC, p.apellido, p.nombre`;
+            
+            const altas = await sequelize.query(query, {
+                replacements,
+                type: QueryTypes.SELECT
+            });
+            
+            res.json({
+                success: true,
+                data: altas,
+                count: altas.length
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerAltas:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener altas'
+            });
+        }
     }
     
-    try {
-      const response = await fetch(`${API_BASE_URL}${url}`, config);
-      return this.handleResponse(response);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      throw error;
+    static async obtenerAltaDetalle(req, res) {
+        try {
+            const { id } = req.params;
+            
+            const query = `
+                SELECT 
+                    a.*,
+                    p.nombre AS paciente_nombre,
+                    p.apellido AS paciente_apellido,
+                    p.fecha_nacimiento,
+                    p.genero,
+                    p.email AS paciente_email,
+                    p.telefono AS paciente_telefono,
+                    u.nombre AS usuario_nombre,
+                    u.apellido AS usuario_apellido,
+                    u_psi.nombre AS psicologo_nombre,
+                    u_psi.apellido AS psicologo_apellido,
+                    (SELECT COUNT(*) FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada') AS total_sesiones,
+                    (SELECT GROUP_CONCAT(DISTINCT DATE_FORMAT(fecha, '%Y-%m-%d') ORDER BY fecha DESC SEPARATOR ', ') 
+                    FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada' LIMIT 10) AS ultimas_sesiones
+                FROM altas a
+                JOIN pacientes p ON a.paciente_id = p.id
+                JOIN users u ON a.usuario_id = u.id
+                LEFT JOIN (
+                    SELECT paciente_id, psicologo_id 
+                    FROM asignaciones 
+                    WHERE paciente_id = ? 
+                    ORDER BY fecha_inicio DESC 
+                    LIMIT 1
+                ) asig ON p.id = asig.paciente_id
+                LEFT JOIN users u_psi ON asig.psicologo_id = u_psi.id
+                WHERE a.id = ?
+            `;
+            
+            const [alta] = await sequelize.query(query, {
+                replacements: [id, id],
+                type: QueryTypes.SELECT
+            });
+            
+            if (!alta) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Alta no encontrada'
+                });
+            }
+            
+            res.json({
+                success: true,
+                data: alta
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerAltaDetalle:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener detalle de alta'
+            });
+        }
     }
-  }
-
-  static async get(url) {
-    return this.request(url);
-  }
-
-  static async post(url, data) {
-    return this.request(url, { method: 'POST', data });
-  }
-
-  static async put(url, data) {
-    return this.request(url, { method: 'PUT', data });
-  }
-
-  static async delete(url) {
-    return this.request(url, { method: 'DELETE' });
-  }
-
-  static async handleResponse(response) {
-      // Primero verificar si hay contenido
-      if (response.status === 204 || response.status === 205) {
-          return {};
-      }
-      
-      const contentType = response.headers.get('content-type');
-      
-      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
-      if (contentType && contentType.includes('text/csv')) {
-          const text = await response.text();
-          
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
-          
-          // Para CSV, devolvemos el texto directamente
-          return text;
-      }
-      
-      // Si no es CSV, verificar si es JSON
-      if (!contentType || !contentType.includes('application/json')) {
-          const text = await response.text();
-          
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
-          
-          // Intentar parsear como JSON si es posible
-          try {
-              return text ? JSON.parse(text) : {};
-          } catch {
-              return text;
-          }
-      }
-      
-      // Si es JSON, parsearlo normalmente
-      const data = await response.json();
-      
-      if (!response.ok) {
-          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
-          const error = new Error(errorMessage);
-          error.status = response.status;
-          error.data = data;
-          throw error;
-      }
-      
-      return data;
-  }
-
-  // Métodos específicos para el dashboard
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-
-  // Método para obtener información del usuario actual
-  static async getCurrentUser() {
-    return this.get('/auth/me');
-  }
+    
+    static async obtenerEstadisticasAltas(req, res) {
+        try {
+            const { fecha_inicio, fecha_fin } = req.query;
+            
+            let query = `
+                SELECT 
+                    tipo_alta,
+                    COUNT(*) as total,
+                    MONTH(fecha_alta) as mes,
+                    YEAR(fecha_alta) as anio,
+                    AVG(sesiones_totales) as promedio_sesiones,
+                    SUM(CASE WHEN seguimiento_recomendado = TRUE THEN 1 ELSE 0 END) as seguimientos_recomendados
+                FROM altas
+                WHERE 1=1
+            `;
+            
+            let replacements = [];
+            
+            if (fecha_inicio) {
+                query += ` AND fecha_alta >= ?`;
+                replacements.push(fecha_inicio);
+            }
+            
+            if (fecha_fin) {
+                query += ` AND fecha_alta <= ?`;
+                replacements.push(fecha_fin);
+            }
+            
+            query += ` GROUP BY tipo_alta, YEAR(fecha_alta), MONTH(fecha_alta)
+                    ORDER BY anio DESC, mes DESC, total DESC`;
+            
+            const estadisticas = await sequelize.query(query, {
+                replacements,
+                type: QueryTypes.SELECT
+            });
+            
+            // Totales generales - AQUÍ ESTABA EL ERROR PRINCIPAL
+            // Crear la query para totales de forma dinámica
+            let totalesQuery = `
+                SELECT 
+                    COUNT(*) as total_altas,
+                    AVG(sesiones_totales) as promedio_sesiones_global,
+                    MIN(fecha_alta) as primera_alta,
+                    MAX(fecha_alta) as ultima_alta
+                FROM altas
+                WHERE 1=1
+            `;
+            
+            let totalesReplacements = [];
+            
+            if (fecha_inicio) {
+                totalesQuery += ` AND fecha_alta >= ?`;
+                totalesReplacements.push(fecha_inicio);
+            }
+            
+            if (fecha_fin) {
+                totalesQuery += ` AND fecha_alta <= ?`;
+                totalesReplacements.push(fecha_fin);
+            }
+            
+            const [totales] = await sequelize.query(totalesQuery, {
+                replacements: totalesReplacements,
+                type: QueryTypes.SELECT
+            });
+            
+            res.json({
+                success: true,
+                data: {
+                    estadisticas,
+                    totales
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerEstadisticasAltas:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener estadísticas de altas'
+            });
+        }
+    }
+    
+    // Método auxiliar para verificar permisos
+    static async verificarPermisoAlta(usuarioId, pacienteId) {
+        const usuarioRol = await this.obtenerRolUsuario(usuarioId);
+        
+        if (usuarioRol === 'coordinador') return true;
+        
+        if (usuarioRol === 'psicologo') {
+            const [asignacion] = await sequelize.query(`
+                SELECT 1 FROM asignaciones 
+                WHERE paciente_id = ? 
+                AND psicologo_id = ?
+                AND estado = 'activa'
+            `, {
+                replacements: [pacienteId, usuarioId],
+                type: QueryTypes.SELECT
+            });
+            
+            return !!asignacion;
+        }
+        
+        return false;
+    }
+    
+    static async obtenerRolUsuario(usuarioId) {
+        const [usuario] = await sequelize.query(
+            'SELECT rol FROM users WHERE id = ?',
+            { replacements: [usuarioId], type: QueryTypes.SELECT }
+        );
+        
+        return usuario?.rol;
+    }
 }
 
-export default ApiService;
+module.exports = AltaController;
 
 
 /frontend/src/App.js:

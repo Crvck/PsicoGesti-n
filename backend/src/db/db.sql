@@ -44,11 +44,13 @@ CREATE TABLE pacientes (
     activo BOOLEAN DEFAULT TRUE,
     notas TEXT,
     fundacion_id INT,
+    ultimo_no_aprobado DATE NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
     INDEX idx_activo (activo),
-    INDEX idx_apellido_nombre (apellido, nombre)
+    INDEX idx_apellido_nombre (apellido, nombre),
+    INDEX idx_ultimo_no_aprobado (ultimo_no_aprobado)
 );
 
 CREATE TABLE expedientes (
@@ -171,7 +173,7 @@ CREATE TABLE altas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     paciente_id INT NOT NULL,
     usuario_id INT NOT NULL,
-    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro') NOT NULL,
+    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro', 'no_aprobado') NOT NULL,
     fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
     motivo_detallado TEXT,
     recomendaciones TEXT,

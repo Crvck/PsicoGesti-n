@@ -1,7 +1,140 @@
 ARCHIVOS BACKEND PARA: COORDINADOR_PACIENTES
 ================================================================================
-Generado: 2025-12-17 16:14:49
+Generado: 2025-12-18 12:44:17
 ================================================================================
+
+/frontend/src/services/api.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
+
+  static async get(url) {
+    return this.request(url);
+  }
+
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+      // Primero verificar si hay contenido
+      if (response.status === 204 || response.status === 205) {
+          return {};
+      }
+      
+      const contentType = response.headers.get('content-type');
+      
+      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
+      if (contentType && contentType.includes('text/csv')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Para CSV, devolvemos el texto directamente
+          return text;
+      }
+      
+      // Si no es CSV, verificar si es JSON
+      if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Intentar parsear como JSON si es posible
+          try {
+              return text ? JSON.parse(text) : {};
+          } catch {
+              return text;
+          }
+      }
+      
+      // Si es JSON, parsearlo normalmente
+      const data = await response.json();
+      
+      if (!response.ok) {
+          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+      }
+      
+      return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
+}
+
+export default ApiService;
+
 
 /backend/src/db/db.sql:
 --------------------------------------------------------------------------------
@@ -51,11 +184,13 @@ CREATE TABLE pacientes (
     activo BOOLEAN DEFAULT TRUE,
     notas TEXT,
     fundacion_id INT,
+    ultimo_no_aprobado DATE NULL DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
     INDEX idx_activo (activo),
-    INDEX idx_apellido_nombre (apellido, nombre)
+    INDEX idx_apellido_nombre (apellido, nombre),
+    INDEX idx_ultimo_no_aprobado (ultimo_no_aprobado)
 );
 
 CREATE TABLE expedientes (
@@ -178,7 +313,7 @@ CREATE TABLE altas (
     id INT PRIMARY KEY AUTO_INCREMENT,
     paciente_id INT NOT NULL,
     usuario_id INT NOT NULL,
-    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro') NOT NULL,
+    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro', 'no_aprobado') NOT NULL,
     fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
     motivo_detallado TEXT,
     recomendaciones TEXT,
@@ -662,276 +797,6 @@ GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicog
 FLUSH PRIVILEGES;
 
 
-/backend/src/models/pacienteModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-const Paciente = sequelize.define('Paciente', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    nombre: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    apellido: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    email: {
-        type: DataTypes.STRING(255),
-        allowNull: true,
-        validate: {
-            isEmail: true
-        }
-    },
-    telefono: {
-        type: DataTypes.STRING(20),
-        allowNull: true
-    },
-    fecha_nacimiento: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    genero: {
-        type: DataTypes.ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
-        allowNull: true
-    },
-    direccion: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    estado: {
-        type: DataTypes.STRING(50),
-        allowNull: false,
-        defaultValue: 'activo'
-    },
-    activo: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: true
-    },
-    notas: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    fundacion_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true
-    }
-}, {
-    tableName: 'pacientes',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['activo']
-        },
-        {
-            fields: ['apellido', 'nombre']
-        }
-    ]
-});
-
-module.exports = Paciente;
-
-
-/backend/src/controllers/pacienteController.js:
---------------------------------------------------------------------------------
-ARCHIVO NO ENCONTRADO
-
-
-/backend/server.js:
---------------------------------------------------------------------------------
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-const express = require('express');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./src/doc/swagger.json');
-const cors = require('cors');
-
-const sequelize = require('./src/config/db');
-
-// Importar modelos
-require('./src/models/userModel');
-require('./src/models/pacienteModel');
-require('./src/models/citaModel');
-// Importar otros modelos según necesites
-
-const authRoutes = require('./src/routes/authRoutes');
-const citaRoutes = require('./src/routes/citaRoutes');
-const roleRoutes = require('./src/routes/roleRoutes');
-const fundacionRoutes = require('./src/routes/fundacionRoutes');
-const asignacionRoutes = require('./src/routes/asignacionRoutes');
-const sesionRoutes = require('./src/routes/sesionRoutes');
-const notificacionRoutes = require('./src/routes/notificacionRoutes');
-const altaRoutes = require('./src/routes/altaRoutes');
-const reporteRoutes = require('./src/routes/reporteRoutes');
-const observacionRoutes = require('./src/routes/observacionRoutes');
-const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
-const expedienteRoutes = require('./src/routes/expedienteRoutes');
-const dashboardRoutes = require('./src/routes/dashboardRoutes');
-const agendaRoutes = require('./src/routes/agendaRoutes');
-const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
-const pacienteRoutes = require('./src/routes/pacienteRoutes');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-
-
-app.use(cors({
-  origin: 'http://localhost:3001',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-app.get('/', (req, res) => {
-  res.send('Server is running! Check /api-docs for documentation.');
-});
-
-app.use('/api/auth', authRoutes);
-app.use('/api/citas', citaRoutes);
-app.use('/api/fundaciones', fundacionRoutes);
-app.use('/api/asignaciones', asignacionRoutes);
-app.use('/api/sesiones', sesionRoutes);
-app.use('/api/notificaciones', notificacionRoutes);
-app.use('/api/altas', altaRoutes);
-app.use('/api/reportes', reporteRoutes);
-app.use('/api/observaciones', observacionRoutes);
-app.use('/api/disponibilidad', disponibilidadRoutes);
-app.use('/api/expedientes', expedienteRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/agenda', agendaRoutes);
-app.use('/api/estadisticas', estadisticaRoutes);
-const userRoutes = require('./src/routes/userRoutes');
-app.use('/api/users', userRoutes);
-app.use('/api/roles', roleRoutes);
-app.use('/api/pacientes', pacienteRoutes);
-// Sincronizar modelos
-sequelize.sync({ force: false, alter: false })
-    .then(() => {
-        console.log("✅ Tablas sincronizadas (base de datos lista)");
-        app.listen(PORT, () => {
-          console.log(`Backend running on http://localhost:${PORT}`);
-          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
-          console.log(`CORS permitido para: http://localhost:3001`);
-          console.log(`Endpoints disponibles:`);
-          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
-          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
-          console.log(`  POST /api/citas/alta-paciente`);
-          console.log(`  PUT  /api/citas/cita/:id`);
-        });
-    })
-    .catch((error) => {
-        console.error("❌ Error al sincronizar la base de datos:", error.message);
-    });
-
-
-/backend/src/services/api.js:
---------------------------------------------------------------------------------
-const API_BASE_URL = 'http://localhost:3000/api';
-
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
-
-  static getHeaders() {
-    const token = this.getToken();
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-  }
-
-  static async get(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async post(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async put(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async delete(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async handleResponse(response) {
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error en la petición');
-    }
-    return response.json();
-  }
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-}
-
-export default ApiService;
-
-
-/frontend/src/index.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './global.css';
-import './App.css';
-
-// Importa los estilos de los modales
-import './components/Common/ConfirmModal.css';
-import './components/Common/NotificationModal.css';
-
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-
-
 /backend/src/routes/pacienteRoutes.js:
 --------------------------------------------------------------------------------
 const express = require('express');
@@ -939,6 +804,8 @@ const router = express.Router();
 const verifyToken = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
 const Paciente = require('../models/pacienteModel');
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db'); // AÑADE ESTA IMPORTACIÓN
 
 // Listar pacientes (solo coordinadores)
 router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
@@ -961,7 +828,7 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
       notas: p.notas,
       fundacion_id: p.fundacion_id,
       fecha_ingreso: p.created_at,
-      fecha_alta: p.deleted_at || null // placeholder if needed
+      fecha_alta: p.deleted_at || null
     }));
 
     res.json(mapped);
@@ -1070,6 +937,344 @@ router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res
   }
 });
 
+// Obtener pacientes activos
+router.get('/activos', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                p.*,
+                CONCAT(p.nombre, ' ', p.apellido) as nombre_completo,
+                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
+                COUNT(DISTINCT c.id) as sesiones_completadas,
+                CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
+                a.fecha_inicio,
+                e.motivo_consulta
+            FROM pacientes p
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
+            LEFT JOIN users u_bec ON a.becario_id = u_bec.id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE p.activo = true
+            GROUP BY p.id, e.id, u_psi.id, u_bec.id, a.id
+            ORDER BY p.apellido, p.nombre
+        `;
+        
+        const pacientes = await sequelize.query(query, {
+            type: QueryTypes.SELECT
+        });
+        
+        res.json({
+            success: true,
+            data: pacientes
+        });
+        
+    } catch (error) {
+        console.error('Error al obtener pacientes activos:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener pacientes activos',
+            error: error.message
+        });
+    }
+});
+
+router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        console.log('🔍 Solicitando candidatos a alta...');
+        
+        // Query CORREGIDA - solo agrupa por las columnas del SELECT
+        const query = `
+            SELECT 
+                p.id,
+                CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
+                e.motivo_consulta,
+                DATE(p.created_at) as fecha_ingreso,
+                COUNT(DISTINCT c.id) as sesiones_completadas,
+                CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
+                CASE 
+                    WHEN COUNT(DISTINCT c.id) >= 15 THEN 85
+                    WHEN COUNT(DISTINCT c.id) >= 10 THEN 70
+                    WHEN COUNT(DISTINCT c.id) >= 5 THEN 50
+                    ELSE 30
+                END as progreso_estimado
+            FROM pacientes p
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
+            LEFT JOIN users u_bec ON a.becario_id = u_bec.id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE p.activo = true
+            -- EXCLUIR pacientes marcados como no aprobados en los últimos 30 días
+            AND (p.ultimo_no_aprobado IS NULL OR p.ultimo_no_aprobado < DATE_SUB(CURDATE(), INTERVAL 30 DAY))
+            GROUP BY p.id, e.motivo_consulta, u_psi.nombre, u_psi.apellido, u_bec.nombre, u_bec.apellido
+            HAVING COUNT(DISTINCT c.id) >= 3
+            ORDER BY COUNT(DISTINCT c.id) DESC
+            LIMIT 10
+        `;
+        
+        console.log('📊 Ejecutando query de candidatos a alta...');
+        const candidatos = await sequelize.query(query, {
+            type: QueryTypes.SELECT
+        });
+        
+        console.log(`✅ Candidatos encontrados: ${candidatos.length}`);
+        
+        // Para debugging: mostrar qué pacientes se encontraron
+        if (candidatos.length > 0) {
+            console.log('📋 Lista de candidatos encontrados:');
+            candidatos.forEach((c, i) => {
+                console.log(`${i + 1}. ${c.paciente_nombre} - ${c.sesiones_completadas} sesiones`);
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: candidatos
+        });
+        
+    } catch (error) {
+        console.error('❌ Error CRÍTICO al obtener candidatos a alta:', error);
+        console.error('📌 Mensaje de error:', error.message);
+        console.error('📌 Stack trace:', error.stack);
+        
+        // Para debugging: probar una query más simple
+        try {
+            console.log('🔄 Probando query alternativa...');
+            const querySimple = `
+                SELECT p.id, CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre, 
+                       p.ultimo_no_aprobado
+                FROM pacientes p
+                WHERE p.activo = true
+                LIMIT 5
+            `;
+            const prueba = await sequelize.query(querySimple, { type: QueryTypes.SELECT });
+            console.log('🔍 Resultado de prueba:', prueba);
+        } catch (err) {
+            console.error('❌ Error en query de prueba:', err.message);
+        }
+        
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener candidatos a alta: ' + error.message,
+            debug: process.env.NODE_ENV === 'development' ? {
+                error: error.message,
+                stack: error.stack
+            } : undefined
+        });
+    }
+});
+
+// Obtener paciente por ID con detalles
+router.get('/:id', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const query = `
+            SELECT 
+                p.*,
+                CONCAT(p.nombre, ' ', p.apellido) as nombre_completo,
+                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
+                COUNT(DISTINCT c.id) as sesiones_completadas,
+                CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
+                a.fecha_inicio,
+                a.estado as estado_asignacion,
+                e.motivo_consulta,
+                e.diagnostico_presuntivo,
+                e.riesgo_suicida
+            FROM pacientes p
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
+            LEFT JOIN users u_bec ON a.becario_id = u_bec.id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE p.id = ?
+            GROUP BY p.id, e.id, u_psi.id, u_bec.id, a.id
+        `;
+        
+        const [paciente] = await sequelize.query(query, {
+            replacements: [id],
+            type: QueryTypes.SELECT
+        });
+        
+        if (!paciente) {
+            return res.status(404).json({
+                success: false,
+                message: 'Paciente no encontrado'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: paciente
+        });
+        
+    } catch (error) {
+        console.error('Error al obtener paciente:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al obtener paciente'
+        });
+    }
+});
+
+// backend/src/routes/pacienteRoutes.js - Agrega este endpoint
+router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { motivo } = req.body;
+        
+        // Registrar en logs o en una tabla específica
+        await sequelize.query(`
+            INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
+            VALUES (?, 'modificacion', 'altas', 'No aprobar alta paciente', ?, NOW())
+        `, {
+            replacements: [req.user.id, `Paciente ${id} no aprobado para alta - Motivo: ${motivo || 'Sin motivo especificado'}`]
+        });
+        
+        // También podrías crear una notificación para el psicólogo
+        const [pacienteInfo] = await sequelize.query(`
+            SELECT CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                   a.psicologo_id
+            FROM pacientes p
+            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+            WHERE p.id = ?
+        `, {
+            replacements: [id],
+            type: QueryTypes.SELECT
+        });
+        
+        if (pacienteInfo && pacienteInfo.psicologo_id) {
+            await sequelize.query(`
+                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                VALUES (?, 'observacion_nueva', 'Paciente no aprobado para alta', 
+                        CONCAT('El paciente ', ?, ' no fue aprobado para alta terapéutica. Continuar tratamiento.'), NOW())
+            `, {
+                replacements: [pacienteInfo.psicologo_id, pacienteInfo.paciente_nombre]
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Paciente marcado como no aprobado para alta'
+        });
+        
+    } catch (error) {
+        console.error('Error al marcar paciente como no aprobado:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al procesar la solicitud'
+        });
+    }
+});
+
+router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { motivo } = req.body || {}; // Agregar campo para motivo
+        
+        console.log(`📝 Marcando paciente ${id} como no aprobado...`);
+        
+        // Verificar que el paciente existe y está activo
+        const paciente = await Paciente.findByPk(id);
+        
+        if (!paciente || !paciente.activo) {
+            return res.status(404).json({
+                success: false,
+                message: 'Paciente no encontrado o ya inactivo'
+            });
+        }
+        
+        // 1. Obtener estadísticas del paciente
+        const [estadisticas] = await sequelize.query(`
+            SELECT 
+                COUNT(*) as total_sesiones,
+                COUNT(CASE WHEN estado = 'completada' THEN 1 END) as sesiones_completadas
+            FROM citas 
+            WHERE paciente_id = ?
+            AND estado IN ('completada', 'cancelada')
+        `, {
+            replacements: [id],
+            type: QueryTypes.SELECT
+        });
+        
+        // 2. Crear registro en la tabla altas con tipo 'no_aprobado'
+        await sequelize.query(`
+            INSERT INTO altas (
+                paciente_id, 
+                usuario_id, 
+                tipo_alta, 
+                fecha_alta, 
+                motivo_detallado, 
+                sesiones_totales,
+                created_at
+            ) VALUES (?, ?, ?, CURDATE(), ?, ?, NOW())
+        `, {
+            replacements: [
+                id,
+                req.user.id,
+                'no_aprobado',  // Nuevo tipo de alta
+                motivo || 'Paciente no aprobado para alta terapéutica por el coordinador',
+                estadisticas?.sesiones_completadas || 0
+            ]
+        });
+        
+        // 3. Actualizar la columna ultimo_no_aprobado (para no mostrarlo en candidatos)
+        await sequelize.query(`
+            UPDATE pacientes 
+            SET ultimo_no_aprobado = CURDATE()
+            WHERE id = ?
+        `, {
+            replacements: [id]
+        });
+        
+        // 4. Registrar en logs
+        await sequelize.query(`
+            INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
+            VALUES (?, 'modificacion', 'altas', 'No aprobar alta', ?, NOW())
+        `, {
+            replacements: [req.user.id, `Paciente ${id} (${paciente.nombre} ${paciente.apellido}) NO APROBADO para alta`]
+        });
+        
+        // 5. Obtener el ID del registro de alta creado
+        const [altaCreada] = await sequelize.query(`
+            SELECT * FROM altas 
+            WHERE paciente_id = ? 
+            AND tipo_alta = 'no_aprobado'
+            ORDER BY created_at DESC 
+            LIMIT 1
+        `, {
+            replacements: [id],
+            type: QueryTypes.SELECT
+        });
+        
+        console.log(`✅ Paciente ${id} registrado como NO APROBADO en tabla altas`);
+        
+        res.json({
+            success: true,
+            message: 'Paciente registrado como no aprobado para alta',
+            data: {
+                paciente_id: id,
+                alta_id: altaCreada?.id,
+                fecha_no_aprobado: new Date().toISOString().split('T')[0],
+                paciente_nombre: `${paciente.nombre} ${paciente.apellido}`,
+                tipo_alta: 'no_aprobado'
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Error al marcar paciente como no aprobado:', error);
+        console.error('📌 Detalles del error:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Error al procesar la solicitud: ' + error.message
+        });
+    }
+});
 module.exports = router;
 
 
@@ -1077,7 +1282,7 @@ module.exports = router;
 --------------------------------------------------------------------------------
 :root {
   /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
+  --grnb: #29ce6e;   /* Verde azulado oscuro */
   --blub: #2c3138;   /* Azul claro */
   --blud: #1B1E23;   /* Azul oscuro */
   --white: #ffffff;
@@ -1094,8 +1299,8 @@ module.exports = router;
   --bludd: #1B6DA7;
   --blub-dark: #131923; /* BLUD - Azul más oscuro */
   --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
+  --grnd: #37b670;     /* GRND - Verde */
+  --grnl: #30ff64;     /* GRNL - Verde claro */
   --rr: #fa3144;       /* RR - Rojo */
   --yy: #ffa631;       /* YY - Amarillo */
   --rl: #ff5363;       /* RL - Rojo claro */
@@ -1105,7 +1310,6 @@ module.exports = router;
 
 [data-theme="light"] {
   /* Colores base - Manteniendo nombres originales */
-  --grnb: #29ce9b;   /* Verde azulado oscuro */
   --blub: #fff;   /* Azul claro */
   --blud: #e8f1fa;   /* Azul oscuro */
   --white: #1B1E23;
@@ -1115,19 +1319,6 @@ module.exports = router;
 
   --whiteSET: #ffffff;
   --bludSET: #1B1E23;
-  
-  /* Colores adicionales */
-  --blu: #1F85BA;      /* GRNB - Azul */
-  --bludd: #1B6DA7;
-  --blub-dark: #131923; /* BLUD - Azul más oscuro */
-  --blul: #1b2937;     /* BLUL - Azul oscuro */
-  --grnd: #37B69C;     /* GRND - Verde */
-  --grnl: #30ff96;     /* GRNL - Verde claro */
-  --rr: #fa3144;       /* RR - Rojo */
-  --yy: #ffa631;       /* YY - Amarillo */
-  --rl: #ff5363;       /* RL - Rojo claro */
-  --yl: #ffdd55;       /* YL - Amarillo claro */
-  --wt: #ffffff;       /* WT - Blanco */
 }
 
 * {
@@ -1479,13 +1670,13 @@ body {
   width: 100%;
   padding: 10px;
   border-radius: 5px;
-  border: 2px solid var(--blu);
+  border: 1px solid var(--blu);
   background: var(--blud);
   color: var(--white);
 }
 
 .search-input:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -1502,7 +1693,7 @@ body {
 }
 
 .textarea-field:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -1517,7 +1708,7 @@ body {
 }
 
 .select-field:focus {
-  border-color: var(--grnb);
+  border-color: var(--blu);
   outline: none;
 }
 
@@ -1597,12 +1788,12 @@ body {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 2px solid var(--grnb);
+  border-bottom: 2px solid var(--blu);
 }
 
 .modal-title {
   margin: 0;
-  color: var(--grnb);
+  color: var(--blu);
   font-size: 1.5em;
 }
 
@@ -1636,7 +1827,7 @@ body {
   justify-content: flex-end;
   margin-top: 20px;
   padding-top: 15px;
-  border-top: 2px solid var(--grnb);
+  border-top: 2px solid var(--blu);
 }
 
 /* ===== GRIDS Y LAYOUTS ===== */
@@ -1897,7 +2088,7 @@ body {
 }
 
 .data-table th {
-  background: var(--bluDSET);
+  background: var(--bludSET);
   padding: 12px 15px;
   text-align: left;
   font-weight: bold;
@@ -1928,7 +2119,7 @@ body {
 }
 
 .badge-success {
-  background: rgba(31, 133, 186, 0.2);
+  background: rgba(31, 186, 121, 0.2);
   color: var(--grnb);
   border: 1px solid var(--grnb);
 }
@@ -1962,7 +2153,7 @@ body {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--grnd) 0%, var(--grnb) 100%);
+  background: linear-gradient(90deg, var(--blu) 0%, var(--bludd) 100%);
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -2017,8 +2208,8 @@ body {
 }
 
 .tab.active {
-  color: var(--grnb);
-  border-bottom: 2px solid var(--grnb);
+  color: var(--blu);
+  border-bottom: 2px solid var(--blu);
 }
 
 /* Accordion */
@@ -2336,7 +2527,7 @@ body {
 
 .progreso-text {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--blu);
   min-width: 40px;
 }
 
@@ -2363,7 +2554,7 @@ body {
 
 .bar-fill {
   width: 20px;
-  background: linear-gradient(to top, var(--grnd), var(--grnb));
+  background: linear-gradient(to top, var(--blu), var(--bludd));
   border-radius: 4px 4px 0 0;
   transition: height 0.3s ease;
 }
@@ -2505,13 +2696,13 @@ body {
 
 .event-type {
   font-size: 12px;
-  color: var(--grnb);
+  color: var(--blu);
   margin-top: 2px;
 }
 
 .event-notes {
   font-size: 11px;
-  color: var(--grayl);
+  color: var(--white);
   margin-top: 2px;
 }
 
@@ -2544,7 +2735,7 @@ body {
 }
 
 .cita-card:hover {
-  border-color: var(--grnb);
+
   transform: translateY(-2px);
 }
 
@@ -2611,8 +2802,8 @@ body {
 
 .config-tab.active {
   background: rgba(31, 133, 186, 0.2);
-  color: var(--grnb);
-  border-left: 3px solid var(--grnb);
+  color: var(--blu);
+  border: 3px solid var(--blu);
 }
 
 .config-tab svg {
@@ -2741,7 +2932,7 @@ body {
 }
 
 input:checked + .slider {
-  background-color: var(--grnb);
+  background-color: var(--blu);
 }
 
 input:checked + .slider:before {
@@ -2878,14 +3069,14 @@ input:checked + .slider:before {
   overflow-y: auto;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
-  border: 2px solid var(--grnd);
+  border: 2px solid var(--blu);
 }
 
 .modal-title-nueva-cita {
-  color: var(--grnd);
+  color: var(--blu);
   margin-bottom: 20px;
   font-size: 24px;
-  border-bottom: 2px solid var(--grnd);
+  border-bottom: 2px solid var(--blu);
   padding-bottom: 10px;
   display: flex;
   align-items: center;
@@ -2906,8 +3097,8 @@ input:checked + .slider:before {
 
 .form-input-nueva-cita:focus {
   outline: none;
-  border-color: var(--grnd);
-  box-shadow: 0 0 0 2px rgba(55, 182, 156, 0.2);
+  border-color: var(--blu);
+
 }
 
 .form-select-nueva-cita {
@@ -2924,7 +3115,7 @@ input:checked + .slider:before {
 
 .form-select-nueva-cita:focus {
   outline: none;
-  border-color: var(--grnd);
+  border-color: var(--blu);
 }
 
 .form-textarea-nueva-cita {
@@ -2961,12 +3152,11 @@ input:checked + .slider:before {
 }
 
 .button-success-nueva-cita {
-  background: var(--grnd);
+  background: var(--grnb);
   color: var(--white);
 }
 
 .button-success-nueva-cita:hover {
-  background: var(--grnb);
   transform: translateY(-2px);
 }
 
@@ -2994,8 +3184,8 @@ input:checked + .slider:before {
   padding: 15px;
   border-radius: 5px;
   margin-bottom: 15px;
-  color: var(--grnl);
-  border-left: 4px solid var(--grnd);
+  color: var(--blu);
+  border-left: 4px solid var(--blu);
 }
 
 /* Animaciones */
@@ -3110,7 +3300,7 @@ input:checked + .slider:before {
 /* Expedientes */
 .diagnostico-tag {
   background: rgba(31, 133, 186, 0.1);
-  color: var(--grnb);
+  color: var(--blu);
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
@@ -3181,7 +3371,7 @@ input:checked + .slider:before {
 }
 
 .detail-row strong {
-  color: var(--grnb);
+  color: var(--blu);
 }
 
 .detail-row.notes {
@@ -3352,7 +3542,7 @@ input:checked + .slider:before {
   width: 60px;
   height: 60px;
   border: 5px solid rgba(255, 255, 255, 0.1);
-  border-top: 5px solid var(--grnb);
+  border-top: 5px solid var(--blu);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px;
@@ -3360,7 +3550,7 @@ input:checked + .slider:before {
 
 .global-loader-text {
   font-size: 18px;
-  color: var(--grnb);
+  color: var(--blu);
   font-weight: bold;
 }
 
@@ -3467,9 +3657,113 @@ input:checked + .slider:before {
 
 
 
-/frontend/src/services/api.js:
+/backend/src/models/pacienteModel.js:
 --------------------------------------------------------------------------------
-// frontend/src/services/api.js
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+const Paciente = sequelize.define('Paciente', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    nombre: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    apellido: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    email: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        validate: {
+            isEmail: true
+        }
+    },
+    telefono: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    fecha_nacimiento: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
+    genero: {
+        type: DataTypes.ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
+        allowNull: true
+    },
+    direccion: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    estado: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+        defaultValue: 'activo'
+    },
+    activo: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    },
+    notas: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    fundacion_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    }
+}, {
+    tableName: 'pacientes',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['activo']
+        },
+        {
+            fields: ['apellido', 'nombre']
+        }
+    ]
+});
+
+module.exports = Paciente;
+
+
+/backend/src/controllers/pacienteController.js:
+--------------------------------------------------------------------------------
+ARCHIVO NO ENCONTRADO
+
+
+/frontend/src/index.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
+
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
+
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+/backend/src/services/api.js:
+--------------------------------------------------------------------------------
 const API_BASE_URL = 'http://localhost:3000/api';
 
 class ApiService {
@@ -3479,106 +3773,52 @@ class ApiService {
 
   static getHeaders() {
     const token = this.getToken();
-    const headers = {
+    return {
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     };
-    
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
-    return headers;
-  }
-
-  static async request(url, options = {}) {
-    const { method = 'GET', data } = options;
-    
-    const config = {
-      method,
-      headers: this.getHeaders(),
-      credentials: 'include' // Importante para cookies si las usas
-    };
-    
-    if (data) {
-      config.body = JSON.stringify(data);
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}${url}`, config);
-      return this.handleResponse(response);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      throw error;
-    }
   }
 
   static async get(url) {
-    return this.request(url);
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
   }
 
   static async post(url, data) {
-    return this.request(url, { method: 'POST', data });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
   }
 
   static async put(url, data) {
-    return this.request(url, { method: 'PUT', data });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
   }
 
   static async delete(url) {
-    return this.request(url, { method: 'DELETE' });
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
   }
 
   static async handleResponse(response) {
-      // Primero verificar si hay contenido
-      if (response.status === 204 || response.status === 205) {
-          return {};
-      }
-      
-      const contentType = response.headers.get('content-type');
-      
-      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
-      if (contentType && contentType.includes('text/csv')) {
-          const text = await response.text();
-          
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
-          
-          // Para CSV, devolvemos el texto directamente
-          return text;
-      }
-      
-      // Si no es CSV, verificar si es JSON
-      if (!contentType || !contentType.includes('application/json')) {
-          const text = await response.text();
-          
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
-          
-          // Intentar parsear como JSON si es posible
-          try {
-              return text ? JSON.parse(text) : {};
-          } catch {
-              return text;
-          }
-      }
-      
-      // Si es JSON, parsearlo normalmente
-      const data = await response.json();
-      
-      if (!response.ok) {
-          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
-          const error = new Error(errorMessage);
-          error.status = response.status;
-          error.data = data;
-          throw error;
-      }
-      
-      return data;
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
   }
-
-  // Métodos específicos para el dashboard
   static async getDashboardCoordinador() {
     return this.get('/dashboard/coordinador');
   }
@@ -3590,14 +3830,101 @@ class ApiService {
   static async getEstadisticas() {
     return this.get('/estadisticas/generales');
   }
-
-  // Método para obtener información del usuario actual
-  static async getCurrentUser() {
-    return this.get('/auth/me');
-  }
 }
 
 export default ApiService;
+
+
+/backend/server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
+
+const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes');
+const roleRoutes = require('./src/routes/roleRoutes');
+const fundacionRoutes = require('./src/routes/fundacionRoutes');
+const asignacionRoutes = require('./src/routes/asignacionRoutes');
+const sesionRoutes = require('./src/routes/sesionRoutes');
+const notificacionRoutes = require('./src/routes/notificacionRoutes');
+const altaRoutes = require('./src/routes/altaRoutes');
+const reporteRoutes = require('./src/routes/reporteRoutes');
+const observacionRoutes = require('./src/routes/observacionRoutes');
+const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
+const expedienteRoutes = require('./src/routes/expedienteRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const agendaRoutes = require('./src/routes/agendaRoutes');
+const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
+app.use('/api/fundaciones', fundacionRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/sesiones', sesionRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/altas', altaRoutes);
+app.use('/api/reportes', reporteRoutes);
+app.use('/api/observaciones', observacionRoutes);
+app.use('/api/disponibilidad', disponibilidadRoutes);
+app.use('/api/expedientes', expedienteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agenda', agendaRoutes);
+app.use('/api/estadisticas', estadisticaRoutes);
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
 
 
 /frontend/src/App.js:

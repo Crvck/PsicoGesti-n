@@ -4,135 +4,197 @@ from datetime import datetime
 
 PAGINAS_ARCHIVOS = {
     "becario_dashboard": [
-        "backend/src/controllers/dashboardController.js",
-        "backend/src/routes/dashboardRoutes.js",
-        "backend/src/models/userModel.js",
-        "backend/src/models/citaModel.js",
-        "backend/src/models/notificacionModel.js",
-        "backend/src/services/estadisticaService.js",
-        "backend/src/services/dashboardService.js",
-        "frontend/src/services/dashboardService.js"
+        "frontend/src/pages/becario/DashboardPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/services/dashboardService.js",
+        "backend/src/routes/rolesRoutes.js",
+        "backend/src/controllers/rolesController.js",
+        "backend/src/routes/notificacionRoutes.js",
+        "backend/src/controllers/notificacionController.js"
     ],
     "becario_citas": [
-        "backend/src/controllers/citaController.js",
+        "frontend/src/pages/becario/CitasPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/citaRoutes.js",
+        "backend/src/controllers/citaController.js",
         "backend/src/models/citaModel.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/controllers/disponibilidadController.js",
-        "backend/src/routes/disponibilidadRoutes.js"
+        "backend/src/middlewares/authMiddleware.js"
     ],
     "becario_pacientes": [
-        "backend/src/controllers/pacienteController.js",
+        "frontend/src/pages/becario/PacientesPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/pacienteRoutes.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/controllers/asignacionController.js",
-        "backend/src/routes/asignacionRoutes.js"
+        "backend/src/controllers/pacienteController.js",
+        "backend/src/models/pacienteModel.js"
     ],
     "becario_notificaciones": [
-        "backend/src/controllers/notificacionController.js",
+        "frontend/src/pages/becario/NotificacionesPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/notificacionRoutes.js",
+        "backend/src/controllers/notificacionController.js",
         "backend/src/models/notificacionModel.js"
     ],
     "becario_observaciones": [
-        "backend/src/controllers/observacionController.js",
+        "frontend/src/pages/becario/ObservacionesPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/observacionRoutes.js",
-        "backend/src/models/observacionBecarioModel.js",
-        "backend/src/models/pacienteModel.js"
+        "backend/src/controllers/observacionController.js",
+        "backend/src/models/observacionBecarioModel.js"
     ],
     "coordinador_dashboard": [
-        "backend/src/controllers/dashboardController.js",
+        "frontend/src/pages/coordinador/DashboardPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/services/dashboardService.js",
+        "frontend/src/utils/notifications.js",
         "backend/src/routes/dashboardRoutes.js",
-        "backend/src/models/userModel.js",
-        "backend/src/models/citaModel.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/services/estadisticaService.js",
-        "backend/src/services/dashboardService.js",
-        "frontend/src/services/dashboardService.js"
+        "backend/src/controllers/dashboardController.js",
+        "backend/src/services/dashboardService.js"
     ],
     "coordinador_usuarios": [
-        "backend/src/controllers/authController.js",
-        "backend/src/routes/authRoutes.js",
-        "backend/src/models/userModel.js",
-        "backend/src/models/permisoModel.js"
+        "frontend/src/pages/coordinador/UsuariosPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "backend/src/routes/userRoutes.js",
+        "backend/src/controllers/userController.js",
+        "backend/src/models/userModel.js"
     ],
     "coordinador_pacientes": [
-        "backend/src/controllers/pacienteController.js",
+        "frontend/src/pages/coordinador/PacientesPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/pacienteRoutes.js",
+        "backend/src/controllers/pacienteController.js",
         "backend/src/models/pacienteModel.js"
     ],
     "coordinador_asignaciones": [
-        "backend/src/controllers/asignacionController.js",
+        "frontend/src/pages/coordinador/AsignacionesPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/asignacionRoutes.js",
+        "backend/src/controllers/asignacionController.js",
         "backend/src/models/asignacionModel.js",
-        "backend/src/models/userModel.js",
-        "backend/src/models/pacienteModel.js"
+        "backend/src/routes/userRoutes.js",
+        "backend/src/controllers/userController.js"
     ],
     "coordinador_agenda": [
-        "backend/src/controllers/agendaController.js",
+        "frontend/src/pages/coordinador/AgendaPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/services/api.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/agendaRoutes.js",
+        "backend/src/controllers/agendaController.js",
+        "backend/src/routes/reporteRoutes.js",
+        "backend/src/controllers/reporteController.js",
+        "backend/src/services/calendarioService.js",
         "backend/src/models/citaModel.js",
         "backend/src/models/userModel.js",
-        "backend/src/services/calendarioService.js"
+        "backend/src/models/pacienteModel.js"
     ],
     "coordinador_reportes": [
-        "backend/src/controllers/reporteController.js",
+        "frontend/src/pages/coordinador/ReportesPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/reporteRoutes.js",
-        "backend/src/models/reporteModel.js",
-        "backend/src/services/reporteService.js",
-        "backend/src/services/estadisticaService.js"
+        "backend/src/controllers/reporteController.js",
+        "backend/src/services/reporteService.js"
     ],
     "coordinador_altas": [
-        "backend/src/controllers/altaController.js",
+        "frontend/src/pages/coordinador/AltasPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/services/api.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/altaRoutes.js",
+        "backend/src/controllers/altaController.js",
         "backend/src/models/altaModel.js",
-        "backend/src/models/pacienteModel.js"
+        "backend/src/routes/pacienteRoutes.js",
+        "backend/src/controllers/pacienteController.js",
+        "backend/src/routes/reporteRoutes.js",
+        "backend/src/controllers/reporteController.js"
     ],
     "coordinador_configuracion": [
-        "backend/src/controllers/configuracionController.js",
+        "frontend/src/pages/coordinador/ConfiguracionPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/configuracionRoutes.js",
-        "backend/src/services/backupService.js",
-        "backend/src/models/logSistemaModel.js"
+        "backend/src/controllers/configuracionController.js",
+        "backend/src/models/configuracionModel.js",
+        "backend/src/services/backupService.js"
     ],
     "psicologo_dashboard": [
-        "backend/src/controllers/dashboardController.js",
-        "backend/src/routes/dashboardRoutes.js",
-        "backend/src/models/citaModel.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/models/userModel.js",
-        "backend/src/services/dashboardService.js",
-        "frontend/src/services/dashboardService.js"
+        "frontend/src/pages/psicologo/DashboardPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/services/dashboardService.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js"
     ],
     "psicologo_pacientes": [
-        "backend/src/controllers/pacienteController.js",
-        "backend/src/routes/pacienteRoutes.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/models/expedienteModel.js"
+        "frontend/src/pages/psicologo/PacientesPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css",
+        "frontend/src/components/Common/NotificationModal.jsx",
+        "frontend/src/components/Common/NotificationModal.css"
     ],
     "psicologo_citas": [
-        "backend/src/controllers/citaController.js",
-        "backend/src/routes/citaRoutes.js",
-        "backend/src/models/citaModel.js",
-        "backend/src/controllers/disponibilidadController.js",
-        "backend/src/routes/disponibilidadRoutes.js"
+        "frontend/src/pages/psicologo/CitasPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css",
+        "frontend/src/components/Common/NotificationModal.jsx",
+        "frontend/src/components/Common/NotificationModal.css"
     ],
     "psicologo_expedientes": [
-        "backend/src/controllers/expedienteController.js",
-        "backend/src/routes/expedienteRoutes.js",
-        "backend/src/models/expedienteModel.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/models/sesionModel.js"
+        "frontend/src/pages/psicologo/ExpedientesPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css",
+        "frontend/src/components/Common/NotificationModal.jsx",
+        "frontend/src/components/Common/NotificationModal.css"
     ],
     "psicologo_sesiones": [
-        "backend/src/controllers/sesionController.js",
-        "backend/src/routes/sesionRoutes.js",
-        "backend/src/models/sesionModel.js",
-        "backend/src/models/pacienteModel.js"
+        "frontend/src/pages/psicologo/SesionesPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css"
     ],
     "psicologo_supervision": [
-        "backend/src/controllers/supervisionController.js",
-        "backend/src/routes/supervisionRoutes.js",
-        "backend/src/models/observacionBecarioModel.js",
-        "backend/src/models/userModel.js"
+        "frontend/src/pages/psicologo/SupervisionPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css"
     ]
 }
 

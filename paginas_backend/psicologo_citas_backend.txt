@@ -1,7 +1,472 @@
 ARCHIVOS BACKEND PARA: PSICOLOGO_CITAS
 ================================================================================
-Generado: 2025-12-18 12:44:17
+Generado: 2025-12-18 16:35:55
 ================================================================================
+
+/frontend/src/pages/psicologo/CitasPage.js:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react';
+import { 
+  FiCalendar, FiClock, FiUser, FiFilter, 
+  FiChevronLeft, FiChevronRight, FiRefreshCw,
+  FiCheckCircle, FiXCircle, FiEdit2
+} from 'react-icons/fi';
+import { format, addDays, subDays } from 'date-fns';
+import { es } from 'date-fns/locale';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
+
+const PsicologoCitas = () => {
+  const [citas, setCitas] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [filterBecario, setFilterBecario] = useState('');
+  const [filterEstado, setFilterEstado] = useState('');
+  const [becarios, setBecarios] = useState([]);
+
+  useEffect(() => {
+    fetchData();
+  }, [selectedDate]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Simulación de datos
+      setTimeout(() => {
+        setCitas([
+          {
+            id: 1,
+            paciente_nombre: 'Carlos Gómez',
+            fecha: format(new Date(), 'yyyy-MM-dd'),
+            hora: '10:00',
+            tipo_consulta: 'presencial',
+            estado: 'confirmada',
+            duracion: 50,
+            becario_nombre: 'Juan Pérez',
+            notas: 'Segunda sesión de exposición gradual'
+          },
+          {
+            id: 2,
+            paciente_nombre: 'Mariana López',
+            fecha: format(new Date(), 'yyyy-MM-dd'),
+            hora: '11:30',
+            tipo_consulta: 'virtual',
+            estado: 'programada',
+            duracion: 45,
+            becario_nombre: 'Sofía Ramírez',
+            notas: 'Seguimiento de tareas asignadas'
+          },
+          {
+            id: 3,
+            paciente_nombre: 'Roberto Sánchez',
+            fecha: format(new Date(), 'yyyy-MM-dd'),
+            hora: '14:00',
+            tipo_consulta: 'presencial',
+            estado: 'completada',
+            duracion: 60,
+            becario_nombre: null,
+            notas: 'Evaluación de progreso'
+          }
+        ]);
+        
+        setBecarios([
+          { id: 1, nombre: 'Juan Pérez', apellido: 'Pérez' },
+          { id: 2, nombre: 'Sofía', apellido: 'Ramírez' }
+        ]);
+        
+        setLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error al cargar citas:', error);
+      setLoading(false);
+    }
+  };
+
+  const filteredCitas = citas.filter(cita => {
+    const matchesBecario = !filterBecario || cita.becario_nombre?.includes(filterBecario);
+    const matchesEstado = !filterEstado || cita.estado === filterEstado;
+    return matchesBecario && matchesEstado;
+  });
+
+  const goToPreviousDay = () => {
+    setSelectedDate(prev => subDays(prev, 1));
+  };
+
+  const goToNextDay = () => {
+    setSelectedDate(prev => addDays(prev, 1));
+  };
+
+  const goToToday = () => {
+    setSelectedDate(new Date());
+  };
+
+  const formatDateSpanish = (date) => {
+    return format(date, "EEEE d 'de' MMMM, yyyy", { locale: es });
+  };
+
+  const handleEstadoCita = (citaId, nuevoEstado) => {
+    setCitas(prev => 
+      prev.map(cita => 
+        cita.id === citaId ? { ...cita, estado: nuevoEstado } : cita
+      )
+    );
+    notifications.success(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <div className="loading-text">Cargando citas...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="citas-page">
+      <div className="page-header">
+        <div>
+          <h1>Mis Citas</h1>
+          <p>Agenda de sesiones y supervisiones</p>
+        </div>
+        <button className="btn-secondary" onClick={fetchData}>
+          <FiRefreshCw /> Actualizar
+        </button>
+      </div>
+
+      <div className="calendar-controls">
+        <div className="date-navigation">
+          <button className="btn-text" onClick={goToPreviousDay}>
+            <FiChevronLeft /> Ayer
+          </button>
+          
+          <div className="current-date">
+            <h3>{formatDateSpanish(selectedDate)}</h3>
+          </div>
+          
+          <button className="btn-text" onClick={goToNextDay}>
+            Mañana <FiChevronRight />
+          </button>
+        </div>
+
+        <div className="quick-actions">
+          <button className="btn-secondary" onClick={goToToday}>
+            Hoy
+          </button>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="filters-container mb-20">
+        <div className="grid-2 gap-20">
+          <div className="form-group">
+            <label>Filtrar por becario</label>
+            <select 
+              value={filterBecario} 
+              onChange={(e) => setFilterBecario(e.target.value)}
+              className="select-field"
+            >
+              <option value="">Todos los becarios</option>
+              {becarios.map(becario => (
+                <option key={becario.id} value={becario.nombre}>
+                  {becario.nombre} {becario.apellido}
+                </option>
+              ))}
+              <option value="sin_becario">Sin becario</option>
+            </select>
+          </div>
+          
+          <div className="form-group">
+            <label>Filtrar por estado</label>
+            <select 
+              value={filterEstado} 
+              onChange={(e) => setFilterEstado(e.target.value)}
+              className="select-field"
+            >
+              <option value="">Todos los estados</option>
+              <option value="programada">Programadas</option>
+              <option value="confirmada">Confirmadas</option>
+              <option value="completada">Completadas</option>
+              <option value="cancelada">Canceladas</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Vista de Calendario */}
+      <div className="calendar-day-view mb-20">
+        <div className="time-column">
+          {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => (
+            <div key={hour} className="time-slot">
+              <span className="time-label">{hour}:00</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="events-column">
+          {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
+            const hourCitas = filteredCitas.filter(cita => 
+              parseInt(cita.hora.split(':')[0]) === hour
+            );
+
+            return (
+              <div key={hour} className="hour-slot">
+                {hourCitas.map((cita) => (
+                  <div 
+                    key={cita.id}
+                    className={`event-item ${
+                      cita.estado === 'confirmada' ? 'event-confirmed' :
+                      cita.estado === 'completada' ? 'event-completed' :
+                      cita.estado === 'programada' ? 'event-pending' :
+                      'event-cancelled'
+                    }`}
+                  >
+                    <div className="event-header">
+                      <div className="event-time">
+                        <FiClock /> {cita.hora}
+                      </div>
+                      <div className="event-type">{cita.tipo_consulta}</div>
+                    </div>
+                    <div className="event-content">
+                      <div className="event-patient">
+                        <FiUser /> {cita.paciente_nombre}
+                      </div>
+                      {cita.becario_nombre && (
+                        <div className="event-becario">👨‍🎓 {cita.becario_nombre}</div>
+                      )}
+                      {cita.notas && (
+                        <div className="event-notes">{cita.notas}</div>
+                      )}
+                    </div>
+                    <div className="event-footer">
+                      <span className={`badge ${
+                        cita.estado === 'confirmada' ? 'badge-success' :
+                        cita.estado === 'completada' ? 'badge-primary' :
+                        cita.estado === 'programada' ? 'badge-warning' :
+                        'badge-danger'
+                      }`}>
+                        {cita.estado}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Lista de Citas */}
+      <div className="day-citas-list">
+        <h3>Citas para {formatDateSpanish(selectedDate)} ({filteredCitas.length})</h3>
+        
+        {filteredCitas.length > 0 ? (
+          <div className="citas-cards">
+            {filteredCitas.map((cita) => (
+              <div key={cita.id} className="cita-card">
+                <div className="cita-card-header">
+                  <div className="cita-time">
+                    <FiClock /> {cita.hora} ({cita.duracion} min)
+                  </div>
+                  <div className={`cita-status badge ${
+                    cita.estado === 'confirmada' ? 'badge-success' :
+                    cita.estado === 'completada' ? 'badge-primary' :
+                    cita.estado === 'programada' ? 'badge-warning' :
+                    'badge-danger'
+                  }`}>
+                    {cita.estado}
+                  </div>
+                </div>
+                
+                <div className="cita-card-body">
+                  <div className="cita-paciente">
+                    <FiUser /> {cita.paciente_nombre}
+                  </div>
+                  
+                  <div className="cita-info">
+                    <div className="cita-tipo">
+                      {cita.tipo_consulta === 'presencial' ? '📋 Presencial' : '💻 Virtual'}
+                    </div>
+                    
+                    {cita.becario_nombre && (
+                      <div className="cita-becario">
+                        👨‍🎓 {cita.becario_nombre}
+                      </div>
+                    )}
+                    
+                    {cita.notas && (
+                      <div className="cita-notas">
+                        <strong>Notas:</strong> {cita.notas}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="cita-card-footer">
+                  <button className="btn-text">
+                    <FiEdit2 /> Editar
+                  </button>
+                  
+                  {cita.estado === 'confirmada' && (
+                    <button 
+                      className="btn-text text-success"
+                      onClick={() => handleEstadoCita(cita.id, 'completada')}
+                    >
+                      <FiCheckCircle /> Completar
+                    </button>
+                  )}
+                  
+                  {(cita.estado === 'programada' || cita.estado === 'confirmada') && (
+                    <button 
+                      className="btn-text text-danger"
+                      onClick={() => handleEstadoCita(cita.id, 'cancelada')}
+                    >
+                      <FiXCircle /> Cancelar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="no-citas">
+            <div className="no-citas-icon">📅</div>
+            <div>No hay citas programadas para este día</div>
+            <p className="text-small mt-10">Prueba con otros filtros o selecciona otra fecha</p>
+          </div>
+        )}
+      </div>
+
+      {/* Estadísticas del Día */}
+      <div className="grid-3 mt-20">
+        <div className="card">
+          <h4>Resumen del Día</h4>
+          <div className="mt-10">
+            <p>Total: {citas.length}</p>
+            <p>Confirmadas: {citas.filter(c => c.estado === 'confirmada').length}</p>
+            <p>Con becario: {citas.filter(c => c.becario_nombre).length}</p>
+          </div>
+        </div>
+        
+        <div className="card">
+          <h4>Tipos de Consulta</h4>
+          <div className="mt-10">
+            <p>Presencial: {citas.filter(c => c.tipo_consulta === 'presencial').length}</p>
+            <p>Virtual: {citas.filter(c => c.tipo_consulta === 'virtual').length}</p>
+          </div>
+        </div>
+        
+        <div className="card">
+          <h4>Acciones</h4>
+          <div className="mt-10 flex-col gap-10">
+            <button className="btn-primary w-100">
+              Agendar Cita
+            </button>
+            <button className="btn-secondary w-100">
+              Ver Agenda Semanal
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PsicologoCitas;
+
+
+/backend/server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
+
+const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes');
+const roleRoutes = require('./src/routes/roleRoutes');
+const fundacionRoutes = require('./src/routes/fundacionRoutes');
+const asignacionRoutes = require('./src/routes/asignacionRoutes');
+const sesionRoutes = require('./src/routes/sesionRoutes');
+const notificacionRoutes = require('./src/routes/notificacionRoutes');
+const altaRoutes = require('./src/routes/altaRoutes');
+const reporteRoutes = require('./src/routes/reporteRoutes');
+const observacionRoutes = require('./src/routes/observacionRoutes');
+const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
+const expedienteRoutes = require('./src/routes/expedienteRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const agendaRoutes = require('./src/routes/agendaRoutes');
+const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
+app.use('/api/fundaciones', fundacionRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/sesiones', sesionRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/altas', altaRoutes);
+app.use('/api/reportes', reporteRoutes);
+app.use('/api/observaciones', observacionRoutes);
+app.use('/api/disponibilidad', disponibilidadRoutes);
+app.use('/api/expedientes', expedienteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agenda', agendaRoutes);
+app.use('/api/estadisticas', estadisticaRoutes);
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
+
 
 /frontend/src/services/api.js:
 --------------------------------------------------------------------------------
@@ -496,7 +961,10 @@ INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialida
 ('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
 ('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
 ('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
-('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1),
+('alan@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Alan', 'Jassiel', '555-666', 'psicologo', 'Terapia Familiar', 1),
+('ale@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ale', 'Jandro', '555-333', 'becario', 'Practicante de Psicología', 1),
+('emanuel@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Emanuel', 'Iribe', '555-777', 'coordinador', 'Coordinación Clínica', 1);
 
 INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
 ('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),
@@ -797,28 +1265,917 @@ GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicog
 FLUSH PRIVILEGES;
 
 
-/backend/src/routes/disponibilidadRoutes.js:
+/frontend/src/index.js:
 --------------------------------------------------------------------------------
-const express = require('express');
-const router = express.Router();
-const DisponibilidadController = require('../controllers/disponibilidadController');
-const verifyToken = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
 
-// Todas las rutas requieren autenticación
-router.use(verifyToken);
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
 
-// Gestión de disponibilidad personal
-router.post('/', requireRole(['psicologo', 'becario']), DisponibilidadController.crearDisponibilidad);
-router.get('/mi-disponibilidad', requireRole(['psicologo', 'becario']), DisponibilidadController.obtenerMiDisponibilidad);
-router.put('/:id', requireRole(['psicologo', 'becario']), DisponibilidadController.actualizarDisponibilidad);
-router.put('/:id/desactivar', requireRole(['psicologo', 'becario']), DisponibilidadController.desactivarDisponibilidad);
+import App from './App';
 
-// Consulta de disponibilidad
-router.get('/usuario/:usuario_id', requireRole(['coordinador', 'psicologo']), DisponibilidadController.obtenerDisponibilidadUsuario);
-router.get('/horarios-disponibles', requireRole(['coordinador', 'psicologo', 'becario']), DisponibilidadController.obtenerHorariosDisponibles);
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
 
-module.exports = router;
+
+/frontend/src/components/Layout/PsicologoLayout.js:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { 
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiFileText,
+  FiBarChart2, FiUserCheck, FiLogOut, FiClock, FiSun, FiMoon
+} from 'react-icons/fi';
+
+const PsicologoLayout = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  // Inicializar el tema desde localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    
+    if (newDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const navItems = [
+    { path: '/psicologo/dashboard', icon: <FiHome />, label: 'Panel Principal', permiso: 'ver_panel_psicologo' },
+    { path: '/psicologo/pacientes', icon: <FiUsers />, label: 'Mis Pacientes', permiso: 'ver_mis_pacientes' },
+    { path: '/psicologo/citas', icon: <FiCalendar />, label: 'Mis Citas', permiso: 'gestionar_mis_citas' },
+    { path: '/psicologo/expedientes', icon: <FiFileText />, label: 'Expedientes', permiso: 'ver_expedientes' },
+    { path: '/psicologo/sesiones', icon: <FiBarChart2 />, label: 'Registro Sesiones', permiso: 'registrar_sesiones' },
+    { path: '/psicologo/supervision', icon: <FiUserCheck />, label: 'Supervisión', permiso: 'supervisar_becarios' },
+  ];
+
+  return (
+    <div className="main-container">
+      <header className="top-header">
+        <div className="flex-row align-center">
+          <button 
+            className="control-btn"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
+          </button>
+          <img 
+            src="/images/logoCESUN2wide.png" 
+            alt="PsicoGestión" 
+            className="dashboard-logo"
+          />
+          <h2 className="app-name">- Psicólogo</h2>
+        </div>
+        
+        <div className="flex-row align-center gap-20">
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
+          
+          <div className="user-info">
+            <span className="user-email">{user?.email}</span>
+            <span className="user-rol">Psicólogo</span>
+            {user?.especialidad && (
+              <span className="user-especialidad">• {user.especialidad}</span>
+            )}
+          </div>
+          
+          <button 
+            className="btn-header"
+            onClick={handleLogout}
+            title="Cerrar sesión"
+          >
+            <FiLogOut />
+            <span>Salir</span>
+          </button>
+        </div>
+      </header>
+
+      <div className="content-wrapper">
+        <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+          <nav className="sidebar-nav">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) => 
+                  `sidebar-nav-item ${isActive ? 'active' : ''}`
+                }
+              >
+                {item.icon}
+                {sidebarOpen && <span>{item.label}</span>}
+              </NavLink>
+            ))}
+          </nav>
+          
+          {sidebarOpen && (
+            <div className="sidebar-info">
+              <div className="sidebar-info-item">
+                <FiClock />
+                <span>Citas hoy: Cargando...</span>
+              </div>
+              <div className="sidebar-info-item">
+                <FiUsers />
+                <span>Pacientes activos: Cargando...</span>
+              </div>
+            </div>
+          )}
+        </aside>
+
+        <main className="main-content">
+          <div className="content-area">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+
+      <footer className="status-bar">
+        <div className="status-info">
+          <span>Sesión: {user?.email}</span>
+          <span>Rol: Psicólogo • Especialidad: {user?.especialidad || 'No especificada'}</span>
+          <span>Última actualización: {new Date().toLocaleTimeString()}</span>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default PsicologoLayout;
+
+
+/frontend/src/components/Common/NotificationModal.jsx:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react'
+import './NotificationModal.css'
+
+let showNotificationFunc = null
+
+const NotificationModal = () => {
+  const [visible, setVisible] = useState(false)
+  const [message, setMessage] = useState('')
+  const [type, setType] = useState('info') // 'info', 'success', 'error', 'warning'
+
+  const show = (msg, msgType = 'info') => {
+    setMessage(msg)
+    setType(msgType)
+    setVisible(true)
+  }
+
+  const hide = () => {
+    setVisible(false)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      hide()
+    }
+  }
+
+  const handleOverlayClick = (e) => {
+    if (e.target.classList.contains('notification-overlay')) {
+      hide()
+    }
+  }
+
+  // Exponer la función show al objeto global
+  useEffect(() => {
+    showNotificationFunc = show
+    
+    return () => {
+      showNotificationFunc = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (visible) {
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [visible])
+
+  if (!visible) return null
+
+  return (
+    <div 
+      className="notification-overlay" 
+      onClick={handleOverlayClick}
+    >
+      <div className={`modal-notification modal-notification-${type}`}>
+        <div className="notification-message">
+          {message}
+        </div>
+        <button 
+          className={`modal-button notification-close-button notification-button-${type}`}
+          onClick={hide}
+          autoFocus
+        >
+          Aceptar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Función global para mostrar notificaciones
+export const showNotification = (message, type = 'info') => {
+  if (showNotificationFunc) {
+    showNotificationFunc(message, type)
+  } else {
+    console.error('NotificationModal no está montado')
+    // Fallback al alert si no está disponible
+
+  }
+}
+
+export default NotificationModal
+
+
+/frontend/src/pages/psicologo/psicologo.css:
+--------------------------------------------------------------------------------
+ARCHIVO NO ENCONTRADO
+
+
+/frontend/src/components/Common/ConfirmModal.jsx:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react'
+import './ConfirmModal.css'
+
+let showConfirmFunc = null
+
+const ConfirmModal = () => {
+  const [visible, setVisible] = useState(false)
+  const [message, setMessage] = useState('')
+  const [type, setType] = useState('warning') // 'warning', 'danger', 'info'
+  const [callback, setCallback] = useState(null)
+
+  const show = (msg, confirmCallback, msgType = 'warning') => {
+    setMessage(msg)
+    setType(msgType)
+    setCallback(() => confirmCallback)
+    setVisible(true)
+  }
+
+  const handleConfirm = () => {
+    if (callback) callback(true)
+    hide()
+  }
+
+  const handleCancel = () => {
+    if (callback) callback(false)
+    hide()
+  }
+
+  const hide = () => {
+    setVisible(false)
+    setMessage('')
+    setCallback(null)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleConfirm()
+    } else if (e.key === 'Escape') {
+      handleCancel()
+    }
+  }
+
+  const handleOverlayClick = (e) => {
+    if (e.target.classList.contains('confirm-overlay')) {
+      handleCancel()
+    }
+  }
+
+  // Exponer la función show al objeto global
+  useEffect(() => {
+    showConfirmFunc = show
+    
+    return () => {
+      showConfirmFunc = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (visible) {
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [visible])
+
+  if (!visible) return null
+
+  const getButtonTexts = () => {
+    switch (type) {
+      case 'danger': return { confirm: 'Sí', cancel: 'Cancelar' }
+      case 'info': return { confirm: 'Sí', cancel: 'No' }
+      default: return { confirm: 'Sí', cancel: 'Cancelar' }
+    }
+  }
+
+  const buttonTexts = getButtonTexts()
+
+  return (
+    <div 
+      className="confirm-overlay" 
+      onClick={handleOverlayClick}
+    >
+      <div className={`modal-confirm modal-confirm-${type}`}>
+        <div className="confirm-message">
+          {message}
+        </div>
+        <div className="confirm-buttons-container">
+          <button 
+            className={`modal-button confirm-button-cancel confirm-button-${type}-cancel`}
+            onClick={handleCancel}
+          >
+            {buttonTexts.cancel}
+          </button>
+          <button 
+            className={`modal-button confirm-button-confirm confirm-button-${type}`}
+            onClick={handleConfirm}
+            autoFocus
+          >
+            {buttonTexts.confirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Función global para mostrar confirmaciones
+export const showConfirm = (message, type = 'warning') => {
+  return new Promise((resolve) => {
+    if (showConfirmFunc) {
+      showConfirmFunc(message, resolve, type)
+    } else {
+      console.error('ConfirmModal no está montado')
+      // Fallback al confirm nativo si no está disponible
+      const result = window.confirm(message)
+      resolve(result)
+    }
+  })
+}
+
+export default ConfirmModal
+
+
+/frontend/src/components/Common/ConfirmModal.css:
+--------------------------------------------------------------------------------
+.confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal-confirm {
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  padding: 30px;
+  border-radius: 10px;
+  text-align: center;
+  transition: all 0.3s ease;
+  max-width: 400px;
+  width: 90%;
+  backdrop-filter: blur(10px);
+}
+
+/* Tipos de confirmación - solo borde */
+.modal-confirm-info {
+  border: 2px solid var(--blu);
+}
+
+.modal-confirm-warning {
+  border: 2px solid var(--yy);
+}
+
+.modal-confirm-danger {
+  border: 2px solid var(--rr);
+}
+
+.confirm-message {
+  color: var(--white);
+  font-size: 1.1em;
+  line-height: 1.5;
+  margin-bottom: 25px;
+  padding: 0 10px;
+}
+
+.confirm-buttons-container {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+/* Estilos base de los botones */
+.confirm-button-cancel,
+.confirm-button-confirm {
+  border: none;
+  padding: 10px 25px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1em;
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+/* Botón de confirmar por tipo */
+.confirm-button-info {
+  background: var(--blu);
+  color: var(--white);
+}
+
+.confirm-button-warning {
+  background: var(--yy);
+  color: var(--white);
+}
+
+.confirm-button-danger {
+  background: var(--rr);
+  color: var(--white);
+}
+
+/* Botón de cancelar por tipo */
+.confirm-button-info-cancel {
+  background: var(--blud);
+  color: var(--white);
+  border: 1px solid var(--blu);
+}
+
+.confirm-button-warning-cancel {
+  background: var(--blud);
+  color: var(--white);
+  border: 1px solid var(--yy);
+}
+
+.confirm-button-danger-cancel {
+  background: var(--blud);
+  color: var(--white);
+  border: 1px solid var(--rr);
+}
+
+/* Hover effects */
+.confirm-button-info:hover {
+  transform: translateY(-2px);
+}
+
+.confirm-button-warning:hover {
+  transform: translateY(-2px);
+}
+
+.confirm-button-danger:hover {
+  transform: translateY(-2px);
+}
+
+.confirm-button-info-cancel:hover {
+  background: var(--blu);
+  transform: translateY(-2px);
+}
+
+.confirm-button-warning-cancel:hover {
+  background: var(--yy);
+  transform: translateY(-2px);
+}
+
+.confirm-button-danger-cancel:hover {
+  background: var(--rr);
+  transform: translateY(-2px);
+}
+
+.confirm-button-cancel:active,
+.confirm-button-confirm:active {
+  transform: translateY(0);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-confirm {
+  animation: slideUp 0.3s ease;
+}
+
+
+/frontend/src/App.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Login from './components/Auth/Login';
+import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
+
+// Páginas para Becarios
+import BecarioDashboard from './pages/becario/DashboardPage';
+import BecarioCitas from './pages/becario/CitasPage';
+import BecarioPacientes from './pages/becario/PacientesPage';
+import BecarioNotificaciones from './pages/becario/NotificacionesPage';
+import BecarioObservaciones from './pages/becario/ObservacionesPage';
+
+// Páginas para Psicólogos
+import PsicologoDashboard from './pages/psicologo/DashboardPage';
+import PsicologoPacientes from './pages/psicologo/PacientesPage';
+import PsicologoCitas from './pages/psicologo/CitasPage';
+import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
+import PsicologoSesiones from './pages/psicologo/SesionesPage';
+import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+
+// Páginas para Coordinadores
+import CoordinadorDashboard from './pages/coordinador/DashboardPage';
+import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
+import CoordinadorPacientes from './pages/coordinador/PacientesPage';
+import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
+import CoordinadorAgenda from './pages/coordinador/AgendaPage';
+import CoordinadorReportes from './pages/coordinador/ReportesPage';
+import CoordinadorAltas from './pages/coordinador/AltasPage';
+import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          {/* Rutas de Becario */}
+          <Route path="/" element={<RoleRouter />}>
+            <Route index element={<BecarioDashboard />} />
+            
+            {/* Becario */}
+            <Route path="becario/dashboard" element={<BecarioDashboard />} />
+            <Route path="becario/citas" element={<BecarioCitas />} />
+            <Route path="becario/pacientes" element={<BecarioPacientes />} />
+            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
+            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
+            
+            {/* Psicólogo */}
+            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
+            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
+            <Route path="psicologo/citas" element={<PsicologoCitas />} />
+            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
+            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
+            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
+            
+            {/* Coordinador */}
+            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
+            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
+            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
+            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
+            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
+            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
+            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
+            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
+          </Route>
+          
+          {/* Redirección por defecto */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;
+
+
+/frontend/src/utils/confirmations.js:
+--------------------------------------------------------------------------------
+import { showConfirm } from '../components/Common/ConfirmModal'
+
+// Función para confirmaciones de peligro (rojo - para eliminar)
+export const confirmDanger = (message) => {
+  return showConfirm(message, 'danger')
+}
+
+// Función para confirmaciones de advertencia (amarillo - estándar)
+export const confirmWarning = (message) => {
+  return showConfirm(message, 'warning')
+}
+
+// Función para confirmaciones de información (azul - neutral)
+export const confirmInfo = (message) => {
+  return showConfirm(message, 'info')
+}
+
+// Alias para la función principal
+export const confirm = showConfirm
+
+// Exporta como objeto global
+export default {
+  danger: confirmDanger,
+  warning: confirmWarning,
+  info: confirmInfo,
+  show: confirm
+}
+
+
+/frontend/src/utils/notifications.js:
+--------------------------------------------------------------------------------
+import { showNotification } from '../components/Common/NotificationModal'
+
+// Función para notificaciones de éxito (verde)
+export const notifySuccess = (message) => {
+  showNotification(message, 'success')
+}
+
+// Función para notificaciones de error (rojo)
+export const notifyError = (message) => {
+  showNotification(message, 'error')
+}
+
+// Función para notificaciones de advertencia (amarillo)
+export const notifyWarning = (message) => {
+  showNotification(message, 'warning')
+}
+
+// Función para notificaciones de información (azul)
+export const notifyInfo = (message) => {
+  showNotification(message, 'info')
+}
+
+// Alias para la función principal
+export const notify = showNotification
+
+// Exporta como objeto global
+export default {
+  success: notifySuccess,
+  error: notifyError,
+  warning: notifyWarning,
+  info: notifyInfo,
+  show: notify
+}
+
+
+/frontend/src/components/Common/NotificationModal.css:
+--------------------------------------------------------------------------------
+.notification-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal-notification {
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  padding: 30px;
+  border-radius: 10px;
+  text-align: center;
+  transition: all 0.3s ease;
+  max-width: 400px;
+  width: 90%;
+  backdrop-filter: blur(10px);
+}
+
+/* Tipos de notificación - solo borde */
+.modal-notification-info {
+  border: 2px solid var(--blu);
+}
+
+.modal-notification-success {
+  border: 2px solid var(--blu);
+}
+
+.modal-notification-error {
+  border: 2px solid var(--rr);
+}
+
+.modal-notification-warning {
+  border: 2px solid var(--yy);
+}
+
+.notification-message {
+  color: var(--white);
+  font-size: 1.1em;
+  line-height: 1.5;
+  margin-bottom: 20px;
+  padding: 0 10px;
+}
+
+/* Estilos base del botón */
+.notification-close-button {
+  border: none;
+  padding: 10px 30px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1em;
+  transition: all 0.3s ease;
+  min-width: 120px;
+  color: var(--blub);
+}
+
+/* Botones por tipo */
+.notification-button-info {
+  background: var(--blu);
+}
+
+.notification-button-success {
+  background: var(--blu);
+}
+
+.notification-button-error {
+  background: var(--rr);
+}
+
+.notification-button-warning {
+  background: var(--yy);
+}
+
+/* Hover effects */
+.notification-button-info:hover {
+  background: var(--blub);
+  transform: translateY(-2px);
+}
+
+.notification-button-success:hover {
+  background: var(--bludd);
+  transform: translateY(-2px);
+}
+
+.notification-button-error:hover {
+  background: #e74c3c;
+  transform: translateY(-2px);
+}
+
+.notification-button-warning:hover {
+  background: #f39c12;
+  transform: translateY(-2px);
+}
+
+.notification-close-button:active {
+  transform: translateY(0);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-notification {
+  animation: slideUp 0.3s ease;
+}
+
+
+/backend/src/services/api.js:
+--------------------------------------------------------------------------------
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  static async get(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async post(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async put(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async delete(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async handleResponse(response) {
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
+  }
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+}
+
+export default ApiService;
 
 
 /frontend/src/global.css:
@@ -1263,7 +2620,6 @@ body {
   border-radius: 10px;
   padding: 20px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 .card-primary {
@@ -1311,7 +2667,6 @@ body {
   border-radius: 10px;
   padding: 30px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   max-width: 500px;
   width: 90%;
@@ -1976,7 +3331,6 @@ body {
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   border-color: var(--blu);
 }
 
@@ -2195,7 +3549,6 @@ body {
 
 .event-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
 .event-confirmed {
@@ -2610,7 +3963,6 @@ input:checked + .slider:before {
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
   border: 2px solid var(--blu);
 }
@@ -3200,1241 +4552,12 @@ input:checked + .slider:before {
 
 
 
-/frontend/src/index.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './global.css';
-import './App.css';
-
-// Importa los estilos de los modales
-import './components/Common/ConfirmModal.css';
-import './components/Common/NotificationModal.css';
-
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-
-
-/backend/src/controllers/disponibilidadController.js:
---------------------------------------------------------------------------------
-const Disponibilidad = require('../models/disponibilidadModel');
-const User = require('../models/userModel');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-class DisponibilidadController {
-    
-    static async crearDisponibilidad(req, res) {
-        try {
-            const { dia_semana, hora_inicio, hora_fin, tipo_disponibilidad, 
-                    notas, max_citas_dia, intervalo_citas, fecha_fin_vigencia } = req.body;
-            const usuarioId = req.user.id;
-            
-            // Validar que el usuario existe y es profesional (psicologo o becario)
-            const usuario = await User.findByPk(usuarioId);
-            if (!['psicologo', 'becario'].includes(usuario.rol)) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Solo psicólogos y becarios pueden configurar disponibilidad'
-                });
-            }
-            
-            // Validar formato de hora
-            if (!this.validarHora(hora_inicio) || !this.validarHora(hora_fin)) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Formato de hora inválido. Use HH:MM'
-                });
-            }
-            
-            // Validar que hora_fin sea mayor que hora_inicio
-            if (this.compararHoras(hora_fin, hora_inicio) <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'La hora de fin debe ser mayor que la hora de inicio'
-                });
-            }
-            
-            // Verificar que no se solape con otra disponibilidad en el mismo día
-            const solapamiento = await Disponibilidad.findOne({
-                where: {
-                    usuario_id: usuarioId,
-                    dia_semana,
-                    activo: true,
-                    [sequelize.Op.or]: [
-                        {
-                            hora_inicio: { [sequelize.Op.between]: [hora_inicio, hora_fin] }
-                        },
-                        {
-                            hora_fin: { [sequelize.Op.between]: [hora_inicio, hora_fin] }
-                        },
-                        {
-                            [sequelize.Op.and]: [
-                                { hora_inicio: { [sequelize.Op.lte]: hora_inicio } },
-                                { hora_fin: { [sequelize.Op.gte]: hora_fin } }
-                            ]
-                        }
-                    ]
-                }
-            });
-            
-            if (solapamiento) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'La disponibilidad se solapa con otro horario configurado para este día'
-                });
-            }
-            
-            // Crear disponibilidad
-            const disponibilidad = await Disponibilidad.create({
-                usuario_id: usuarioId,
-                dia_semana,
-                hora_inicio,
-                hora_fin,
-                tipo_disponibilidad: tipo_disponibilidad || 'regular',
-                notas,
-                max_citas_dia: max_citas_dia || 8,
-                intervalo_citas: intervalo_citas || 50,
-                fecha_inicio_vigencia: new Date().toISOString().split('T')[0],
-                fecha_fin_vigencia: fecha_fin_vigencia || null,
-                activo: true
-            });
-            
-            // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'creacion', 'disponibilidad', 'Crear disponibilidad', ?, NOW())
-            `, {
-                replacements: [usuarioId, `Disponibilidad creada: ${dia_semana} ${hora_inicio}-${hora_fin}`]
-            });
-            
-            res.json({
-                success: true,
-                message: 'Disponibilidad creada exitosamente',
-                data: disponibilidad
-            });
-            
-        } catch (error) {
-            console.error('Error en crearDisponibilidad:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al crear disponibilidad',
-                error: error.message
-            });
-        }
-    }
-    
-    static async obtenerMiDisponibilidad(req, res) {
-        try {
-            const usuarioId = req.user.id;
-            
-            const disponibilidad = await Disponibilidad.findAll({
-                where: {
-                    usuario_id: usuarioId,
-                    activo: true,
-                    [sequelize.Op.or]: [
-                        { fecha_fin_vigencia: null },
-                        { fecha_fin_vigencia: { [sequelize.Op.gte]: new Date().toISOString().split('T')[0] } }
-                    ]
-                },
-                order: [
-                    ['dia_semana', 'ASC'],
-                    ['hora_inicio', 'ASC']
-                ]
-            });
-            
-            // Obtener citas programadas para los próximos 7 días
-            const [citasProgramadas] = await sequelize.query(`
-                SELECT 
-                    fecha,
-                    COUNT(*) as citas_count
-                FROM citas
-                WHERE (psicologo_id = ? OR becario_id = ?)
-                AND fecha BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-                AND estado IN ('programada', 'confirmada')
-                GROUP BY fecha
-                ORDER BY fecha
-            `, {
-                replacements: [usuarioId, usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: {
-                    disponibilidad,
-                    proximas_citas: citasProgramadas || []
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerMiDisponibilidad:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener disponibilidad'
-            });
-        }
-    }
-    
-    static async obtenerDisponibilidadUsuario(req, res) {
-        try {
-            const { usuario_id } = req.params;
-            const solicitanteId = req.user.id;
-            const solicitanteRol = req.user.rol;
-            
-            // Verificar permisos (coordinador o psicólogo supervisor)
-            const puedeVer = await this.verificarPermisoVerDisponibilidad(solicitanteId, solicitanteRol, usuario_id);
-            
-            if (!puedeVer) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para ver la disponibilidad de este usuario'
-                });
-            }
-            
-            const disponibilidad = await Disponibilidad.findAll({
-                where: {
-                    usuario_id,
-                    activo: true
-                },
-                order: [
-                    ['dia_semana', 'ASC'],
-                    ['hora_inicio', 'ASC']
-                ]
-            });
-            
-            // Obtener información del usuario
-            const usuario = await User.findByPk(usuario_id, {
-                attributes: ['id', 'nombre', 'apellido', 'rol', 'especialidad']
-            });
-            
-            res.json({
-                success: true,
-                data: {
-                    usuario,
-                    disponibilidad
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerDisponibilidadUsuario:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener disponibilidad del usuario'
-            });
-        }
-    }
-    
-    static async actualizarDisponibilidad(req, res) {
-        try {
-            const { id } = req.params;
-            const updates = req.body;
-            const usuarioId = req.user.id;
-            
-            const disponibilidad = await Disponibilidad.findByPk(id);
-            
-            if (!disponibilidad) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Disponibilidad no encontrada'
-                });
-            }
-            
-            // Verificar que el usuario es el dueño de la disponibilidad
-            if (disponibilidad.usuario_id !== usuarioId && req.user.rol !== 'coordinador') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para actualizar esta disponibilidad'
-                });
-            }
-            
-            // Validar horas si se están actualizando
-            if (updates.hora_inicio || updates.hora_fin) {
-                const hora_inicio = updates.hora_inicio || disponibilidad.hora_inicio;
-                const hora_fin = updates.hora_fin || disponibilidad.hora_fin;
-                
-                if (this.compararHoras(hora_fin, hora_inicio) <= 0) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'La hora de fin debe ser mayor que la hora de inicio'
-                    });
-                }
-                
-                // Verificar solapamiento excluyendo el registro actual
-                const solapamiento = await Disponibilidad.findOne({
-                    where: {
-                        usuario_id: disponibilidad.usuario_id,
-                        dia_semana: updates.dia_semana || disponibilidad.dia_semana,
-                        id: { [sequelize.Op.ne]: id },
-                        activo: true,
-                        [sequelize.Op.or]: [
-                            {
-                                hora_inicio: { [sequelize.Op.between]: [hora_inicio, hora_fin] }
-                            },
-                            {
-                                hora_fin: { [sequelize.Op.between]: [hora_inicio, hora_fin] }
-                            },
-                            {
-                                [sequelize.Op.and]: [
-                                    { hora_inicio: { [sequelize.Op.lte]: hora_inicio } },
-                                    { hora_fin: { [sequelize.Op.gte]: hora_fin } }
-                                ]
-                            }
-                        ]
-                    }
-                });
-                
-                if (solapamiento) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'La disponibilidad se solapa con otro horario configurado'
-                    });
-                }
-            }
-            
-            // Obtener datos antes para log
-            const datosAntes = { ...disponibilidad.toJSON() };
-            
-            await disponibilidad.update(updates);
-            
-            // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'disponibilidad', 'Actualizar disponibilidad', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Disponibilidad actualizada ID: ${id}`,
-                    JSON.stringify(datosAntes),
-                    JSON.stringify(disponibilidad.toJSON())
-                ]
-            });
-            
-            res.json({
-                success: true,
-                message: 'Disponibilidad actualizada exitosamente',
-                data: disponibilidad
-            });
-            
-        } catch (error) {
-            console.error('Error en actualizarDisponibilidad:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al actualizar disponibilidad'
-            });
-        }
-    }
-    
-    static async desactivarDisponibilidad(req, res) {
-        try {
-            const { id } = req.params;
-            const usuarioId = req.user.id;
-            
-            const disponibilidad = await Disponibilidad.findByPk(id);
-            
-            if (!disponibilidad) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Disponibilidad no encontrada'
-                });
-            }
-            
-            // Verificar que el usuario es el dueño de la disponibilidad
-            if (disponibilidad.usuario_id !== usuarioId && req.user.rol !== 'coordinador') {
-                return res.status(403).json({
-                    success: false,
-                    message: 'No tiene permisos para desactivar esta disponibilidad'
-                });
-            }
-            
-            // Verificar que no haya citas futuras en este horario
-            const [citasFuturas] = await sequelize.query(`
-                SELECT COUNT(*) as count FROM citas
-                WHERE (psicologo_id = ? OR becario_id = ?)
-                AND fecha > CURDATE()
-                AND estado IN ('programada', 'confirmada')
-                AND DAYOFWEEK(fecha) = ?
-                AND TIME(hora) BETWEEN ? AND ?
-            `, {
-                replacements: [
-                    disponibilidad.usuario_id,
-                    disponibilidad.usuario_id,
-                    this.diaSemanaANumero(disponibilidad.dia_semana),
-                    disponibilidad.hora_inicio,
-                    disponibilidad.hora_fin
-                ],
-                type: QueryTypes.SELECT
-            });
-            
-            if (citasFuturas.count > 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'No se puede desactivar la disponibilidad porque hay citas programadas en este horario'
-                });
-            }
-            
-            await disponibilidad.update({ activo: false });
-            
-            // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'modificacion', 'disponibilidad', 'Desactivar disponibilidad', ?, NOW())
-            `, {
-                replacements: [usuarioId, `Disponibilidad desactivada ID: ${id}`]
-            });
-            
-            res.json({
-                success: true,
-                message: 'Disponibilidad desactivada exitosamente'
-            });
-            
-        } catch (error) {
-            console.error('Error en desactivarDisponibilidad:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al desactivar disponibilidad'
-            });
-        }
-    }
-    
-    static async obtenerHorariosDisponibles(req, res) {
-        try {
-            const { usuario_id, fecha } = req.query;
-            
-            if (!usuario_id || !fecha) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Los parámetros usuario_id y fecha son requeridos'
-                });
-            }
-            
-            // Obtener día de la semana de la fecha
-            const fechaObj = new Date(fecha);
-            const diaSemana = this.numeroADiaSemana(fechaObj.getDay());
-            
-            // Obtener disponibilidad del usuario para ese día
-            const [disponibilidad] = await sequelize.query(`
-                SELECT * FROM disponibilidades
-                WHERE usuario_id = ?
-                AND dia_semana = ?
-                AND activo = TRUE
-                AND (fecha_fin_vigencia IS NULL OR fecha_fin_vigencia >= ?)
-                AND (fecha_inicio_vigencia <= ?)
-            `, {
-                replacements: [usuario_id, diaSemana, fecha, fecha],
-                type: QueryTypes.SELECT
-            });
-            
-            if (!disponibilidad) {
-                return res.json({
-                    success: true,
-                    data: {
-                        disponible: false,
-                        horarios: [],
-                        mensaje: 'El profesional no tiene disponibilidad para esta fecha'
-                    }
-                });
-            }
-            
-            // Obtener citas ya programadas para esa fecha
-            const [citasProgramadas] = await sequelize.query(`
-                SELECT hora, duracion_minutos
-                FROM citas
-                WHERE (psicologo_id = ? OR becario_id = ?)
-                AND fecha = ?
-                AND estado IN ('programada', 'confirmada')
-                ORDER BY hora
-            `, {
-                replacements: [usuario_id, usuario_id, fecha],
-                type: QueryTypes.SELECT
-            });
-            
-            // Generar horarios disponibles
-            const horariosDisponibles = this.generarHorariosDisponibles(
-                disponibilidad.hora_inicio,
-                disponibilidad.hora_fin,
-                disponibilidad.intervalo_citas,
-                citasProgramadas || [],
-                disponibilidad.max_citas_dia
-            );
-            
-            res.json({
-                success: true,
-                data: {
-                    disponible: true,
-                    horarios: horariosDisponibles,
-                    intervalo_minutos: disponibilidad.intervalo_citas,
-                    max_citas_dia: disponibilidad.max_citas_dia,
-                    citas_actuales: (citasProgramadas || []).length
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerHorariosDisponibles:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener horarios disponibles'
-            });
-        }
-    }
-    
-    // Métodos auxiliares
-    static validarHora(hora) {
-        const regex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-        return regex.test(hora);
-    }
-    
-    static compararHoras(hora1, hora2) {
-        const [h1, m1] = hora1.split(':').map(Number);
-        const [h2, m2] = hora2.split(':').map(Number);
-        
-        if (h1 !== h2) return h1 - h2;
-        return m1 - m2;
-    }
-    
-    static diaSemanaANumero(diaSemana) {
-        const dias = {
-            'domingo': 1,
-            'lunes': 2,
-            'martes': 3,
-            'miercoles': 4,
-            'jueves': 5,
-            'viernes': 6,
-            'sabado': 7
-        };
-        return dias[diaSemana.toLowerCase()] || 1;
-    }
-    
-    static numeroADiaSemana(numero) {
-        const dias = [
-            'domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'
-        ];
-        return dias[numero] || 'domingo';
-    }
-    
-    static async verificarPermisoVerDisponibilidad(solicitanteId, solicitanteRol, usuarioId) {
-        if (solicitanteRol === 'coordinador') return true;
-        
-        if (solicitanteId === parseInt(usuarioId)) return true;
-        
-        if (solicitanteRol === 'psicologo') {
-            // Verificar si es supervisor del usuario
-            const [relacion] = await sequelize.query(`
-                SELECT 1 FROM asignaciones 
-                WHERE becario_id = ? 
-                AND psicologo_id = ?
-                AND estado = 'activa'
-                LIMIT 1
-            `, {
-                replacements: [usuarioId, solicitanteId],
-                type: QueryTypes.SELECT
-            });
-            
-            return !!relacion;
-        }
-        
-        return false;
-    }
-    
-    static generarHorariosDisponibles(horaInicio, horaFin, intervalo, citasProgramadas, maxCitas) {
-        const horarios = [];
-        const citasPorHora = {};
-        
-        // Mapear citas existentes por hora
-        citasProgramadas.forEach(cita => {
-            const hora = cita.hora.substring(0, 5); // Formato HH:MM
-            citasPorHora[hora] = true;
-        });
-        
-        // Si ya alcanzó el máximo de citas, no hay horarios disponibles
-        if (citasProgramadas.length >= maxCitas) {
-            return horarios;
-        }
-        
-        // Generar horarios cada X minutos
-        let [hora, minuto] = horaInicio.split(':').map(Number);
-        
-        while (true) {
-            const horaStr = `${hora.toString().padStart(2, '0')}:${minuto.toString().padStart(2, '0')}`;
-            const horaFinCalculada = this.sumarMinutos(horaStr, intervalo);
-            
-            // Si pasa de la hora de fin, terminar
-            if (this.compararHoras(horaFinCalculada, horaFin) > 0) {
-                break;
-            }
-            
-            // Si no hay cita en este horario, agregarlo
-            if (!citasPorHora[horaStr]) {
-                horarios.push({
-                    hora: horaStr,
-                    hora_fin: horaFinCalculada,
-                    disponible: true
-                });
-            }
-            
-            // Avanzar intervalo
-            minuto += intervalo;
-            while (minuto >= 60) {
-                hora += 1;
-                minuto -= 60;
-            }
-        }
-        
-        return horarios;
-    }
-    
-    static sumarMinutos(hora, minutos) {
-        const [h, m] = hora.split(':').map(Number);
-        let nuevaHora = h;
-        let nuevosMinutos = m + minutos;
-        
-        while (nuevosMinutos >= 60) {
-            nuevaHora += 1;
-            nuevosMinutos -= 60;
-        }
-        
-        return `${nuevaHora.toString().padStart(2, '0')}:${nuevosMinutos.toString().padStart(2, '0')}`;
-    }
-}
-
-module.exports = DisponibilidadController;
-
-
-/backend/server.js:
---------------------------------------------------------------------------------
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-const express = require('express');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./src/doc/swagger.json');
-const cors = require('cors');
-
-const sequelize = require('./src/config/db');
-
-// Importar modelos
-require('./src/models/userModel');
-require('./src/models/pacienteModel');
-require('./src/models/citaModel');
-// Importar otros modelos según necesites
-
-const authRoutes = require('./src/routes/authRoutes');
-const citaRoutes = require('./src/routes/citaRoutes');
-const roleRoutes = require('./src/routes/roleRoutes');
-const fundacionRoutes = require('./src/routes/fundacionRoutes');
-const asignacionRoutes = require('./src/routes/asignacionRoutes');
-const sesionRoutes = require('./src/routes/sesionRoutes');
-const notificacionRoutes = require('./src/routes/notificacionRoutes');
-const altaRoutes = require('./src/routes/altaRoutes');
-const reporteRoutes = require('./src/routes/reporteRoutes');
-const observacionRoutes = require('./src/routes/observacionRoutes');
-const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
-const expedienteRoutes = require('./src/routes/expedienteRoutes');
-const dashboardRoutes = require('./src/routes/dashboardRoutes');
-const agendaRoutes = require('./src/routes/agendaRoutes');
-const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
-const pacienteRoutes = require('./src/routes/pacienteRoutes');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-
-
-app.use(cors({
-  origin: 'http://localhost:3001',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-app.get('/', (req, res) => {
-  res.send('Server is running! Check /api-docs for documentation.');
-});
-
-app.use('/api/auth', authRoutes);
-app.use('/api/citas', citaRoutes);
-app.use('/api/fundaciones', fundacionRoutes);
-app.use('/api/asignaciones', asignacionRoutes);
-app.use('/api/sesiones', sesionRoutes);
-app.use('/api/notificaciones', notificacionRoutes);
-app.use('/api/altas', altaRoutes);
-app.use('/api/reportes', reporteRoutes);
-app.use('/api/observaciones', observacionRoutes);
-app.use('/api/disponibilidad', disponibilidadRoutes);
-app.use('/api/expedientes', expedienteRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/agenda', agendaRoutes);
-app.use('/api/estadisticas', estadisticaRoutes);
-const userRoutes = require('./src/routes/userRoutes');
-app.use('/api/users', userRoutes);
-app.use('/api/roles', roleRoutes);
-app.use('/api/pacientes', pacienteRoutes);
-// Sincronizar modelos
-sequelize.sync({ force: false, alter: false })
-    .then(() => {
-        console.log("✅ Tablas sincronizadas (base de datos lista)");
-        app.listen(PORT, () => {
-          console.log(`Backend running on http://localhost:${PORT}`);
-          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
-          console.log(`CORS permitido para: http://localhost:3001`);
-          console.log(`Endpoints disponibles:`);
-          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
-          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
-          console.log(`  POST /api/citas/alta-paciente`);
-          console.log(`  PUT  /api/citas/cita/:id`);
-        });
-    })
-    .catch((error) => {
-        console.error("❌ Error al sincronizar la base de datos:", error.message);
-    });
-
-
-/backend/src/services/api.js:
---------------------------------------------------------------------------------
-const API_BASE_URL = 'http://localhost:3000/api';
-
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
-
-  static getHeaders() {
-    const token = this.getToken();
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-  }
-
-  static async get(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async post(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async put(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async delete(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async handleResponse(response) {
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error en la petición');
-    }
-    return response.json();
-  }
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-}
-
-export default ApiService;
-
-
-/backend/src/models/citaModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-const Paciente = require('./pacienteModel');
-const User = require('./userModel');
-
-const Cita = sequelize.define('Cita', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    paciente_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-            model: Paciente,
-            key: 'id'
-        }
-    },
-    psicologo_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    becario_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    fecha: {
-        type: DataTypes.DATEONLY,
-        allowNull: false
-    },
-    hora: {
-        type: DataTypes.TIME,
-        allowNull: false,
-        get() {
-            // Obtener la hora sin segundos
-            const rawValue = this.getDataValue('hora');
-            return rawValue ? rawValue.substring(0, 5) : null;
-        }
-    },
-    tipo_consulta: {
-        type: DataTypes.ENUM('presencial', 'virtual'),
-        allowNull: false,
-        defaultValue: 'presencial'
-    },
-    estado: {
-        type: DataTypes.ENUM('programada', 'confirmada', 'completada', 'cancelada'),
-        allowNull: false,
-        defaultValue: 'programada'
-    },
-    notas: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    motivo_cancelacion: {
-        type: DataTypes.STRING(255),
-        allowNull: true
-    },
-    duracion: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 50,
-        comment: 'Duración en minutos'
-    },
-    // Mantén compatibilidad con duracion_minutos
-    duracion_minutos: {
-        type: DataTypes.VIRTUAL,
-        get() {
-            return this.getDataValue('duracion');
-        }
-    }
-}, {
-    tableName: 'citas',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['fecha', 'estado']
-        },
-        {
-            fields: ['psicologo_id', 'fecha']
-        },
-        {
-            fields: ['becario_id']
-        },
-        {
-            fields: ['paciente_id']
-        }
-    ]
-});
-
-// Relaciones
-Cita.belongsTo(Paciente, { foreignKey: 'paciente_id' });
-Cita.belongsTo(User, { as: 'Psicologo', foreignKey: 'psicologo_id' });
-Cita.belongsTo(User, { as: 'Becario', foreignKey: 'becario_id' });
-
-module.exports = Cita;
-
-
-/backend/src/routes/citaRoutes.js:
---------------------------------------------------------------------------------
-const express = require('express');
-const router = express.Router();
-const CitaController = require('../controllers/citaController');
-const verifyToken = require('../middlewares/authMiddleware');
-
-// Todas las rutas requieren autenticación
-router.use(verifyToken);
-
-// Rutas de consulta
-router.get('/citas-por-fecha', CitaController.obtenerCitasPorFecha);
-router.get('/reporte-mensual', CitaController.generarReporteMensual);
-router.get('/estadisticas', CitaController.obtenerEstadisticas);
-
-// Rutas de modificación
-router.post('/alta-paciente', CitaController.darAltaPaciente);
-router.put('/cita/:id', CitaController.actualizarCita);
-router.post('/nueva', CitaController.crearNuevaCita);
-
-module.exports = router;
-
-
-/frontend/src/App.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import Login from './components/Auth/Login';
-import RoleRouter from './components/Auth/RoleRouter';
-import ProtectedRoute from './components/Auth/ProtectedRoute';
-
-// Importa los modales
-import ConfirmModal from './components/Common/ConfirmModal';
-import NotificationModal from './components/Common/NotificationModal';
-
-// Páginas para Becarios
-import BecarioDashboard from './pages/becario/DashboardPage';
-import BecarioCitas from './pages/becario/CitasPage';
-import BecarioPacientes from './pages/becario/PacientesPage';
-import BecarioNotificaciones from './pages/becario/NotificacionesPage';
-import BecarioObservaciones from './pages/becario/ObservacionesPage';
-
-// Páginas para Psicólogos
-import PsicologoDashboard from './pages/psicologo/DashboardPage';
-import PsicologoPacientes from './pages/psicologo/PacientesPage';
-import PsicologoCitas from './pages/psicologo/CitasPage';
-import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
-import PsicologoSesiones from './pages/psicologo/SesionesPage';
-import PsicologoSupervision from './pages/psicologo/SupervisionPage';
-
-// Páginas para Coordinadores
-import CoordinadorDashboard from './pages/coordinador/DashboardPage';
-import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
-import CoordinadorPacientes from './pages/coordinador/PacientesPage';
-import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
-import CoordinadorAgenda from './pages/coordinador/AgendaPage';
-import CoordinadorReportes from './pages/coordinador/ReportesPage';
-import CoordinadorAltas from './pages/coordinador/AltasPage';
-import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
-
-function App() {
-  return (
-    <Router>
-      <AuthProvider>
-        {/* Agrega los modales aquí */}
-        <ConfirmModal />
-        <NotificationModal />
-        
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          {/* Rutas de Becario */}
-          <Route path="/" element={<RoleRouter />}>
-            <Route index element={<BecarioDashboard />} />
-            
-            {/* Becario */}
-            <Route path="becario/dashboard" element={<BecarioDashboard />} />
-            <Route path="becario/citas" element={<BecarioCitas />} />
-            <Route path="becario/pacientes" element={<BecarioPacientes />} />
-            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
-            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
-            
-            {/* Psicólogo */}
-            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
-            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
-            <Route path="psicologo/citas" element={<PsicologoCitas />} />
-            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
-            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
-            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
-            
-            {/* Coordinador */}
-            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
-            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
-            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
-            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
-            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
-            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
-            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
-            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
-          </Route>
-          
-          {/* Redirección por defecto */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </AuthProvider>
-    </Router>
-  );
-}
-
-export default App;
-
-
-/backend/src/controllers/citaController.js:
---------------------------------------------------------------------------------
-const DatabaseService = require('../services/databaseService');
-
-class CitaController {
-    
-    static async obtenerCitasPorFecha(req, res) {
-        try {
-            console.log('obtenerCitasPorFecha llamado');
-            console.log('Query params:', req.query);
-            
-            const { fecha, becario_id } = req.query;
-            
-            // Validar parámetro requerido
-            if (!fecha) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'El parámetro "fecha" es requerido (formato: YYYY-MM-DD)'
-                });
-            }
-            
-            const becarioId = becario_id ? parseInt(becario_id) : null;
-            
-            console.log(`Buscando citas para fecha: ${fecha}, becarioId: ${becarioId}`);
-            
-            const citas = await DatabaseService.obtenerCitasPorFechaBecario(fecha, becarioId);
-            
-            console.log(`Citas encontradas: ${Array.isArray(citas) ? citas.length : 0}`);
-            
-            // Asegurarnos de que citas siempre sea un array
-            const citasArray = Array.isArray(citas) ? citas : [];
-            
-            res.json({
-                success: true,
-                data: citasArray,
-                count: citasArray.length
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerCitasPorFecha:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener citas',
-                error: error.message
-            });
-        }
-    }
-
-    static async crearNuevaCita(req, res) {
-        try {
-            const { paciente, fecha, hora, tipo_consulta, duracion, notas, becario_id } = req.body;
-            const usuarioId = req.user.id;
-            
-            console.log('📝 Datos recibidos para nueva cita:', {
-                paciente,
-                fecha,
-                hora,
-                tipo_consulta,
-                duracion,
-                notas,
-                becario_id,
-                usuarioId
-            });
-            
-            // Validar campos requeridos
-            if (!paciente || !paciente.nombre || !paciente.apellido || !fecha || !hora) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Faltan campos requeridos: paciente (nombre, apellido), fecha y hora'
-                });
-            }
-            
-            // Crear la cita usando DatabaseService
-            const nuevaCita = await DatabaseService.crearNuevaCita({
-                paciente,
-                fecha,
-                hora,
-                tipo_consulta: tipo_consulta || 'presencial',
-                duracion: duracion || 50,
-                notas,
-                becario_id,
-                usuarioId
-            });
-            
-            res.json({
-                success: true,
-                message: 'Cita creada exitosamente',
-                data: nuevaCita
-            });
-            
-        } catch (error) {
-            console.error('❌ Error en crearNuevaCita:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al crear la cita',
-                error: error.message
-            });
-        }
-    }
-    
-    static async generarReporteMensual(req, res) {
-        try {
-            const { mes, anio, psicologo_id } = req.query;
-            const psicologoId = psicologo_id ? parseInt(psicologo_id) : null;
-            
-            const reporte = await DatabaseService.generarReporteMensual(
-                parseInt(mes),
-                parseInt(anio),
-                psicologoId
-            );
-            
-            res.json({
-                success: true,
-                data: reporte,
-                count: reporte.length,
-                mes: mes,
-                anio: anio
-            });
-            
-        } catch (error) {
-            console.error('Error en generarReporteMensual:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al generar reporte',
-                error: error.message
-            });
-        }
-    }
-    
-    static async darAltaPaciente(req, res) {
-        try {
-            const { paciente_id, tipo_alta, notas } = req.body;
-            const usuarioId = req.user.id;
-            
-            if (!paciente_id || !tipo_alta) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Faltan campos requeridos: paciente_id y tipo_alta'
-                });
-            }
-            
-            await DatabaseService.darAltaPaciente(
-                paciente_id,
-                tipo_alta,
-                usuarioId,
-                notas
-            );
-            
-            res.json({
-                success: true,
-                message: 'Paciente dado de alta exitosamente'
-            });
-            
-        } catch (error) {
-            console.error('Error en darAltaPaciente:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al dar de alta paciente',
-                error: error.message
-            });
-        }
-    }
-    
-    static async actualizarCita(req, res) {
-        try {
-            const { id } = req.params;
-            const updates = req.body;
-            const usuarioId = req.user.id;
-            
-            // Validar campos que se pueden actualizar
-            const camposPermitidos = ['fecha', 'hora', 'tipo_consulta', 'estado', 'notas', 'motivo_cancelacion', 'psicologo_id', 'becario_id'];
-            const updatesFiltrados = {};
-            
-            for (const campo of camposPermitidos) {
-                if (updates[campo] !== undefined) {
-                    updatesFiltrados[campo] = updates[campo];
-                }
-            }
-            
-            if (Object.keys(updatesFiltrados).length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'No se proporcionaron campos válidos para actualizar'
-                });
-            }
-            
-            await DatabaseService.actualizarCita(
-                parseInt(id),
-                updatesFiltrados,
-                usuarioId
-            );
-            
-            res.json({
-                success: true,
-                message: 'Cita actualizada exitosamente'
-            });
-            
-        } catch (error) {
-            console.error('Error en actualizarCita:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al actualizar cita',
-                error: error.message
-            });
-        }
-    }
-    
-    static async obtenerEstadisticas(req, res) {
-        try {
-            const { fecha_inicio, fecha_fin, psicologo_id } = req.query;
-            const psicologoId = psicologo_id ? parseInt(psicologo_id) : null;
-            
-            const estadisticas = await DatabaseService.obtenerEstadisticas(
-                fecha_inicio,
-                fecha_fin,
-                psicologoId
-            );
-            
-            res.json({
-                success: true,
-                data: estadisticas
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerEstadisticas:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener estadísticas',
-                error: error.message
-            });
-        }
-    }
-}
-
-module.exports = CitaController;
-
-
 ================================================================================
 RESUMEN PARA PSICOLOGO_CITAS:
 ----------------------------------------
-Archivos necesarios: 12
-Archivos encontrados: 12
-Archivos no encontrados: 0
+Archivos necesarios: 16
+Archivos encontrados: 15
+Archivos no encontrados: 1
+
+Archivos faltantes:
+  - frontend/src/pages/psicologo/psicologo.css

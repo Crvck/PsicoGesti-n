@@ -1,7 +1,99 @@
 ARCHIVOS BACKEND PARA: BECARIO_PACIENTES
 ================================================================================
-Generado: 2025-12-18 12:44:17
+Generado: 2025-12-18 16:35:54
 ================================================================================
+
+/backend/server.js:
+--------------------------------------------------------------------------------
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
+
+const sequelize = require('./src/config/db');
+
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
+
+const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes');
+const roleRoutes = require('./src/routes/roleRoutes');
+const fundacionRoutes = require('./src/routes/fundacionRoutes');
+const asignacionRoutes = require('./src/routes/asignacionRoutes');
+const sesionRoutes = require('./src/routes/sesionRoutes');
+const notificacionRoutes = require('./src/routes/notificacionRoutes');
+const altaRoutes = require('./src/routes/altaRoutes');
+const reporteRoutes = require('./src/routes/reporteRoutes');
+const observacionRoutes = require('./src/routes/observacionRoutes');
+const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
+const expedienteRoutes = require('./src/routes/expedienteRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const agendaRoutes = require('./src/routes/agendaRoutes');
+const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+
+
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
+app.use('/api/fundaciones', fundacionRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/sesiones', sesionRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/altas', altaRoutes);
+app.use('/api/reportes', reporteRoutes);
+app.use('/api/observaciones', observacionRoutes);
+app.use('/api/disponibilidad', disponibilidadRoutes);
+app.use('/api/expedientes', expedienteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agenda', agendaRoutes);
+app.use('/api/estadisticas', estadisticaRoutes);
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
+        });
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
+
 
 /frontend/src/services/api.js:
 --------------------------------------------------------------------------------
@@ -134,6 +226,11 @@ class ApiService {
 }
 
 export default ApiService;
+
+
+/backend/src/controllers/pacienteController.js:
+--------------------------------------------------------------------------------
+ARCHIVO NO ENCONTRADO
 
 
 /backend/src/db/db.sql:
@@ -496,7 +593,10 @@ INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialida
 ('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
 ('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
 ('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
-('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1),
+('alan@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Alan', 'Jassiel', '555-666', 'psicologo', 'Terapia Familiar', 1),
+('ale@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ale', 'Jandro', '555-333', 'becario', 'Practicante de Psicología', 1),
+('emanuel@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Emanuel', 'Iribe', '555-777', 'coordinador', 'Coordinación Clínica', 1);
 
 INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
 ('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),
@@ -797,100 +897,415 @@ GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicog
 FLUSH PRIVILEGES;
 
 
-/backend/src/routes/asignacionRoutes.js:
+/frontend/src/index.js:
 --------------------------------------------------------------------------------
-const express = require('express');
-const router = express.Router();
-const AsignacionController = require('../controllers/asignacionController');
-const verifyToken = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
 
-// Todas las rutas requieren autenticación
-router.use(verifyToken);
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
 
-// Rutas para coordinadores
-router.post('/', requireRole(['coordinador']), AsignacionController.crearAsignacion);
-router.get('/', requireRole(['coordinador']), AsignacionController.obtenerAsignacionesActivas);
-router.put('/:id/finalizar', requireRole(['coordinador', 'psicologo']), AsignacionController.finalizarAsignacion);
-router.get('/paciente/:paciente_id/historial', requireRole(['coordinador', 'psicologo']), AsignacionController.obtenerHistorialAsignaciones);
+import App from './App';
 
-// Rutas para psicólogos y becarios
-router.get('/mis-pacientes', requireRole(['psicologo', 'becario']), AsignacionController.obtenerMisPacientes);
-
-module.exports = router;
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
 
 
-/backend/src/services/api.js:
+/frontend/src/pages/becario/becario.css:
 --------------------------------------------------------------------------------
-const API_BASE_URL = 'http://localhost:3000/api';
+ARCHIVO NO ENCONTRADO
 
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
 
-  static getHeaders() {
-    const token = this.getToken();
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-  }
+/frontend/src/pages/becario/PacientesPage.js:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react';
+import { FiSearch, FiUser, FiCalendar, FiPhone, FiMail, FiFileText } from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
-  static async get(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
+const BecarioPacientes = () => {
+  const [pacientes, setPacientes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPaciente, setSelectedPaciente] = useState(null);
+  const [showDetalles, setShowDetalles] = useState(false);
 
-  static async post(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
+  useEffect(() => {
+    fetchPacientes();
+  }, []);
 
-  static async put(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async delete(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async handleResponse(response) {
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error en la petición');
+  const fetchPacientes = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      // En un proyecto real, esto vendría de un endpoint específico
+      // Simulamos datos por ahora
+      setTimeout(() => {
+        setPacientes([
+          {
+            id: 1,
+            nombre: 'Carlos Gómez',
+            edad: 25,
+            telefono: '555-1234',
+            email: 'carlos@email.com',
+            motivo_consulta: 'Ansiedad académica',
+            ultima_sesion: '2024-01-10',
+            proxima_cita: '2024-01-17',
+            sesiones_completadas: 3,
+            psicologo: 'Lic. Luis Fernández'
+          },
+          {
+            id: 2,
+            nombre: 'Mariana López',
+            edad: 28,
+            telefono: '555-5678',
+            email: 'mariana@email.com',
+            motivo_consulta: 'Estrés laboral',
+            ultima_sesion: '2024-01-09',
+            proxima_cita: '2024-01-16',
+            sesiones_completadas: 5,
+            psicologo: 'Lic. Luis Fernández'
+          },
+          {
+            id: 3,
+            nombre: 'Roberto Sánchez',
+            edad: 22,
+            telefono: '555-9012',
+            email: 'roberto@email.com',
+            motivo_consulta: 'Problemas de adaptación',
+            ultima_sesion: '2024-01-08',
+            proxima_cita: '2024-01-15',
+            sesiones_completadas: 2,
+            psicologo: 'Lic. Luis Fernández'
+          }
+        ]);
+        setLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error al obtener pacientes:', error);
+      setLoading(false);
     }
-    return response.json();
-  }
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
+  };
+
+  const filteredPacientes = pacientes.filter(paciente =>
+    paciente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    paciente.motivo_consulta.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const showPacienteDetalles = (paciente) => {
+    setSelectedPaciente(paciente);
+    setShowDetalles(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <div className="loading-text">Cargando pacientes...</div>
+      </div>
+    );
   }
 
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
+  return (
+    <div className="pacientes-page">
+      <div className="page-header">
+        <div>
+          <h1>Mis Pacientes</h1>
+          <p>Pacientes asignados a tu supervisión</p>
+        </div>
+      </div>
 
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
+      {/* Search */}
+      <div className="search-box" style={{ marginBottom: '20px' }}>
+        <FiSearch />
+        <input
+          type="text"
+          className="search-input"
+          placeholder="Buscar paciente por nombre, email o motivo de consulta..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
+      {/* Patients Grid */}
+      <div className="grid-3">
+        {filteredPacientes.map((paciente) => (
+          <div key={paciente.id} className="card">
+            <div className="flex-row align-center gap-10 mb-10">
+              <div className="avatar">
+                {paciente.nombre.split(' ').map(n => n[0]).join('')}
+              </div>
+              <div>
+                <h3>{paciente.nombre}</h3>
+                <p className="text-small">{paciente.edad} años</p>
+              </div>
+            </div>
+
+            <div className="flex-col gap-5 mb-10">
+              <div className="flex-row align-center gap-5">
+                <FiPhone size={14} />
+                <span>{paciente.telefono}</span>
+              </div>
+              <div className="flex-row align-center gap-5">
+                <FiMail size={14} />
+                <span>{paciente.email}</span>
+              </div>
+              <div className="flex-row align-center gap-5">
+                <FiCalendar size={14} />
+                <span>Última: {new Date(paciente.ultima_sesion).toLocaleDateString()}</span>
+              </div>
+            </div>
+
+            <div className="mb-10">
+              <p><strong>Motivo:</strong> {paciente.motivo_consulta}</p>
+              <p><strong>Psicólogo:</strong> {paciente.psicologo}</p>
+              <p><strong>Sesiones:</strong> {paciente.sesiones_completadas} completadas</p>
+            </div>
+
+            <div className="flex-row gap-10">
+              <button 
+                className="btn-secondary flex-1"
+                onClick={() => showPacienteDetalles(paciente)}
+              >
+                <FiFileText /> Detalles
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Modal de Detalles */}
+      {showDetalles && selectedPaciente && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-large">
+            <div className="modal-header">
+              <h3>Detalles del Paciente</h3>
+              <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
+            </div>
+            
+            <div className="modal-content">
+              <div className="grid-2 gap-20">
+                <div>
+                  <h4>Información Personal</h4>
+                  <div className="detail-row">
+                    <strong>Nombre:</strong> {selectedPaciente.nombre}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Edad:</strong> {selectedPaciente.edad} años
+                  </div>
+                  <div className="detail-row">
+                    <strong>Teléfono:</strong> {selectedPaciente.telefono}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Email:</strong> {selectedPaciente.email}
+                  </div>
+                </div>
+                
+                <div>
+                  <h4>Información Clínica</h4>
+                  <div className="detail-row">
+                    <strong>Motivo de consulta:</strong> {selectedPaciente.motivo_consulta}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Psicólogo asignado:</strong> {selectedPaciente.psicologo}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Sesiones completadas:</strong> {selectedPaciente.sesiones_completadas}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Próxima cita:</strong> {new Date(selectedPaciente.proxima_cita).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-20">
+                <h4>Historial de Citas Recientes</h4>
+                <div className="table-container mt-10">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Estado</th>
+                        <th>Tipo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>{new Date(selectedPaciente.ultima_sesion).toLocaleDateString()}</td>
+                        <td>10:00 AM</td>
+                        <td><span className="badge badge-success">Completada</span></td>
+                        <td>Presencial</td>
+                      </tr>
+                      <tr>
+                        <td>2024-01-03</td>
+                        <td>11:00 AM</td>
+                        <td><span className="badge badge-success">Completada</span></td>
+                        <td>Virtual</td>
+                      </tr>
+                      <tr>
+                        <td>2023-12-27</td>
+                        <td>09:00 AM</td>
+                        <td><span className="badge badge-success">Completada</span></td>
+                        <td>Presencial</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
+                Cerrar
+              </button>
+              <button className="btn-primary">
+                Agendar Cita
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default BecarioPacientes;
+
+
+/frontend/src/utils/notifications.js:
+--------------------------------------------------------------------------------
+import { showNotification } from '../components/Common/NotificationModal'
+
+// Función para notificaciones de éxito (verde)
+export const notifySuccess = (message) => {
+  showNotification(message, 'success')
 }
 
-export default ApiService;
+// Función para notificaciones de error (rojo)
+export const notifyError = (message) => {
+  showNotification(message, 'error')
+}
+
+// Función para notificaciones de advertencia (amarillo)
+export const notifyWarning = (message) => {
+  showNotification(message, 'warning')
+}
+
+// Función para notificaciones de información (azul)
+export const notifyInfo = (message) => {
+  showNotification(message, 'info')
+}
+
+// Alias para la función principal
+export const notify = showNotification
+
+// Exporta como objeto global
+export default {
+  success: notifySuccess,
+  error: notifyError,
+  warning: notifyWarning,
+  info: notifyInfo,
+  show: notify
+}
+
+
+/frontend/src/App.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Login from './components/Auth/Login';
+import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
+
+// Páginas para Becarios
+import BecarioDashboard from './pages/becario/DashboardPage';
+import BecarioCitas from './pages/becario/CitasPage';
+import BecarioPacientes from './pages/becario/PacientesPage';
+import BecarioNotificaciones from './pages/becario/NotificacionesPage';
+import BecarioObservaciones from './pages/becario/ObservacionesPage';
+
+// Páginas para Psicólogos
+import PsicologoDashboard from './pages/psicologo/DashboardPage';
+import PsicologoPacientes from './pages/psicologo/PacientesPage';
+import PsicologoCitas from './pages/psicologo/CitasPage';
+import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
+import PsicologoSesiones from './pages/psicologo/SesionesPage';
+import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+
+// Páginas para Coordinadores
+import CoordinadorDashboard from './pages/coordinador/DashboardPage';
+import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
+import CoordinadorPacientes from './pages/coordinador/PacientesPage';
+import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
+import CoordinadorAgenda from './pages/coordinador/AgendaPage';
+import CoordinadorReportes from './pages/coordinador/ReportesPage';
+import CoordinadorAltas from './pages/coordinador/AltasPage';
+import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          {/* Rutas de Becario */}
+          <Route path="/" element={<RoleRouter />}>
+            <Route index element={<BecarioDashboard />} />
+            
+            {/* Becario */}
+            <Route path="becario/dashboard" element={<BecarioDashboard />} />
+            <Route path="becario/citas" element={<BecarioCitas />} />
+            <Route path="becario/pacientes" element={<BecarioPacientes />} />
+            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
+            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
+            
+            {/* Psicólogo */}
+            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
+            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
+            <Route path="psicologo/citas" element={<PsicologoCitas />} />
+            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
+            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
+            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
+            
+            {/* Coordinador */}
+            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
+            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
+            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
+            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
+            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
+            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
+            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
+            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
+          </Route>
+          
+          {/* Redirección por defecto */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;
 
 
 /backend/src/routes/pacienteRoutes.js:
@@ -1374,6 +1789,189 @@ router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'ps
 module.exports = router;
 
 
+/frontend/src/utils/confirmations.js:
+--------------------------------------------------------------------------------
+import { showConfirm } from '../components/Common/ConfirmModal'
+
+// Función para confirmaciones de peligro (rojo - para eliminar)
+export const confirmDanger = (message) => {
+  return showConfirm(message, 'danger')
+}
+
+// Función para confirmaciones de advertencia (amarillo - estándar)
+export const confirmWarning = (message) => {
+  return showConfirm(message, 'warning')
+}
+
+// Función para confirmaciones de información (azul - neutral)
+export const confirmInfo = (message) => {
+  return showConfirm(message, 'info')
+}
+
+// Alias para la función principal
+export const confirm = showConfirm
+
+// Exporta como objeto global
+export default {
+  danger: confirmDanger,
+  warning: confirmWarning,
+  info: confirmInfo,
+  show: confirm
+}
+
+
+/backend/src/models/pacienteModel.js:
+--------------------------------------------------------------------------------
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+const Paciente = sequelize.define('Paciente', {
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
+    nombre: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    apellido: {
+        type: DataTypes.STRING(100),
+        allowNull: false
+    },
+    email: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        validate: {
+            isEmail: true
+        }
+    },
+    telefono: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    fecha_nacimiento: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
+    genero: {
+        type: DataTypes.ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
+        allowNull: true
+    },
+    direccion: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    estado: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+        defaultValue: 'activo'
+    },
+    activo: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+    },
+    notas: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    fundacion_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    }
+}, {
+    tableName: 'pacientes',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    underscored: true,
+    indexes: [
+        {
+            fields: ['activo']
+        },
+        {
+            fields: ['apellido', 'nombre']
+        }
+    ]
+});
+
+module.exports = Paciente;
+
+
+/backend/src/services/api.js:
+--------------------------------------------------------------------------------
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  static async get(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async post(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async put(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async delete(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async handleResponse(response) {
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
+  }
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+}
+
+export default ApiService;
+
+
 /frontend/src/global.css:
 --------------------------------------------------------------------------------
 :root {
@@ -1816,7 +2414,6 @@ body {
   border-radius: 10px;
   padding: 20px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 .card-primary {
@@ -1864,7 +2461,6 @@ body {
   border-radius: 10px;
   padding: 30px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   max-width: 500px;
   width: 90%;
@@ -2529,7 +3125,6 @@ body {
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   border-color: var(--blu);
 }
 
@@ -2748,7 +3343,6 @@ body {
 
 .event-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
 .event-confirmed {
@@ -3163,7 +3757,6 @@ input:checked + .slider:before {
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
   border: 2px solid var(--blu);
 }
@@ -3753,655 +4346,13 @@ input:checked + .slider:before {
 
 
 
-/backend/src/models/pacienteModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-const Paciente = sequelize.define('Paciente', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    nombre: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    apellido: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    email: {
-        type: DataTypes.STRING(255),
-        allowNull: true,
-        validate: {
-            isEmail: true
-        }
-    },
-    telefono: {
-        type: DataTypes.STRING(20),
-        allowNull: true
-    },
-    fecha_nacimiento: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    genero: {
-        type: DataTypes.ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
-        allowNull: true
-    },
-    direccion: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    estado: {
-        type: DataTypes.STRING(50),
-        allowNull: false,
-        defaultValue: 'activo'
-    },
-    activo: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: true
-    },
-    notas: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    fundacion_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true
-    }
-}, {
-    tableName: 'pacientes',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['activo']
-        },
-        {
-            fields: ['apellido', 'nombre']
-        }
-    ]
-});
-
-module.exports = Paciente;
-
-
-/backend/src/controllers/pacienteController.js:
---------------------------------------------------------------------------------
-ARCHIVO NO ENCONTRADO
-
-
-/frontend/src/index.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './global.css';
-import './App.css';
-
-// Importa los estilos de los modales
-import './components/Common/ConfirmModal.css';
-import './components/Common/NotificationModal.css';
-
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-
-
-/backend/src/controllers/asignacionController.js:
---------------------------------------------------------------------------------
-const Asignacion = require('../models/asignacionModel');
-const Paciente = require('../models/pacienteModel');
-const User = require('../models/userModel');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-class AsignacionController {
-    
-    static async crearAsignacion(req, res) {
-        try {
-            const { paciente_id, psicologo_id, becario_id, notas } = req.body;
-            const usuarioId = req.user.id;
-            
-            // Validar que el paciente existe y está activo
-            const paciente = await Paciente.findByPk(paciente_id);
-            if (!paciente || !paciente.activo) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Paciente no encontrado o inactivo'
-                });
-            }
-            
-            // Validar que el psicólogo existe y es psicólogo
-            const psicologo = await User.findOne({
-                where: { id: psicologo_id, rol: 'psicologo', activo: true }
-            });
-            
-            if (!psicologo) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Psicólogo no encontrado o inactivo'
-                });
-            }
-            
-            // Validar que el becario existe si se especifica
-            if (becario_id) {
-                const becario = await User.findOne({
-                    where: { id: becario_id, rol: 'becario', activo: true }
-                });
-                
-                if (!becario) {
-                    return res.status(404).json({
-                        success: false,
-                        message: 'Becario no encontrado o inactivo'
-                    });
-                }
-            }
-            
-            // Verificar que no haya asignación activa
-            const asignacionExistente = await Asignacion.findOne({
-                where: {
-                    paciente_id,
-                    estado: 'activa'
-                }
-            });
-            
-            if (asignacionExistente) {
-                // Finalizar asignación anterior
-                await asignacionExistente.update({
-                    estado: 'finalizada',
-                    fecha_fin: new Date().toISOString().split('T')[0],
-                    motivo_fin: 'Reasignación'
-                });
-            }
-            
-            // Crear nueva asignación
-            const asignacion = await Asignacion.create({
-                paciente_id,
-                psicologo_id,
-                becario_id,
-                notas,
-                fecha_inicio: new Date().toISOString().split('T')[0]
-            });
-            
-            // Actualizar paciente con psicólogo asignado
-            await paciente.update({ fundacion_id: psicologo.fundacion_id });
-            
-            // Crear notificaciones
-            await sequelize.query(`
-                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                VALUES 
-                (?, 'asignacion_nueva', 'Nueva asignación', CONCAT('Se le ha asignado el paciente: ', ?), NOW()),
-                (?, 'asignacion_nueva', 'Nueva asignación', CONCAT('Ha sido asignado como supervisor del paciente: ', ?), NOW())
-            `, {
-                replacements: [
-                    psicologo_id,
-                    `${paciente.nombre} ${paciente.apellido}`,
-                    usuarioId,
-                    `${paciente.nombre} ${paciente.apellido}`
-                ]
-            });
-            
-            if (becario_id) {
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'asignacion_nueva', 'Nueva asignación', CONCAT('Se le ha asignado el paciente: ', ?), NOW())
-                `, {
-                    replacements: [
-                        becario_id,
-                        `${paciente.nombre} ${paciente.apellido}`
-                    ]
-                });
-            }
-            
-            // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'creacion', 'asignaciones', 'Crear asignación', ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Asignación creada: Paciente ${paciente.id} → Psicólogo ${psicologo_id}${becario_id ? ` + Becario ${becario_id}` : ''}`
-                ]
-            });
-            
-            res.json({
-                success: true,
-                message: 'Asignación creada exitosamente',
-                data: asignacion
-            });
-            
-        } catch (error) {
-            console.error('Error en crearAsignacion:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al crear asignación',
-                error: error.message
-            });
-        }
-    }
-    
-    static async obtenerAsignacionesActivas(req, res) {
-        try {
-            const { psicologo_id, becario_id, paciente_id } = req.query;
-            const usuarioId = req.user.id;
-            
-            const whereClause = { estado: 'activa' };
-            
-            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
-            if (becario_id) whereClause.becario_id = becario_id;
-            if (paciente_id) whereClause.paciente_id = paciente_id;
-            
-            const asignaciones = await Asignacion.findAll({
-                where: whereClause,
-                include: [
-                    {
-                        model: Paciente,
-                        attributes: ['id', 'nombre', 'apellido', 'email', 'telefono', 'estado']
-                    },
-                    {
-                        model: User,
-                        as: 'Psicologo',
-                        attributes: ['id', 'nombre', 'apellido', 'email', 'especialidad']
-                    },
-                    {
-                        model: User,
-                        as: 'Becario',
-                        attributes: ['id', 'nombre', 'apellido', 'email']
-                    }
-                ],
-                order: [['fecha_inicio', 'DESC']]
-            });
-            
-            res.json({
-                success: true,
-                data: asignaciones,
-                count: asignaciones.length
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerAsignacionesActivas:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener asignaciones'
-            });
-        }
-    }
-    
-    static async obtenerMisPacientes(req, res) {
-        try {
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
-            let query = '';
-            let replacements = [usuarioId];
-            
-            if (usuarioRol === 'psicologo') {
-                query = `
-                    SELECT 
-                        p.*,
-                        a.fecha_inicio,
-                        a.becario_id,
-                        u_bec.nombre AS becario_nombre,
-                        u_bec.apellido AS becario_apellido,
-                        (SELECT COUNT(*) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.estado = 'completada') AS sesiones_completadas,
-                        (SELECT COUNT(*) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.estado = 'programada'
-                         AND c.fecha >= CURDATE()) AS citas_pendientes
-                    FROM asignaciones a
-                    JOIN pacientes p ON a.paciente_id = p.id
-                    LEFT JOIN users u_bec ON a.becario_id = u_bec.id
-                    WHERE a.psicologo_id = ? 
-                    AND a.estado = 'activa'
-                    AND p.activo = TRUE
-                    ORDER BY p.apellido, p.nombre
-                `;
-            } else if (usuarioRol === 'becario') {
-                query = `
-                    SELECT 
-                        p.*,
-                        a.fecha_inicio,
-                        a.psicologo_id,
-                        u_psi.nombre AS psicologo_nombre,
-                        u_psi.apellido AS psicologo_apellido,
-                        (SELECT COUNT(*) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.becario_id = ?
-                         AND c.estado = 'completada') AS sesiones_completadas,
-                        (SELECT COUNT(*) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.becario_id = ?
-                         AND c.estado = 'programada'
-                         AND c.fecha >= CURDATE()) AS citas_pendientes
-                    FROM asignaciones a
-                    JOIN pacientes p ON a.paciente_id = p.id
-                    JOIN users u_psi ON a.psicologo_id = u_psi.id
-                    WHERE a.becario_id = ? 
-                    AND a.estado = 'activa'
-                    AND p.activo = TRUE
-                    ORDER BY p.apellido, p.nombre
-                `;
-                replacements = [usuarioId, usuarioId, usuarioId];
-            } else {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Acceso no permitido para este rol'
-                });
-            }
-            
-            const pacientes = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: pacientes,
-                count: pacientes.length
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerMisPacientes:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener pacientes asignados'
-            });
-        }
-    }
-    
-    static async finalizarAsignacion(req, res) {
-        try {
-            const { id } = req.params;
-            const { motivo_fin, notas } = req.body;
-            const usuarioId = req.user.id;
-            
-            const asignacion = await Asignacion.findByPk(id);
-            
-            if (!asignacion || asignacion.estado !== 'activa') {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Asignación activa no encontrada'
-                });
-            }
-            
-            // Obtener datos antes para log
-            const datosAntes = { ...asignacion.toJSON() };
-            
-            await asignacion.update({
-                estado: 'finalizada',
-                fecha_fin: new Date().toISOString().split('T')[0],
-                motivo_fin: motivo_fin || 'Finalización manual',
-                notas: notas ? `${asignacion.notas || ''}\n--- Finalización ---\n${notas}` : asignacion.notas
-            });
-            
-            // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'asignaciones', 'Finalizar asignación', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Asignación finalizada ID: ${id}`,
-                    JSON.stringify(datosAntes),
-                    JSON.stringify(asignacion.toJSON())
-                ]
-            });
-            
-            res.json({
-                success: true,
-                message: 'Asignación finalizada exitosamente'
-            });
-            
-        } catch (error) {
-            console.error('Error en finalizarAsignacion:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al finalizar asignación'
-            });
-        }
-    }
-    
-    static async obtenerHistorialAsignaciones(req, res) {
-        try {
-            const { paciente_id } = req.params;
-            
-            const asignaciones = await Asignacion.findAll({
-                where: { paciente_id },
-                include: [
-                    {
-                        model: User,
-                        as: 'Psicologo',
-                        attributes: ['id', 'nombre', 'apellido', 'email']
-                    },
-                    {
-                        model: User,
-                        as: 'Becario',
-                        attributes: ['id', 'nombre', 'apellido', 'email']
-                    }
-                ],
-                order: [['fecha_inicio', 'DESC']]
-            });
-            
-            res.json({
-                success: true,
-                data: asignaciones,
-                count: asignaciones.length
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerHistorialAsignaciones:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener historial de asignaciones'
-            });
-        }
-    }
-}
-
-module.exports = AsignacionController;
-
-
-/backend/server.js:
---------------------------------------------------------------------------------
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-const express = require('express');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./src/doc/swagger.json');
-const cors = require('cors');
-
-const sequelize = require('./src/config/db');
-
-// Importar modelos
-require('./src/models/userModel');
-require('./src/models/pacienteModel');
-require('./src/models/citaModel');
-// Importar otros modelos según necesites
-
-const authRoutes = require('./src/routes/authRoutes');
-const citaRoutes = require('./src/routes/citaRoutes');
-const roleRoutes = require('./src/routes/roleRoutes');
-const fundacionRoutes = require('./src/routes/fundacionRoutes');
-const asignacionRoutes = require('./src/routes/asignacionRoutes');
-const sesionRoutes = require('./src/routes/sesionRoutes');
-const notificacionRoutes = require('./src/routes/notificacionRoutes');
-const altaRoutes = require('./src/routes/altaRoutes');
-const reporteRoutes = require('./src/routes/reporteRoutes');
-const observacionRoutes = require('./src/routes/observacionRoutes');
-const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
-const expedienteRoutes = require('./src/routes/expedienteRoutes');
-const dashboardRoutes = require('./src/routes/dashboardRoutes');
-const agendaRoutes = require('./src/routes/agendaRoutes');
-const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
-const pacienteRoutes = require('./src/routes/pacienteRoutes');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-
-
-app.use(cors({
-  origin: 'http://localhost:3001',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-app.get('/', (req, res) => {
-  res.send('Server is running! Check /api-docs for documentation.');
-});
-
-app.use('/api/auth', authRoutes);
-app.use('/api/citas', citaRoutes);
-app.use('/api/fundaciones', fundacionRoutes);
-app.use('/api/asignaciones', asignacionRoutes);
-app.use('/api/sesiones', sesionRoutes);
-app.use('/api/notificaciones', notificacionRoutes);
-app.use('/api/altas', altaRoutes);
-app.use('/api/reportes', reporteRoutes);
-app.use('/api/observaciones', observacionRoutes);
-app.use('/api/disponibilidad', disponibilidadRoutes);
-app.use('/api/expedientes', expedienteRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/agenda', agendaRoutes);
-app.use('/api/estadisticas', estadisticaRoutes);
-const userRoutes = require('./src/routes/userRoutes');
-app.use('/api/users', userRoutes);
-app.use('/api/roles', roleRoutes);
-app.use('/api/pacientes', pacienteRoutes);
-// Sincronizar modelos
-sequelize.sync({ force: false, alter: false })
-    .then(() => {
-        console.log("✅ Tablas sincronizadas (base de datos lista)");
-        app.listen(PORT, () => {
-          console.log(`Backend running on http://localhost:${PORT}`);
-          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
-          console.log(`CORS permitido para: http://localhost:3001`);
-          console.log(`Endpoints disponibles:`);
-          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
-          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
-          console.log(`  POST /api/citas/alta-paciente`);
-          console.log(`  PUT  /api/citas/cita/:id`);
-        });
-    })
-    .catch((error) => {
-        console.error("❌ Error al sincronizar la base de datos:", error.message);
-    });
-
-
-/frontend/src/App.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import Login from './components/Auth/Login';
-import RoleRouter from './components/Auth/RoleRouter';
-import ProtectedRoute from './components/Auth/ProtectedRoute';
-
-// Importa los modales
-import ConfirmModal from './components/Common/ConfirmModal';
-import NotificationModal from './components/Common/NotificationModal';
-
-// Páginas para Becarios
-import BecarioDashboard from './pages/becario/DashboardPage';
-import BecarioCitas from './pages/becario/CitasPage';
-import BecarioPacientes from './pages/becario/PacientesPage';
-import BecarioNotificaciones from './pages/becario/NotificacionesPage';
-import BecarioObservaciones from './pages/becario/ObservacionesPage';
-
-// Páginas para Psicólogos
-import PsicologoDashboard from './pages/psicologo/DashboardPage';
-import PsicologoPacientes from './pages/psicologo/PacientesPage';
-import PsicologoCitas from './pages/psicologo/CitasPage';
-import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
-import PsicologoSesiones from './pages/psicologo/SesionesPage';
-import PsicologoSupervision from './pages/psicologo/SupervisionPage';
-
-// Páginas para Coordinadores
-import CoordinadorDashboard from './pages/coordinador/DashboardPage';
-import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
-import CoordinadorPacientes from './pages/coordinador/PacientesPage';
-import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
-import CoordinadorAgenda from './pages/coordinador/AgendaPage';
-import CoordinadorReportes from './pages/coordinador/ReportesPage';
-import CoordinadorAltas from './pages/coordinador/AltasPage';
-import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
-
-function App() {
-  return (
-    <Router>
-      <AuthProvider>
-        {/* Agrega los modales aquí */}
-        <ConfirmModal />
-        <NotificationModal />
-        
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          {/* Rutas de Becario */}
-          <Route path="/" element={<RoleRouter />}>
-            <Route index element={<BecarioDashboard />} />
-            
-            {/* Becario */}
-            <Route path="becario/dashboard" element={<BecarioDashboard />} />
-            <Route path="becario/citas" element={<BecarioCitas />} />
-            <Route path="becario/pacientes" element={<BecarioPacientes />} />
-            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
-            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
-            
-            {/* Psicólogo */}
-            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
-            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
-            <Route path="psicologo/citas" element={<PsicologoCitas />} />
-            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
-            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
-            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
-            
-            {/* Coordinador */}
-            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
-            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
-            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
-            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
-            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
-            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
-            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
-            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
-          </Route>
-          
-          {/* Redirección por defecto */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </AuthProvider>
-    </Router>
-  );
-}
-
-export default App;
-
-
 ================================================================================
 RESUMEN PARA BECARIO_PACIENTES:
 ----------------------------------------
-Archivos necesarios: 12
-Archivos encontrados: 11
-Archivos no encontrados: 1
+Archivos necesarios: 14
+Archivos encontrados: 12
+Archivos no encontrados: 2
 
 Archivos faltantes:
   - backend/src/controllers/pacienteController.js
+  - frontend/src/pages/becario/becario.css

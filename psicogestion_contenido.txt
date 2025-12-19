@@ -30,135 +30,197 @@ from datetime import datetime
 
 PAGINAS_ARCHIVOS = {
     "becario_dashboard": [
-        "backend/src/controllers/dashboardController.js",
-        "backend/src/routes/dashboardRoutes.js",
-        "backend/src/models/userModel.js",
-        "backend/src/models/citaModel.js",
-        "backend/src/models/notificacionModel.js",
-        "backend/src/services/estadisticaService.js",
-        "backend/src/services/dashboardService.js",
-        "frontend/src/services/dashboardService.js"
+        "frontend/src/pages/becario/DashboardPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/services/dashboardService.js",
+        "backend/src/routes/rolesRoutes.js",
+        "backend/src/controllers/rolesController.js",
+        "backend/src/routes/notificacionRoutes.js",
+        "backend/src/controllers/notificacionController.js"
     ],
     "becario_citas": [
-        "backend/src/controllers/citaController.js",
+        "frontend/src/pages/becario/CitasPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/citaRoutes.js",
+        "backend/src/controllers/citaController.js",
         "backend/src/models/citaModel.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/controllers/disponibilidadController.js",
-        "backend/src/routes/disponibilidadRoutes.js"
+        "backend/src/middlewares/authMiddleware.js"
     ],
     "becario_pacientes": [
-        "backend/src/controllers/pacienteController.js",
+        "frontend/src/pages/becario/PacientesPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/pacienteRoutes.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/controllers/asignacionController.js",
-        "backend/src/routes/asignacionRoutes.js"
+        "backend/src/controllers/pacienteController.js",
+        "backend/src/models/pacienteModel.js"
     ],
     "becario_notificaciones": [
-        "backend/src/controllers/notificacionController.js",
+        "frontend/src/pages/becario/NotificacionesPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/notificacionRoutes.js",
+        "backend/src/controllers/notificacionController.js",
         "backend/src/models/notificacionModel.js"
     ],
     "becario_observaciones": [
-        "backend/src/controllers/observacionController.js",
+        "frontend/src/pages/becario/ObservacionesPage.js",
+        "frontend/src/pages/becario/becario.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/observacionRoutes.js",
-        "backend/src/models/observacionBecarioModel.js",
-        "backend/src/models/pacienteModel.js"
+        "backend/src/controllers/observacionController.js",
+        "backend/src/models/observacionBecarioModel.js"
     ],
     "coordinador_dashboard": [
-        "backend/src/controllers/dashboardController.js",
+        "frontend/src/pages/coordinador/DashboardPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/services/dashboardService.js",
+        "frontend/src/utils/notifications.js",
         "backend/src/routes/dashboardRoutes.js",
-        "backend/src/models/userModel.js",
-        "backend/src/models/citaModel.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/services/estadisticaService.js",
-        "backend/src/services/dashboardService.js",
-        "frontend/src/services/dashboardService.js"
+        "backend/src/controllers/dashboardController.js",
+        "backend/src/services/dashboardService.js"
     ],
     "coordinador_usuarios": [
-        "backend/src/controllers/authController.js",
-        "backend/src/routes/authRoutes.js",
-        "backend/src/models/userModel.js",
-        "backend/src/models/permisoModel.js"
+        "frontend/src/pages/coordinador/UsuariosPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "backend/src/routes/userRoutes.js",
+        "backend/src/controllers/userController.js",
+        "backend/src/models/userModel.js"
     ],
     "coordinador_pacientes": [
-        "backend/src/controllers/pacienteController.js",
+        "frontend/src/pages/coordinador/PacientesPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/pacienteRoutes.js",
+        "backend/src/controllers/pacienteController.js",
         "backend/src/models/pacienteModel.js"
     ],
     "coordinador_asignaciones": [
-        "backend/src/controllers/asignacionController.js",
+        "frontend/src/pages/coordinador/AsignacionesPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/asignacionRoutes.js",
+        "backend/src/controllers/asignacionController.js",
         "backend/src/models/asignacionModel.js",
-        "backend/src/models/userModel.js",
-        "backend/src/models/pacienteModel.js"
+        "backend/src/routes/userRoutes.js",
+        "backend/src/controllers/userController.js"
     ],
     "coordinador_agenda": [
-        "backend/src/controllers/agendaController.js",
+        "frontend/src/pages/coordinador/AgendaPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/services/api.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/agendaRoutes.js",
+        "backend/src/controllers/agendaController.js",
+        "backend/src/routes/reporteRoutes.js",
+        "backend/src/controllers/reporteController.js",
+        "backend/src/services/calendarioService.js",
         "backend/src/models/citaModel.js",
         "backend/src/models/userModel.js",
-        "backend/src/services/calendarioService.js"
+        "backend/src/models/pacienteModel.js"
     ],
     "coordinador_reportes": [
-        "backend/src/controllers/reporteController.js",
+        "frontend/src/pages/coordinador/ReportesPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/reporteRoutes.js",
-        "backend/src/models/reporteModel.js",
-        "backend/src/services/reporteService.js",
-        "backend/src/services/estadisticaService.js"
+        "backend/src/controllers/reporteController.js",
+        "backend/src/services/reporteService.js"
     ],
     "coordinador_altas": [
-        "backend/src/controllers/altaController.js",
+        "frontend/src/pages/coordinador/AltasPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/services/api.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/altaRoutes.js",
+        "backend/src/controllers/altaController.js",
         "backend/src/models/altaModel.js",
-        "backend/src/models/pacienteModel.js"
+        "backend/src/routes/pacienteRoutes.js",
+        "backend/src/controllers/pacienteController.js",
+        "backend/src/routes/reporteRoutes.js",
+        "backend/src/controllers/reporteController.js"
     ],
     "coordinador_configuracion": [
-        "backend/src/controllers/configuracionController.js",
+        "frontend/src/pages/coordinador/ConfiguracionPage.js",
+        "frontend/src/pages/coordinador/coordinador.css",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
         "backend/src/routes/configuracionRoutes.js",
-        "backend/src/services/backupService.js",
-        "backend/src/models/logSistemaModel.js"
+        "backend/src/controllers/configuracionController.js",
+        "backend/src/models/configuracionModel.js",
+        "backend/src/services/backupService.js"
     ],
     "psicologo_dashboard": [
-        "backend/src/controllers/dashboardController.js",
-        "backend/src/routes/dashboardRoutes.js",
-        "backend/src/models/citaModel.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/models/userModel.js",
-        "backend/src/services/dashboardService.js",
-        "frontend/src/services/dashboardService.js"
+        "frontend/src/pages/psicologo/DashboardPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/services/dashboardService.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js"
     ],
     "psicologo_pacientes": [
-        "backend/src/controllers/pacienteController.js",
-        "backend/src/routes/pacienteRoutes.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/models/expedienteModel.js"
+        "frontend/src/pages/psicologo/PacientesPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css",
+        "frontend/src/components/Common/NotificationModal.jsx",
+        "frontend/src/components/Common/NotificationModal.css"
     ],
     "psicologo_citas": [
-        "backend/src/controllers/citaController.js",
-        "backend/src/routes/citaRoutes.js",
-        "backend/src/models/citaModel.js",
-        "backend/src/controllers/disponibilidadController.js",
-        "backend/src/routes/disponibilidadRoutes.js"
+        "frontend/src/pages/psicologo/CitasPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css",
+        "frontend/src/components/Common/NotificationModal.jsx",
+        "frontend/src/components/Common/NotificationModal.css"
     ],
     "psicologo_expedientes": [
-        "backend/src/controllers/expedienteController.js",
-        "backend/src/routes/expedienteRoutes.js",
-        "backend/src/models/expedienteModel.js",
-        "backend/src/models/pacienteModel.js",
-        "backend/src/models/sesionModel.js"
+        "frontend/src/pages/psicologo/ExpedientesPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css",
+        "frontend/src/components/Common/NotificationModal.jsx",
+        "frontend/src/components/Common/NotificationModal.css"
     ],
     "psicologo_sesiones": [
-        "backend/src/controllers/sesionController.js",
-        "backend/src/routes/sesionRoutes.js",
-        "backend/src/models/sesionModel.js",
-        "backend/src/models/pacienteModel.js"
+        "frontend/src/pages/psicologo/SesionesPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css"
     ],
     "psicologo_supervision": [
-        "backend/src/controllers/supervisionController.js",
-        "backend/src/routes/supervisionRoutes.js",
-        "backend/src/models/observacionBecarioModel.js",
-        "backend/src/models/userModel.js"
+        "frontend/src/pages/psicologo/SupervisionPage.js",
+        "frontend/src/pages/psicologo/psicologo.css",
+        "frontend/src/components/Layout/PsicologoLayout.js",
+        "frontend/src/utils/notifications.js",
+        "frontend/src/utils/confirmations.js",
+        "frontend/src/components/Common/ConfirmModal.jsx",
+        "frontend/src/components/Common/ConfirmModal.css"
     ]
 }
 
@@ -6785,7 +6847,10 @@ INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialida
 ('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
 ('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
 ('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
-('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1),
+('alan@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Alan', 'Jassiel', '555-666', 'psicologo', 'Terapia Familiar', 1),
+('ale@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ale', 'Jandro', '555-333', 'becario', 'Practicante de Psicología', 1),
+('emanuel@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Emanuel', 'Iribe', '555-777', 'coordinador', 'Coordinación Clínica', 1);
 
 INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
 ('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),
@@ -13265,7 +13330,6 @@ BROWSER=none
 
 .interactive-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   border-color: var(--grnb);
 }
 
@@ -13318,7 +13382,6 @@ BROWSER=none
   border-radius: 8px;
   padding: 15px 20px;
   margin-bottom: 10px;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   animation: slideInRight 0.3s ease-out;
   color: var(--white);
 }
@@ -13900,7 +13963,6 @@ body {
   border-radius: 10px;
   padding: 20px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 .card-primary {
@@ -13948,7 +14010,6 @@ body {
   border-radius: 10px;
   padding: 30px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   max-width: 500px;
   width: 90%;
@@ -14613,7 +14674,6 @@ body {
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   border-color: var(--blu);
 }
 
@@ -14832,7 +14892,6 @@ body {
 
 .event-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
 .event-confirmed {
@@ -15247,7 +15306,6 @@ input:checked + .slider:before {
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
   border: 2px solid var(--blu);
 }
@@ -15911,7 +15969,6 @@ root.render(
   padding: 40px;
   width: 100%;
   max-width: 400px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(10px);
 }
 
@@ -16438,7 +16495,6 @@ export default RoleRouter;
   transition: all 0.3s ease;
   max-width: 400px;
   width: 90%;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   backdrop-filter: blur(10px);
 }
 
@@ -16713,7 +16769,6 @@ export default ConfirmModal
   transition: all 0.3s ease;
   max-width: 400px;
   width: 90%;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
   backdrop-filter: blur(10px);
 }
 
@@ -20167,7 +20222,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   FiTrendingUp, FiCheckCircle, FiXCircle, FiFilter,
   FiSearch, FiCalendar, FiUser, FiFileText, FiDownload,
-  FiUsers, FiActivity, FiBarChart2, FiClock
+  FiUsers, FiActivity, FiBarChart2, FiClock,
+  FiAlertTriangle, FiUserCheck, FiUserX, FiArchive,
+  FiRotateCw, FiPause, FiAlertCircle, FiStar
 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
@@ -20420,22 +20477,22 @@ const CoordinadorAltas = () => {
 
   const getTipoAltaLabel = (tipo) => {
     switch (tipo) {
-        case 'terapeutica':
-            return { text: 'Alta Terapéutica', color: 'success', icon: '✅' };
-        case 'abandono':
-            return { text: 'Abandono', color: 'danger', icon: '❌' };
-        case 'traslado':
-            return { text: 'Traslado', color: 'warning', icon: '🔄' };
-        case 'graduacion':
-            return { text: 'Graduación', color: 'primary', icon: '🎓' };
-        case 'no_continua':
-            return { text: 'No Continúa', color: 'info', icon: '⏸️' };
-        case 'no_aprobado':
-            return { text: 'No Aprobado', color: 'danger', icon: '🚫' };
-        case 'otro':
-            return { text: 'Otro', color: 'info', icon: '📋' };
-        default:
-            return { text: tipo, color: 'info', icon: '📋' };
+      case 'terapeutica':
+        return { text: 'Alta Terapéutica', color: 'success', icon: <FiCheckCircle /> };
+      case 'abandono':
+        return { text: 'Abandono', color: 'danger', icon: <FiXCircle /> };
+      case 'traslado':
+        return { text: 'Traslado', color: 'warning', icon: <FiRotateCw /> };
+      case 'graduacion':
+        return { text: 'Graduación', color: 'primary', icon: <FiUserCheck /> };
+      case 'no_continua':
+        return { text: 'No Continúa', color: 'info', icon: <FiPause /> };
+      case 'no_aprobado':
+        return { text: 'No Aprobado', color: 'danger', icon: <FiUserX /> };
+      case 'otro':
+        return { text: 'Otro', color: 'info', icon: <FiArchive /> };
+      default:
+        return { text: tipo, color: 'info', icon: <FiArchive /> };
     }
   };
 
@@ -20596,7 +20653,9 @@ const CoordinadorAltas = () => {
           </div>
         ) : (
           <div className="no-citas">
-            <div className="no-citas-icon">✅</div>
+            <div className="no-citas-icon">
+              <FiCheckCircle />
+            </div>
             <div>No hay candidatos a alta pendientes</div>
             <p className="text-small mt-10">Los psicólogos propondrán pacientes para alta cuando estén listos</p>
           </div>
@@ -20713,11 +20772,17 @@ const CoordinadorAltas = () => {
                         <div className="text-small">sesiones</div>
                       </td>
                       <td>
-                        <div className="text-small">Satisfacción:</div>
-                        <div className="flex-row align-center gap-5">
-                          {'★'.repeat(satisfaccion)}
-                          {'☆'.repeat(5 - satisfaccion)}
-                          <span className="ml-5">({satisfaccion}/5)</span>
+                        <div>
+                          <div className="text-small">Satisfacción:</div>
+                          <div className="flex-row align-center gap-5">
+                            {[...Array(satisfaccion)].map((_, i) => (
+                              <FiStar key={i} className="star-filled" />
+                            ))}
+                            {[...Array(5 - satisfaccion)].map((_, i) => (
+                              <FiStar key={i + satisfaccion} className="star-empty" />
+                            ))}
+                            <span className="ml-5">({satisfaccion}/5)</span>
+                          </div>
                         </div>
                       </td>
                       <td>
@@ -20978,7 +21043,7 @@ const CoordinadorAltas = () => {
               
               {selectedAltaDetalles.tipo_alta === 'no_aprobado' && (
                 <div className="mt-20 alert-message warning">
-                  <strong>⚠️ Nota:</strong> Este paciente fue marcado como "No Aprobado" para alta terapéutica. 
+                  <strong>Nota:</strong> Este paciente fue marcado como "No Aprobado" para alta terapéutica. 
                   Continuará en tratamiento y podrá ser evaluado nuevamente en el futuro.
                 </div>
               )}
@@ -20991,13 +21056,7 @@ const CoordinadorAltas = () => {
               }}>
                 Cerrar
               </button>
-              {selectedAltaDetalles.tipo_alta !== 'no_aprobado' && (
-                <button className="btn-primary" onClick={() => {
-                  notifications.info('Generando informe...');
-                }}>
-                  <FiDownload /> Descargar Informe
-                </button>
-              )}
+
             </div>
           </div>
         </div>
@@ -22615,7 +22674,6 @@ export default CoordinadorConfiguracion;
 
 .week-event:hover {
   transform: scale(1.02);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
 }
 
 .week-event-time {
@@ -23170,12 +23228,10 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   min-height: 30px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .distribution-bar:hover {
   transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
 }
 
 .bar-value-inside {
@@ -23263,7 +23319,6 @@ input:checked + .slider:before {
 .quick-action-btn:hover {
   background: var(--blub);
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
 .quick-action-icon {
@@ -23637,6 +23692,27 @@ input:checked + .slider:before {
   .modal-stats-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.star-filled {
+  color: var(--blu);
+  fill: var(--blu);
+}
+
+.star-empty {
+  color: var(--blub);
+  fill: var(--blub);
+}
+
+.no-citas-icon svg {
+  font-size: 48px;
+  color: #28a745;
+  margin-bottom: 15px;
+}
+
+.badge svg {
+  margin-right: 5px;
+  vertical-align: -2px;
 }
 
 /frontend\src\pages\coordinador\DashboardPage.js:

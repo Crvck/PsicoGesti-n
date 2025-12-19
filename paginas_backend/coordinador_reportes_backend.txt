@@ -1,1667 +1,431 @@
 ARCHIVOS BACKEND PARA: COORDINADOR_REPORTES
 ================================================================================
-Generado: 2025-12-18 12:44:17
+Generado: 2025-12-18 16:35:54
 ================================================================================
 
-/backend/src/controllers/reporteController.js:
+/frontend/src/pages/coordinador/ReportesPage.js:
 --------------------------------------------------------------------------------
-// backend/src/controllers/reporteController.js - Añade este método
-const { Parser } = require('json2csv');
-const fs = require('fs');
-const path = require('path');
-const Cita = require('../models/citaModel');
-const Paciente = require('../models/pacienteModel');
-const User = require('../models/userModel');
-const { Op } = require('sequelize');
-const sequelize = require('../config/db');
-
-class ReporteController {
-    // Método para exportar agenda a CSV
-    static async exportarAgendaCSV(req, res) {
-        try {
-            const { 
-                fecha_inicio, 
-                fecha_fin, 
-                psicologo_id, 
-                tipo_consulta 
-            } = req.body;
-
-            // Construir condiciones de filtro
-            const whereClause = {};
-            
-            if (fecha_inicio && fecha_fin) {
-                whereClause.fecha = {
-                    [Op.between]: [fecha_inicio, fecha_fin]
-                };
-            }
-            
-            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
-            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
-
-            // Obtener citas con información relacionada
-            const citas = await Cita.findAll({
-                where: whereClause,
-                include: [
-                    {
-                        model: Paciente,
-                        attributes: ['nombre', 'apellido', 'telefono', 'email']
-                    },
-                    {
-                        model: User,
-                        as: 'Psicologo',
-                        attributes: ['nombre', 'apellido', 'especialidad']
-                    },
-                    {
-                        model: User,
-                        as: 'Becario',
-                        attributes: ['nombre', 'apellido']
-                    }
-                ],
-                order: [
-                    ['fecha', 'ASC'],
-                    ['hora', 'ASC']
-                ]
-            });
-
-            // Preparar datos para CSV
-            const datosCSV = citas.map(cita => ({
-                Fecha: cita.fecha,
-                Hora: cita.hora,
-                'Duración (min)': cita.duracion,
-                Paciente: cita.Paciente ? `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : '',
-                'Teléfono Paciente': cita.Paciente?.telefono || '',
-                'Email Paciente': cita.Paciente?.email || '',
-                Psicólogo: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : '',
-                Especialidad: cita.Psicologo?.especialidad || '',
-                Becario: cita.Becario ? `${cita.Becario.nombre} ${cita.Becario.apellido}` : '',
-                'Tipo Consulta': cita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual',
-                Estado: cita.estado,
-                Notas: cita.notas || '',
-                'Motivo Cancelación': cita.motivo_cancelacion || ''
-            }));
-
-            // Convertir a CSV
-            const json2csvParser = new Parser();
-            const csv = json2csvParser.parse(datosCSV);
-
-            // Crear nombre de archivo
-            const fechaActual = new Date().toISOString().split('T')[0];
-            const nombreArchivo = `agenda_${fecha_inicio || fechaActual}_a_${fecha_fin || fechaActual}.csv`;
-
-            // Configurar headers para descarga
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
-            
-            res.send(csv);
-
-        } catch (error) {
-            console.error('Error exportando agenda a CSV:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al exportar agenda',
-                error: error.message
-            });
-        }
-    }
-
-    // Método para exportar disponibilidad a CSV
-    static async exportarDisponibilidadCSV(req, res) {
-        try {
-            const { fecha } = req.body;
-            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
-            
-            // Consulta de disponibilidad
-            const disponibilidad = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
-                    u.rol,
-                    u.especialidad,
-                    d.dia_semana,
-                    TIME_FORMAT(d.hora_inicio, '%H:%i') as hora_inicio,
-                    TIME_FORMAT(d.hora_fin, '%H:%i') as hora_fin,
-                    d.max_citas_dia,
-                    (SELECT COUNT(*) FROM citas c 
-                     WHERE c.psicologo_id = u.id 
-                     AND c.fecha = ? 
-                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas
-                FROM users u
-                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
-                    AND d.activo = TRUE
-                WHERE u.rol IN ('psicologo', 'becario')
-                AND u.activo = TRUE
-                ORDER BY u.rol, u.apellido, u.nombre, d.dia_semana
-            `, {
-                replacements: [fechaConsulta],
-                type: QueryTypes.SELECT
-            });
-
-            // Preparar datos para CSV
-            const datosCSV = disponibilidad.map(item => ({
-                Profesional: item.profesional,
-                Rol: item.rol,
-                Especialidad: item.especialidad || '',
-                'Día Semana': item.dia_semana || '',
-                'Hora Inicio': item.hora_inicio || '',
-                'Hora Fin': item.hora_fin || '',
-                'Máx. Citas/Día': item.max_citas_dia || 8,
-                'Citas Programadas': item.citas_programadas || 0,
-                'Disponibilidad': item.citas_programadas >= (item.max_citas_dia || 8) ? 'Completo' : 'Disponible'
-            }));
-
-            // Convertir a CSV
-            const json2csvParser = new Parser();
-            const csv = json2csvParser.parse(datosCSV);
-
-            // Configurar headers para descarga
-            res.setHeader('Content-Type', 'text/csv');
-            res.setHeader('Content-Disposition', `attachment; filename="disponibilidad_${fechaConsulta}.csv"`);
-            
-            res.send(csv);
-
-        } catch (error) {
-            console.error('Error exportando disponibilidad a CSV:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al exportar disponibilidad',
-                error: error.message
-            });
-        }
-    }
-
-    static async generarReporteConflictos(req, res) {
-        try {
-            const { fecha_inicio, fecha_fin } = req.body;
-
-            // Buscar citas solapadas
-            const conflictos = await sequelize.query(`
-                SELECT 
-                    c1.id as cita1_id,
-                    c1.paciente_id as paciente1_id,
-                    p1.nombre as paciente1_nombre,
-                    p1.apellido as paciente1_apellido,
-                    c1.psicologo_id as psicologo1_id,
-                    u1.nombre as psicologo1_nombre,
-                    u1.apellido as psicologo1_apellido,
-                    c1.fecha as fecha_conflicto,
-                    c1.hora as hora_inicio1,
-                    ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)) as hora_fin1,
-                    
-                    c2.id as cita2_id,
-                    c2.paciente_id as paciente2_id,
-                    p2.nombre as paciente2_nombre,
-                    p2.apellido as paciente2_apellido,
-                    c2.psicologo_id as psicologo2_id,
-                    u2.nombre as psicologo2_nombre,
-                    u2.apellido as psicologo2_apellido,
-                    c2.hora as hora_inicio2,
-                    ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)) as hora_fin2
-                    
-                FROM citas c1
-                JOIN citas c2 ON 
-                    c1.psicologo_id = c2.psicologo_id 
-                    AND c1.fecha = c2.fecha
-                    AND c1.id < c2.id
-                    AND (
-                        (c1.hora BETWEEN c2.hora AND ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)))
-                        OR 
-                        (c2.hora BETWEEN c1.hora AND ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)))
-                    )
-                JOIN pacientes p1 ON c1.paciente_id = p1.id
-                JOIN pacientes p2 ON c2.paciente_id = p2.id
-                JOIN users u1 ON c1.psicologo_id = u1.id
-                JOIN users u2 ON c2.psicologo_id = u2.id
-                WHERE c1.estado IN ('programada', 'confirmada')
-                    AND c2.estado IN ('programada', 'confirmada')
-                    ${fecha_inicio && fecha_fin ? 'AND c1.fecha BETWEEN ? AND ?' : ''}
-                ORDER BY c1.fecha, c1.hora
-            `, {
-                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : [],
-                type: QueryTypes.SELECT
-            });
-
-            res.json({
-                success: true,
-                data: {
-                    conflictos,
-                    total_conflictos: conflictos.length,
-                    periodo: fecha_inicio && fecha_fin ? `${fecha_inicio} a ${fecha_fin}` : 'Todo el período'
-                }
-            });
-
-        } catch (error) {
-            console.error('Error generando reporte de conflictos:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al generar reporte de conflictos',
-                error: error.message
-            });
-        }
-    }
-}
-
-module.exports = ReporteController;
+import React, { useState, useEffect } from 'react';
+import { 
+  FiBarChart2, FiDownload, FiCalendar, FiUsers, 
+  FiTrendingUp, FiFilter, FiRefreshCw, FiPrinter
+} from 'react-icons/fi';
+import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
 
 
-/frontend/src/services/api.js:
---------------------------------------------------------------------------------
-// frontend/src/services/api.js
-const API_BASE_URL = 'http://localhost:3000/api';
+const CoordinadorReportes = () => {
+  const [reportes, setReportes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tipoReporte, setTipoReporte] = useState('mensual');
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+  const [estadisticas, setEstadisticas] = useState({});
+  const [reporteGenerado, setReporteGenerado] = useState(null);
 
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
+  useEffect(() => {
+    fetchReportes();
+    generarEstadisticas();
+  }, []);
 
-  static getHeaders() {
-    const token = this.getToken();
-    const headers = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
-    return headers;
-  }
-
-  static async request(url, options = {}) {
-    const { method = 'GET', data } = options;
-    
-    const config = {
-      method,
-      headers: this.getHeaders(),
-      credentials: 'include' // Importante para cookies si las usas
-    };
-    
-    if (data) {
-      config.body = JSON.stringify(data);
-    }
-    
+  const fetchReportes = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}${url}`, config);
-      return this.handleResponse(response);
+      setLoading(true);
+      
+      // Simulación de datos
+      setTimeout(() => {
+        setReportes([
+          { id: 1, nombre: 'Reporte Mensual Enero 2024', tipo: 'mensual', fecha: '2024-01-31', generado_por: 'Sistema', descargas: 12 },
+          { id: 2, nombre: 'Reporte de Altas Diciembre 2023', tipo: 'especial', fecha: '2023-12-31', generado_por: 'Coordinador', descargas: 8 },
+          { id: 3, nombre: 'Reporte de Actividad Becarios', tipo: 'becarios', fecha: '2024-01-15', generado_por: 'Sistema', descargas: 15 },
+          { id: 4, nombre: 'Reporte Financiero 2023', tipo: 'financiero', fecha: '2024-01-10', generado_por: 'Coordinador', descargas: 5 },
+          { id: 5, nombre: 'Reporte de Eficiencia Terapéutica', tipo: 'clinico', fecha: '2024-01-20', generado_por: 'Sistema', descargas: 7 }
+        ]);
+        setLoading(false);
+      }, 1000);
     } catch (error) {
-      console.error('Fetch error:', error);
-      throw error;
+      console.error('Error cargando reportes:', error);
+      setLoading(false);
     }
-  }
+  };
 
-  static async get(url) {
-    return this.request(url);
-  }
+  const generarEstadisticas = () => {
+    // Simulación de estadísticas
+    setEstadisticas({
+      pacientesActivos: 25,
+      pacientesNuevosMes: 8,
+      citasCompletadas: 120,
+      promedioSesiones: 8.5,
+      tasaRetencion: 85,
+      satisfaccionPacientes: 4.2
+    });
+  };
 
-  static async post(url, data) {
-    return this.request(url, { method: 'POST', data });
-  }
-
-  static async put(url, data) {
-    return this.request(url, { method: 'PUT', data });
-  }
-
-  static async delete(url) {
-    return this.request(url, { method: 'DELETE' });
-  }
-
-  static async handleResponse(response) {
-      // Primero verificar si hay contenido
-      if (response.status === 204 || response.status === 205) {
-          return {};
-      }
+  const generarReporte = () => {
+    // Simulación de generación de reporte
+    setLoading(true);
+    setTimeout(() => {
+      const nuevoReporte = {
+        id: reportes.length + 1,
+        nombre: `Reporte ${tipoReporte} ${new Date().toLocaleDateString()}`,
+        tipo: tipoReporte,
+        fecha: new Date().toISOString().split('T')[0],
+        generado_por: 'Coordinador',
+        descargas: 0,
+        contenido: {
+          resumen: `Reporte generado el ${new Date().toLocaleDateString()}`,
+          estadisticas: estadisticas,
+          datos: 'Aquí irían los datos del reporte generado...'
+        }
+      };
       
-      const contentType = response.headers.get('content-type');
-      
-      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
-      if (contentType && contentType.includes('text/csv')) {
-          const text = await response.text();
+      setReportes([nuevoReporte, ...reportes]);
+      setReporteGenerado(nuevoReporte);
+      setLoading(false);
+      notifications.success('Reporte generado exitosamente');
+    }, 1500);
+  };
+
+  const descargarReporte = (reporteId) => {
+    const reporte = reportes.find(r => r.id === reporteId);
+    if (reporte) {
+      notifications.success(`Descargando reporte: ${reporte.nombre}`);
+      // En una implementación real, aquí se generaría y descargaría el archivo
+    }
+  };
+
+  const imprimirReporte = (reporteId) => {
+    const reporte = reportes.find(r => r.id === reporteId);
+    if (reporte) {
+      notifications.success(`Imprimiendo reporte: ${reporte.nombre}`);
+      // En una implementación real, aquí se abriría el diálogo de impresión
+    }
+  };
+
+  const getColorByTipo = (tipo) => {
+    switch (tipo) {
+      case 'mensual': return 'var(--grnb)';
+      case 'especial': return 'var(--blu)';
+      case 'becarios': return 'var(--yy)';
+      case 'financiero': return 'var(--grnd)';
+      case 'clinico': return 'var(--rr)';
+      default: return 'var(--gray)';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <div className="loading-text">Cargando reportes...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="configuracion-page">
+      <div className="page-header">
+        <div>
+          <h1>Reportes y Estadísticas</h1>
+          <p>Generación y gestión de reportes del sistema</p>
+        </div>
+        <button className="btn-secondary" onClick={fetchReportes}>
+          <FiRefreshCw /> Actualizar
+        </button>
+      </div>
+
+      {/* Panel de Generación de Reportes */}
+      <div className="card mb-30">
+        <div className="section-header">
+          <h3>
+            <FiBarChart2 /> Generar Nuevo Reporte
+          </h3>
+          <button className="btn-primary" onClick={generarReporte}>
+            <FiBarChart2 /> Generar Reporte
+          </button>
+        </div>
+        
+        <div className="form-grid">
+          <div className="form-group">
+            <label>Tipo de Reporte</label>
+            <select 
+              value={tipoReporte} 
+              onChange={(e) => setTipoReporte(e.target.value)}
+              className="select-field"
+            >
+              <option value="mensual">Reporte Mensual</option>
+              <option value="trimestral">Reporte Trimestral</option>
+              <option value="anual">Reporte Anual</option>
+              <option value="becarios">Reporte de Becarios</option>
+              <option value="clinico">Reporte Clínico</option>
+              <option value="financiero">Reporte Financiero</option>
+              <option value="especial">Reporte Especial</option>
+            </select>
+          </div>
           
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
+          <div className="form-group">
+            <label>Fecha Inicio</label>
+            <input
+              type="date"
+              value={fechaInicio}
+              onChange={(e) => setFechaInicio(e.target.value)}
+              className="input-field"
+            />
+          </div>
           
-          // Para CSV, devolvemos el texto directamente
-          return text;
-      }
-      
-      // Si no es CSV, verificar si es JSON
-      if (!contentType || !contentType.includes('application/json')) {
-          const text = await response.text();
+          <div className="form-group">
+            <label>Fecha Fin</label>
+            <input
+              type="date"
+              value={fechaFin}
+              onChange={(e) => setFechaFin(e.target.value)}
+              className="input-field"
+            />
+          </div>
           
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
+          <div className="form-group">
+            <label>Formato</label>
+            <select className="select-field">
+              <option value="pdf">PDF</option>
+              <option value="excel">Excel</option>
+              <option value="html">HTML</option>
+            </select>
+          </div>
           
-          // Intentar parsear como JSON si es posible
-          try {
-              return text ? JSON.parse(text) : {};
-          } catch {
-              return text;
-          }
-      }
-      
-      // Si es JSON, parsearlo normalmente
-      const data = await response.json();
-      
-      if (!response.ok) {
-          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
-          const error = new Error(errorMessage);
-          error.status = response.status;
-          error.data = data;
-          throw error;
-      }
-      
-      return data;
-  }
+          <div className="form-group" style={{ gridColumn: 'span 2' }}>
+            <label>Parámetros Adicionales</label>
+            <div className="grid-2 gap-10">
+              <label className="flex-row align-center gap-10">
+                <input type="checkbox" defaultChecked />
+                <span>Incluir gráficos</span>
+              </label>
+              <label className="flex-row align-center gap-10">
+                <input type="checkbox" defaultChecked />
+                <span>Incluir datos detallados</span>
+              </label>
+              <label className="flex-row align-center gap-10">
+                <input type="checkbox" />
+                <span>Incluir datos financieros</span>
+              </label>
+              <label className="flex-row align-center gap-10">
+                <input type="checkbox" defaultChecked />
+                <span>Incluir comparativas</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
 
-  // Métodos específicos para el dashboard
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-
-  // Método para obtener información del usuario actual
-  static async getCurrentUser() {
-    return this.get('/auth/me');
-  }
-}
-
-export default ApiService;
-
-
-/backend/src/db/db.sql:
---------------------------------------------------------------------------------
-CREATE DATABASE IF NOT EXISTS psicogestion_db;
-USE psicogestion_db;
-
-CREATE TABLE fundaciones (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    nombre VARCHAR(255) NOT NULL UNIQUE,
-    direccion TEXT,
-    telefono VARCHAR(20),
-    email VARCHAR(255),
-    responsable VARCHAR(255),
-    activo BOOLEAN DEFAULT TRUE,
-    convenio_inicio DATE,
-    convenio_fin DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
-CREATE TABLE users (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    nombre VARCHAR(100) NOT NULL,
-    apellido VARCHAR(100) NOT NULL,
-    telefono VARCHAR(20),
-    rol ENUM('coordinador', 'psicologo', 'becario') NOT NULL DEFAULT 'becario',
-    especialidad VARCHAR(100),
-    fundacion_id INT,
-    activo BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL
-);
-
-CREATE TABLE pacientes (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    nombre VARCHAR(100) NOT NULL,
-    apellido VARCHAR(100) NOT NULL,
-    email VARCHAR(255),
-    telefono VARCHAR(20),
-    fecha_nacimiento DATE,
-    genero ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
-    direccion TEXT,
-    estado VARCHAR(50) DEFAULT 'activo',
-    activo BOOLEAN DEFAULT TRUE,
-    notas TEXT,
-    fundacion_id INT,
-    ultimo_no_aprobado DATE NULL DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
-    INDEX idx_activo (activo),
-    INDEX idx_apellido_nombre (apellido, nombre),
-    INDEX idx_ultimo_no_aprobado (ultimo_no_aprobado)
-);
-
-CREATE TABLE expedientes (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    paciente_id INT NOT NULL UNIQUE,
-    psicologo_id INT,
-    motivo_consulta TEXT,
-    historia_personal TEXT,
-    historia_familiar TEXT,
-    antecedentes_medicos TEXT,
-    antecedentes_psiquiatricos TEXT,
-    diagnostico_presuntivo VARCHAR(500),
-    diagnostico_definitivo VARCHAR(500),
-    tratamiento_actual TEXT,
-    medicamentos JSON,
-    alergias TEXT,
-    factores_riesgo JSON,
-    redes_apoyo TEXT,
-    emergencia_contacto VARCHAR(255),
-    emergencia_telefono VARCHAR(20),
-    consentimiento_informado BOOLEAN DEFAULT FALSE,
-    fecha_consentimiento DATE,
-    restricciones_acceso JSON,
-    notas_confidenciales TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
-    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE TABLE asignaciones (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    paciente_id INT NOT NULL,
-    psicologo_id INT NOT NULL,
-    becario_id INT,
-    fecha_inicio DATE NOT NULL DEFAULT (CURRENT_DATE),
-    fecha_fin DATE,
-    motivo_fin VARCHAR(255),
-    estado ENUM('activa', 'finalizada', 'suspendida') DEFAULT 'activa',
-    notas TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
-    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE SET NULL,
-    INDEX idx_paciente_estado (paciente_id, estado),
-    INDEX idx_psicologo_estado (psicologo_id, estado),
-    INDEX idx_becario (becario_id)
-);
-
-CREATE TABLE citas (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    paciente_id INT NOT NULL,
-    psicologo_id INT,
-    becario_id INT,
-    fecha DATE NOT NULL,
-    hora TIME NOT NULL,
-    tipo_consulta ENUM('presencial', 'virtual') DEFAULT 'presencial',
-    estado ENUM('programada', 'confirmada', 'completada', 'cancelada') DEFAULT 'programada',
-    notas TEXT,
-    motivo_cancelacion VARCHAR(255),
-    duracion INT DEFAULT 50,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
-    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE SET NULL,
-    INDEX idx_fecha_estado (fecha, estado),
-    INDEX idx_psicologo_fecha (psicologo_id, fecha),
-    INDEX idx_becario (becario_id),
-    INDEX idx_paciente_id (paciente_id)
-);
-
-CREATE TABLE sesiones (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    cita_id INT NOT NULL UNIQUE,
-    psicologo_id INT NOT NULL,
-    fecha DATE NOT NULL,
-    hora_inicio TIME NOT NULL,
-    hora_fin TIME NOT NULL,
-    tipo_sesion ENUM('evaluacion', 'terapia', 'seguimiento', 'crisis') DEFAULT 'terapia',
-    objetivo TEXT,
-    desarrollo TEXT,
-    conclusion TEXT,
-    tareas_asignadas TEXT,
-    emocion_predominante VARCHAR(100),
-    riesgo_suicida ENUM('ninguno', 'bajo', 'moderado', 'alto') DEFAULT 'ninguno',
-    escalas_aplicadas JSON,
-    siguiente_cita DATE,
-    privado BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (cita_id) REFERENCES citas(id) ON DELETE CASCADE,
-    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_cita_id (cita_id),
-    INDEX idx_psicologo_fecha (psicologo_id, fecha),
-    INDEX idx_fecha (fecha)
-);
-
-CREATE TABLE notificaciones (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    usuario_id INT NOT NULL,
-    tipo ENUM('cita_programada', 'cita_modificada', 'cita_cancelada', 'asignacion_nueva', 'observacion_nueva', 'alerta_sistema', 'reporte_generado') NOT NULL,
-    titulo VARCHAR(255) NOT NULL,
-    mensaje TEXT NOT NULL,
-    leido BOOLEAN DEFAULT FALSE,
-    leido_at TIMESTAMP NULL,
-    accion_url VARCHAR(500),
-    prioridad ENUM('baja', 'media', 'alta', 'urgente') DEFAULT 'media',
-    datos_extra JSON,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_usuario_leido (usuario_id, leido),
-    INDEX idx_created_at (created_at),
-    INDEX idx_tipo (tipo)
-);
-
-CREATE TABLE altas (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    paciente_id INT NOT NULL,
-    usuario_id INT NOT NULL,
-    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro', 'no_aprobado') NOT NULL,
-    fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
-    motivo_detallado TEXT,
-    recomendaciones TEXT,
-    sesiones_totales INT,
-    evaluacion_final ENUM('excelente', 'buena', 'regular', 'mala'),
-    seguimiento_recomendado BOOLEAN DEFAULT FALSE,
-    fecha_seguimiento DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
-    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_paciente_id (paciente_id),
-    INDEX idx_fecha_alta (fecha_alta),
-    INDEX idx_tipo_alta (tipo_alta)
-);
-
-CREATE TABLE reportes (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    usuario_id INT NOT NULL,
-    tipo_reporte ENUM('mensual', 'trimestral', 'semestral', 'anual', 'personalizado', 'paciente', 'becario', 'psicologo') NOT NULL,
-    nombre VARCHAR(255) NOT NULL,
-    descripcion TEXT,
-    parametros JSON,
-    fecha_inicio DATE,
-    fecha_fin DATE,
-    formato ENUM('pdf', 'excel', 'csv', 'html') DEFAULT 'pdf',
-    archivo_url VARCHAR(500),
-    archivo_tamano INT,
-    estado ENUM('pendiente', 'generando', 'completado', 'error') DEFAULT 'pendiente',
-    compartido_con JSON,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_usuario_id (usuario_id),
-    INDEX idx_tipo_reporte_estado (tipo_reporte, estado),
-    INDEX idx_created_at (created_at)
-);
-
-CREATE TABLE observaciones_becarios (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    becario_id INT NOT NULL,
-    supervisor_id INT NOT NULL,
-    cita_id INT,
-    fecha DATE NOT NULL DEFAULT (CURRENT_DATE),
-    tipo_observacion ENUM('sesion_observada', 'retroalimentacion', 'evaluacion_periodica', 'incidencia', 'reconocimiento') DEFAULT 'sesion_observada',
-    aspecto_evaluado ENUM('empatia', 'tecnicas', 'documentacion', 'puntualidad', 'profesionalismo', 'etica') NOT NULL,
-    calificacion INT NOT NULL CHECK (calificacion BETWEEN 1 AND 10),
-    fortalezas TEXT,
-    areas_mejora TEXT,
-    recomendaciones TEXT,
-    plan_accion TEXT,
-    fecha_seguimiento DATE,
-    privada BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (supervisor_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (cita_id) REFERENCES citas(id) ON DELETE SET NULL,
-    INDEX idx_becario_fecha (becario_id, fecha),
-    INDEX idx_supervisor (supervisor_id),
-    INDEX idx_tipo_observacion (tipo_observacion)
-);
-
-CREATE TABLE disponibilidades (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    usuario_id INT NOT NULL,
-    dia_semana ENUM('lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo') NOT NULL,
-    hora_inicio TIME NOT NULL,
-    hora_fin TIME NOT NULL,
-    tipo_disponibilidad ENUM('regular', 'extraordinaria', 'limitada') DEFAULT 'regular',
-    activo BOOLEAN DEFAULT TRUE,
-    fecha_inicio_vigencia DATE NOT NULL DEFAULT (CURRENT_DATE),
-    fecha_fin_vigencia DATE,
-    notas TEXT,
-    max_citas_dia INT DEFAULT 8,
-    intervalo_citas INT DEFAULT 50,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_usuario_dia_activo (usuario_id, dia_semana, activo),
-    INDEX idx_fecha_vigencia (fecha_inicio_vigencia, fecha_fin_vigencia)
-);
-
-CREATE TABLE logs_sistema (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    usuario_id INT,
-    tipo_log ENUM('login', 'logout', 'creacion', 'modificacion', 'eliminacion', 'error', 'seguridad', 'backup', 'reporte', 'sistema') NOT NULL,
-    modulo VARCHAR(100) NOT NULL,
-    accion VARCHAR(255) NOT NULL,
-    descripcion TEXT,
-    datos_antes JSON,
-    datos_despues JSON,
-    ip_address VARCHAR(45),
-    user_agent TEXT,
-    severidad ENUM('info', 'advertencia', 'error', 'critico') DEFAULT 'info',
-    resuelto BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE SET NULL,
-    INDEX idx_tipo_log_fecha (tipo_log, created_at),
-    INDEX idx_usuario_id (usuario_id),
-    INDEX idx_modulo (modulo),
-    INDEX idx_severidad_resuelto (severidad, resuelto)
-);
-
-CREATE TABLE permisos (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    nombre VARCHAR(100) NOT NULL UNIQUE,
-    descripcion TEXT,
-    categoria ENUM('administracion', 'pacientes', 'citas', 'reportes', 'configuracion', 'usuarios') NOT NULL,
-    nivel_requerido ENUM('basico', 'intermedio', 'avanzado', 'administrador') DEFAULT 'basico',
-    activo BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
-CREATE TABLE usuario_permisos (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    usuario_id INT NOT NULL,
-    permiso_id INT NOT NULL,
-    concedido BOOLEAN DEFAULT FALSE,
-    concedido_por INT,
-    fecha_concesion TIMESTAMP NULL,
-    fecha_expiracion TIMESTAMP NULL,
-    motivo TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (permiso_id) REFERENCES permisos(id) ON DELETE CASCADE,
-    FOREIGN KEY (concedido_por) REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE KEY idx_usuario_permiso (usuario_id, permiso_id)
-);
-
-CREATE TABLE backups (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    tipo ENUM('completo', 'incremental') NOT NULL,
-    ruta VARCHAR(500) NOT NULL,
-    tamano BIGINT,
-    base_backup_id INT,
-    cambios INT DEFAULT 0,
-    estado ENUM('pendiente', 'generando', 'completado', 'error', 'eliminado') DEFAULT 'pendiente',
-    ultima_restauracion TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (base_backup_id) REFERENCES backups(id) ON DELETE SET NULL
-);
-
-INSERT INTO permisos (nombre, descripcion, categoria, nivel_requerido) VALUES
-('ver_panel_coordinacion', 'Ver panel de coordinación', 'administracion', 'avanzado'),
-('gestionar_usuarios', 'Gestionar usuarios (alta/baja/edición)', 'usuarios', 'avanzado'),
-('gestionar_fundaciones', 'Gestionar fundaciones', 'administracion', 'avanzado'),
-('gestionar_pacientes', 'Gestionar pacientes', 'pacientes', 'intermedio'),
-('gestionar_asignaciones', 'Asignar pacientes a psicólogos/becarios', 'pacientes', 'intermedio'),
-('ver_agenda_global', 'Ver agenda global completa', 'citas', 'intermedio'),
-('generar_reportes', 'Generar reportes estadísticos', 'reportes', 'avanzado'),
-('gestionar_altas', 'Gestionar altas de pacientes', 'pacientes', 'intermedio'),
-('ver_expedientes_completos', 'Ver expedientes completos de pacientes', 'pacientes', 'avanzado'),
-('configurar_sistema', 'Configurar parámetros del sistema', 'configuracion', 'administrador'),
-('ver_panel_psicologo', 'Ver panel principal de psicólogo', 'administracion', 'basico'),
-('ver_mis_pacientes', 'Ver pacientes asignados', 'pacientes', 'basico'),
-('gestionar_mis_citas', 'Gestionar mis propias citas', 'citas', 'basico'),
-('registrar_sesiones', 'Registrar contenido de sesiones', 'citas', 'intermedio'),
-('supervisar_becarios', 'Supervisar becarios asignados', 'usuarios', 'intermedio'),
-('crear_observaciones', 'Crear observaciones de becarios', 'usuarios', 'intermedio'),
-('ver_expedientes_asignados', 'Ver expedientes de pacientes asignados', 'pacientes', 'intermedio'),
-('dar_altas_pacientes', 'Dar de alta a pacientes', 'pacientes', 'intermedio'),
-('ver_panel_becario', 'Ver panel principal de becario', 'administracion', 'basico'),
-('ver_citas_dia', 'Ver citas del día', 'citas', 'basico'),
-('gestionar_citas_asignadas', 'Gestionar citas asignadas', 'citas', 'basico'),
-('ver_pacientes_asignados', 'Ver pacientes asignados', 'pacientes', 'basico'),
-('ver_observaciones_propias', 'Ver observaciones propias', 'usuarios', 'basico'),
-('configurar_disponibilidad', 'Configurar disponibilidad personal', 'configuracion', 'basico');
-
-INSERT INTO fundaciones (nombre, telefono, email, responsable) VALUES
-('Fundación Salud Mental Comunitaria', '555-1234', 'contacto@fsmc.org', 'Dra. María González'),
-('Asociación de Psicología Aplicada', '555-5678', 'info@asocpsicologia.edu', 'Lic. Carlos Rodríguez');
-
-INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialidad, fundacion_id) VALUES
-('coordinador@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ana', 'Martínez', '555-1111', 'coordinador', 'Coordinación Clínica', 1),
-('psicologo1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Luis', 'Fernández', '555-2222', 'psicologo', 'Terapia Cognitivo-Conductual', 1),
-('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
-('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
-('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
-('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
-
-INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
-('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),
-('Mariana', 'López', '1995-08-22', 'femenino', '555-0022', 'mariana@hotmail.com'),
-('Roberto', 'Sánchez', '2000-02-10', 'masculino', '555-0033', 'roberto@yahoo.com');
-
-INSERT INTO expedientes (paciente_id, psicologo_id, motivo_consulta) VALUES
-(1, 2, 'Ansiedad académica con síntomas de estrés elevado'),
-(2, 2, 'Estrés laboral crónico con afectación del sueño'),
-(3, 2, 'Dificultades de adaptación al entorno universitario');
-
-INSERT INTO asignaciones (paciente_id, psicologo_id, becario_id, fecha_inicio) VALUES
-(1, 2, 3, CURDATE()),
-(2, 2, 4, CURDATE()),
-(3, 2, NULL, CURDATE());
-
-INSERT INTO citas (paciente_id, psicologo_id, becario_id, fecha, hora, estado, tipo_consulta, notas) VALUES
-(1, 2, 3, DATE_ADD(CURDATE(), INTERVAL 1 DAY), '10:00:00', 'programada', 'presencial', 'Primera consulta'),
-(2, 2, 4, DATE_ADD(CURDATE(), INTERVAL 2 DAY), '11:00:00', 'confirmada', 'virtual', 'Seguimiento'),
-(3, 2, NULL, DATE_ADD(CURDATE(), INTERVAL 3 DAY), '09:00:00', 'programada', 'presencial', 'Evaluación inicial');
-
-INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje) VALUES
-(3, 'cita_programada', 'Nueva cita asignada', 'Tienes una nueva cita con Carlos Gómez para mañana a las 10:00 AM'),
-(4, 'cita_modificada', 'Cita modificada', 'La cita con Mariana López ha sido cambiada a modalidad virtual');
-
-INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
-SELECT u.id, p.id, TRUE, 1, NOW()
-FROM users u
-CROSS JOIN permisos p
-WHERE u.rol = 'coordinador'
-AND p.nivel_requerido IN ('basico', 'intermedio', 'avanzado', 'administrador');
-
-INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
-SELECT u.id, p.id, TRUE, 1, NOW()
-FROM users u
-CROSS JOIN permisos p
-WHERE u.rol = 'psicologo'
-AND p.nivel_requerido IN ('basico', 'intermedio');
-
-INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
-SELECT u.id, p.id, TRUE, 1, NOW()
-FROM users u
-CROSS JOIN permisos p
-WHERE u.rol = 'becario'
-AND p.nivel_requerido = 'basico';
-
-CREATE VIEW vista_citas_hoy AS
-SELECT 
-    c.id,
-    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
-    c.fecha,
-    TIME_FORMAT(c.hora, '%H:%i') AS hora,
-    c.estado,
-    c.tipo_consulta,
-    u_psi.nombre AS psicologo_nombre,
-    u_bec.nombre AS becario_nombre
-FROM citas c
-JOIN pacientes p ON c.paciente_id = p.id
-JOIN users u_psi ON c.psicologo_id = u_psi.id
-LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-WHERE c.fecha = CURDATE()
-AND c.estado IN ('programada', 'confirmada')
-ORDER BY c.hora;
-
-CREATE VIEW vista_pacientes_asignados AS
-SELECT 
-    a.id,
-    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
-    p.telefono,
-    p.email,
-    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
-    CONCAT(ub.nombre, ' ', ub.apellido) AS becario,
-    a.fecha_inicio,
-    a.estado AS estado_asignacion,
-    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado = 'completada') AS sesiones_completadas,
-    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado IN ('programada', 'confirmada') AND fecha >= CURDATE()) AS citas_pendientes
-FROM asignaciones a
-JOIN pacientes p ON a.paciente_id = p.id
-JOIN users u ON a.psicologo_id = u.id
-LEFT JOIN users ub ON a.becario_id = ub.id
-WHERE p.activo = TRUE AND a.estado = 'activa';
-
-CREATE VIEW vista_resumen_coordinacion AS
-SELECT 
-    (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) AS becarios_activos,
-    (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) AS psicologos_activos,
-    (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) AS pacientes_activos,
-    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado IN ('programada', 'confirmada')) AS citas_hoy,
-    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') AS citas_completadas_hoy,
-    (SELECT COUNT(*) FROM altas WHERE MONTH(fecha_alta) = MONTH(CURDATE())) AS altas_mes_actual;
-
-CREATE VIEW vista_historial_sesiones AS
-SELECT 
-    s.id,
-    s.fecha,
-    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
-    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
-    s.desarrollo AS contenido_sesion,
-    s.conclusion AS observaciones,
-    s.tareas_asignadas,
-    s.siguiente_cita AS proxima_sesion
-FROM sesiones s
-JOIN citas c ON s.cita_id = c.id
-JOIN pacientes p ON c.paciente_id = p.id
-JOIN users u ON s.psicologo_id = u.id
-ORDER BY s.fecha DESC;
-
-CREATE VIEW vista_estadisticas_psicologos AS
-SELECT 
-    u.id,
-    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
-    COUNT(DISTINCT a.paciente_id) AS pacientes_asignados,
-    COUNT(c.id) AS total_citas,
-    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS citas_completadas,
-    ROUND(AVG(CASE WHEN c.estado = 'completada' THEN c.duracion END), 1) AS duracion_promedio,
-    COUNT(DISTINCT a.becario_id) AS becarios_supervisados
-FROM users u
-LEFT JOIN asignaciones a ON u.id = a.psicologo_id AND a.estado = 'activa'
-LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-WHERE u.rol = 'psicologo' AND u.activo = TRUE
-GROUP BY u.id, u.nombre, u.apellido;
-
-CREATE VIEW vista_disponibilidad_semanal AS
-SELECT 
-    u.id,
-    CONCAT(u.nombre, ' ', u.apellido) AS profesional,
-    u.rol,
-    d.dia_semana,
-    TIME_FORMAT(d.hora_inicio, '%H:%i') AS hora_inicio,
-    TIME_FORMAT(d.hora_fin, '%H:%i') AS hora_fin,
-    d.max_citas_dia,
-    (SELECT COUNT(*) FROM citas c 
-     WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
-     AND c.fecha = CURDATE()
-     AND c.estado IN ('programada', 'confirmada')) AS citas_hoy
-FROM users u
-LEFT JOIN disponibilidades d ON u.id = d.usuario_id AND d.activo = TRUE
-WHERE u.rol IN ('psicologo', 'becario') AND u.activo = TRUE
-ORDER BY u.rol, u.apellido, FIELD(d.dia_semana, 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo');
-
-DELIMITER $$
-CREATE PROCEDURE sp_obtener_citas_por_fecha_becario(
-    IN p_fecha DATE,
-    IN p_becario_id INT
-)
-BEGIN
-    SELECT 
-        c.*,
-        CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
-        p.telefono AS paciente_telefono,
-        p.email AS paciente_email,
-        u_psi.nombre AS psicologo_nombre,
-        u_bec.nombre AS becario_nombre,
-        c.duracion AS duracion_minutos,
-        c.notas AS motivo
-    FROM citas c
-    JOIN pacientes p ON c.paciente_id = p.id
-    LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
-    LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-    WHERE c.fecha = p_fecha
-    AND (c.becario_id = p_becario_id OR p_becario_id IS NULL)
-    ORDER BY c.hora;
-END$$
-DELIMITER ;
-
-DELIMITER $$
-CREATE PROCEDURE sp_generar_reporte_mensual(
-    IN p_mes INT,
-    IN p_anio INT,
-    IN p_psicologo_id INT
-)
-BEGIN
-    SELECT 
-        p.id,
-        CONCAT(p.nombre, ' ', p.apellido) AS paciente,
-        COUNT(c.id) AS total_sesiones,
-        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS sesiones_completadas,
-        SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) AS sesiones_canceladas,
-        SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) AS sesiones_programadas,
-        MIN(c.fecha) AS primera_sesion_mes,
-        MAX(c.fecha) AS ultima_sesion_mes
-    FROM pacientes p
-    LEFT JOIN citas c ON p.id = c.paciente_id 
-        AND MONTH(c.fecha) = p_mes 
-        AND YEAR(c.fecha) = p_anio
-        AND (c.psicologo_id = p_psicologo_id OR p_psicologo_id IS NULL)
-    WHERE p.activo = TRUE
-    GROUP BY p.id, p.nombre, p.apellido
-    ORDER BY p.apellido, p.nombre;
-END$$
-DELIMITER ;
-
-DELIMITER $$
-CREATE TRIGGER tr_after_insert_alta
-AFTER INSERT ON altas
-FOR EACH ROW
-BEGIN
-    UPDATE pacientes 
-    SET estado = CONCAT('alta_', NEW.tipo_alta),
-        activo = FALSE,
-        updated_at = NOW()
-    WHERE id = NEW.paciente_id;
-    
-    UPDATE citas 
-    SET estado = 'cancelada',
-        motivo_cancelacion = CONCAT('Paciente dado de alta (', NEW.tipo_alta, ')'),
-        updated_at = NOW()
-    WHERE paciente_id = NEW.paciente_id 
-    AND fecha >= CURDATE()
-    AND estado IN ('programada', 'confirmada');
-    
-    UPDATE asignaciones 
-    SET estado = 'finalizada',
-        fecha_fin = CURDATE(),
-        motivo_fin = CONCAT('Paciente dado de alta (', NEW.tipo_alta, ')')
-    WHERE paciente_id = NEW.paciente_id 
-    AND estado = 'activa';
-END$$
-DELIMITER ;
-
-DELIMITER $$
-CREATE TRIGGER tr_after_update_cita
-AFTER UPDATE ON citas
-FOR EACH ROW
-BEGIN
-    DECLARE paciente_nombre VARCHAR(200);
-    DECLARE paciente_email VARCHAR(255);
-    
-    IF OLD.fecha != NEW.fecha OR OLD.hora != NEW.hora OR OLD.tipo_consulta != NEW.tipo_consulta THEN
+      {/* Estadísticas Rápidas */}
+      <div className="grid-3 mb-30">
+        <div className="card">
+          <div className="flex-row align-center gap-10 mb-10">
+            <FiUsers size={24} style={{ color: 'var(--grnb)' }} />
+            <div>
+              <h4>Pacientes Activos</h4>
+              <div className="stat-value">{estadisticas.pacientesActivos || 0}</div>
+            </div>
+          </div>
+          <div className="text-small">+{estadisticas.pacientesNuevosMes || 0} este mes</div>
+        </div>
         
-        SELECT CONCAT(nombre, ' ', apellido), email INTO paciente_nombre, paciente_email
-        FROM pacientes WHERE id = NEW.paciente_id;
+        <div className="card">
+          <div className="flex-row align-center gap-10 mb-10">
+            <FiCalendar size={24} style={{ color: 'var(--blu)' }} />
+            <div>
+              <h4>Citas Completadas</h4>
+              <div className="stat-value">{estadisticas.citasCompletadas || 0}</div>
+            </div>
+          </div>
+          <div className="text-small">este mes</div>
+        </div>
         
-        IF NEW.psicologo_id IS NOT NULL THEN
-            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-            VALUES (
-                NEW.psicologo_id,
-                'cita_modificada',
-                'Cita modificada',
-                CONCAT('La cita con ', paciente_nombre, ' ha sido modificada. Nueva fecha: ', NEW.fecha, ' ', TIME_FORMAT(NEW.hora, '%H:%i')),
-                NOW()
-            );
-        END IF;
+        <div className="card">
+          <div className="flex-row align-center gap-10 mb-10">
+            <FiTrendingUp size={24} style={{ color: 'var(--yy)' }} />
+            <div>
+              <h4>Tasa de Retención</h4>
+              <div className="stat-value">{estadisticas.tasaRetencion || 0}%</div>
+            </div>
+          </div>
+          <div className="text-small">de pacientes continúan tratamiento</div>
+        </div>
+      </div>
+
+      {/* Reportes Generados */}
+      <div className="dashboard-section">
+        <div className="section-header">
+          <h3>Reportes Generados</h3>
+          <div className="flex-row gap-10">
+            <select className="select-field" style={{ width: '150px' }}>
+              <option value="">Todos los tipos</option>
+              <option value="mensual">Mensuales</option>
+              <option value="especial">Especiales</option>
+              <option value="becarios">Becarios</option>
+              <option value="financiero">Financieros</option>
+            </select>
+            <input 
+              type="text" 
+              className="input-field" 
+              placeholder="Buscar reporte..."
+              style={{ width: '200px' }}
+            />
+          </div>
+        </div>
         
-        IF NEW.becario_id IS NOT NULL THEN
-            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-            VALUES (
-                NEW.becario_id,
-                'cita_modificada',
-                'Cita modificada',
-                CONCAT('La cita con ', paciente_nombre, ' ha sido modificada. Nueva fecha: ', NEW.fecha, ' ', TIME_FORMAT(NEW.hora, '%H:%i')),
-                NOW()
-            );
-        END IF;
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Nombre del Reporte</th>
+                <th>Tipo</th>
+                <th>Fecha</th>
+                <th>Generado por</th>
+                <th>Descargas</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reportes.map((reporte) => (
+                <tr key={reporte.id}>
+                  <td>
+                    <div className="flex-row align-center gap-10">
+                      <FiBarChart2 style={{ color: getColorByTipo(reporte.tipo) }} />
+                      <span>{reporte.nombre}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="badge" style={{ 
+                      background: getColorByTipo(reporte.tipo) + '20',
+                      color: getColorByTipo(reporte.tipo),
+                      borderColor: getColorByTipo(reporte.tipo)
+                    }}>
+                      {reporte.tipo}
+                    </span>
+                  </td>
+                  <td>{new Date(reporte.fecha).toLocaleDateString()}</td>
+                  <td>{reporte.generado_por}</td>
+                  <td>{reporte.descargas}</td>
+                  <td>
+                    <div className="flex-row gap-5">
+                      <button 
+                        className="btn-text"
+                        onClick={() => descargarReporte(reporte.id)}
+                        title="Descargar"
+                      >
+                        <FiDownload />
+                      </button>
+                      <button 
+                        className="btn-text"
+                        onClick={() => imprimirReporte(reporte.id)}
+                        title="Imprimir"
+                      >
+                        <FiPrinter />
+                      </button>
+                      <button className="btn-text">
+                        Ver Vista Previa
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Reporte Recién Generado */}
+      {reporteGenerado && (
+        <div className="card mt-20" style={{ borderLeft: `4px solid ${getColorByTipo(reporteGenerado.tipo)}` }}>
+          <div className="section-header">
+            <h3>📋 Reporte Generado Recientemente</h3>
+            <button className="btn-text" onClick={() => setReporteGenerado(null)}>×</button>
+          </div>
+          
+          <div className="grid-2 gap-20">
+            <div>
+              <strong>Nombre:</strong> {reporteGenerado.nombre}
+            </div>
+            <div>
+              <strong>Tipo:</strong> {reporteGenerado.tipo}
+            </div>
+            <div>
+              <strong>Fecha generación:</strong> {new Date(reporteGenerado.fecha).toLocaleString()}
+            </div>
+            <div>
+              <strong>Generado por:</strong> {reporteGenerado.generado_por}
+            </div>
+          </div>
+          
+          <div className="flex-row gap-10 mt-15">
+            <button 
+              className="btn-primary"
+              onClick={() => descargarReporte(reporteGenerado.id)}
+            >
+              <FiDownload /> Descargar Reporte
+            </button>
+            <button 
+              className="btn-secondary"
+              onClick={() => imprimirReporte(reporteGenerado.id)}
+            >
+              <FiPrinter /> Imprimir
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tipos de Reportes Disponibles */}
+      <div className="grid-4 mt-30">
+        <div className="card">
+          <h4>📊 Reportes Mensuales</h4>
+          <p className="text-small mt-10">Resumen completo de actividad mensual del consultorio</p>
+          <ul className="text-small mt-10">
+            <li>Estadísticas de pacientes</li>
+            <li>Citas realizadas</li>
+            <li>Ingresos generados</li>
+            <li>Indicadores clave</li>
+          </ul>
+        </div>
         
-        INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-        VALUES (
-            NEW.psicologo_id,
-            'modificacion',
-            'citas',
-            'Actualizar cita',
-            CONCAT('Cita ', NEW.id, ' modificada para paciente ', paciente_nombre),
-            NOW()
-        );
-    END IF;
-END$$
-DELIMITER ;
-
-DELIMITER $$
-CREATE TRIGGER tr_after_insert_sesion
-AFTER INSERT ON sesiones
-FOR EACH ROW
-BEGIN
-    UPDATE expedientes 
-    SET riesgo_suicida = NEW.riesgo_suicida,
-        updated_at = NOW()
-    WHERE paciente_id = (SELECT paciente_id FROM citas WHERE id = NEW.cita_id);
-END$$
-DELIMITER ;
-
-CREATE INDEX idx_pacientes_activo ON pacientes(activo);
-CREATE INDEX idx_citas_psicologo_fecha ON citas(psicologo_id, fecha, estado);
-CREATE INDEX idx_sesiones_cita ON sesiones(cita_id);
-CREATE INDEX idx_asignaciones_psicologo ON asignaciones(psicologo_id, fecha_fin);
-CREATE INDEX idx_users_rol_activo ON users(rol, activo);
-CREATE INDEX idx_expediente_paciente ON expedientes(paciente_id);
-CREATE INDEX idx_expediente_psicologo ON expedientes(psicologo_id);
-CREATE INDEX idx_reportes_usuario ON reportes(usuario_id, estado);
-CREATE INDEX idx_reportes_tipo ON reportes(tipo_reporte, created_at);
-CREATE INDEX idx_disponibilidades_vigencia ON disponibilidades(fecha_inicio_vigencia, fecha_fin_vigencia);
-CREATE INDEX idx_logs_severidad ON logs_sistema(severidad, resuelto);
-CREATE INDEX idx_observaciones_fecha_seguimiento ON observaciones_becarios(fecha_seguimiento);
-
-CREATE USER IF NOT EXISTS 'psicogestion_user'@'localhost' IDENTIFIED BY 'SecurePass123!';
-GRANT ALL PRIVILEGES ON psicogestion_db.* TO 'psicogestion_user'@'localhost';
-GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_obtener_citas_por_fecha_becario TO 'psicogestion_user'@'localhost';
-GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicogestion_user'@'localhost';
-FLUSH PRIVILEGES;
-
-
-/backend/src/services/estadisticaService.js:
---------------------------------------------------------------------------------
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-class EstadisticaService {
-    
-    static async calcularEstadisticasGenerales(periodo = 'mes') {
-        try {
-            let intervalo;
-            switch (periodo) {
-                case 'semana':
-                    intervalo = 'INTERVAL 7 DAY';
-                    break;
-                case 'mes':
-                    intervalo = 'INTERVAL 30 DAY';
-                    break;
-                case 'trimestre':
-                    intervalo = 'INTERVAL 90 DAY';
-                    break;
-                case 'año':
-                    intervalo = 'INTERVAL 365 DAY';
-                    break;
-                default:
-                    intervalo = 'INTERVAL 30 DAY';
-            }
-            
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes
-                    (SELECT COUNT(*) FROM pacientes WHERE created_at >= DATE_SUB(CURDATE(), ${intervalo})) as nuevos_pacientes,
-                    (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) as pacientes_activos,
-                    (SELECT COUNT(*) FROM pacientes WHERE activo = FALSE) as pacientes_inactivos,
-                    
-                    -- Citas
-                    (SELECT COUNT(*) FROM citas WHERE fecha >= DATE_SUB(CURDATE(), ${intervalo})) as total_citas,
-                    (SELECT COUNT(*) FROM citas WHERE fecha >= DATE_SUB(CURDATE(), ${intervalo}) AND estado = 'completada') as citas_completadas,
-                    (SELECT COUNT(*) FROM citas WHERE fecha >= DATE_SUB(CURDATE(), ${intervalo}) AND estado = 'cancelada') as citas_canceladas,
-                    
-                    -- Tasa de asistencia
-                    ROUND(
-                        (SELECT COUNT(*) FROM citas WHERE fecha >= DATE_SUB(CURDATE(), ${intervalo}) AND estado = 'completada') * 100.0 / 
-                        NULLIF((SELECT COUNT(*) FROM citas WHERE fecha >= DATE_SUB(CURDATE(), ${intervalo}) AND estado IN ('programada', 'confirmada', 'completada')), 0),
-                        2
-                    ) as tasa_asistencia,
-                    
-                    -- Profesionales
-                    (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) as psicologos_activos,
-                    (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) as becarios_activos,
-                    
-                    -- Sesiones registradas
-                    (SELECT COUNT(*) FROM sesiones s 
-                     JOIN citas c ON s.cita_id = c.id 
-                     WHERE c.fecha >= DATE_SUB(CURDATE(), ${intervalo})) as sesiones_registradas,
-                    
-                    -- Altas
-                    (SELECT COUNT(*) FROM altas WHERE fecha_alta >= DATE_SUB(CURDATE(), ${intervalo})) as altas_realizadas,
-                    
-                    -- Observaciones
-                    (SELECT COUNT(*) FROM observaciones_becarios WHERE fecha >= DATE_SUB(CURDATE(), ${intervalo})) as observaciones_realizadas
-            `, { type: QueryTypes.SELECT });
-            
-            return estadisticas;
-            
-        } catch (error) {
-            console.error('Error en calcularEstadisticasGenerales:', error);
-            throw error;
-        }
-    }
-    
-    static async calcularEstadisticasPsicologo(psicologoId, fechaInicio, fechaFin) {
-        try {
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as psicologo,
-                    
-                    -- Citas
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                    
-                    -- Pacientes
-                    COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                    COUNT(DISTINCT a.becario_id) as becarios_supervisados,
-                    
-                    -- Tiempo
-                    ROUND(AVG(c.duracion_minutos), 1) as duracion_promedio,
-                    SUM(c.duracion_minutos) / 60.0 as horas_total,
-                    
-                    -- Sesiones registradas
-                    COUNT(s.id) as sesiones_registradas,
-                    
-                    -- Observaciones
-                    COUNT(ob.id) as observaciones_realizadas,
-                    ROUND(AVG(ob.calificacion), 2) as promedio_calificacion_observaciones,
-                    
-                    -- Altas
-                    COUNT(al.id) as altas_realizadas
-                    
-                FROM users u
-                LEFT JOIN citas c ON u.id = c.psicologo_id 
-                    AND c.fecha BETWEEN ? AND ?
-                LEFT JOIN sesiones s ON c.id = s.cita_id
-                LEFT JOIN asignaciones a ON u.id = a.psicologo_id AND a.estado = 'activa'
-                LEFT JOIN observaciones_becarios ob ON u.id = ob.supervisor_id
-                    AND ob.fecha BETWEEN ? AND ?
-                LEFT JOIN altas al ON u.id = al.usuario_id
-                    AND al.fecha_alta BETWEEN ? AND ?
-                WHERE u.id = ?
-                GROUP BY u.id, u.nombre, u.apellido
-            `, {
-                replacements: [fechaInicio, fechaFin, fechaInicio, fechaFin, fechaInicio, fechaFin, psicologoId],
-                type: QueryTypes.SELECT
-            });
-            
-            return estadisticas;
-            
-        } catch (error) {
-            console.error('Error en calcularEstadisticasPsicologo:', error);
-            throw error;
-        }
-    }
-    
-    static async calcularEstadisticasBecario(becarioId, fechaInicio, fechaFin) {
-        try {
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as becario,
-                    
-                    -- Citas
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                    
-                    -- Pacientes
-                    COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                    
-                    -- Observaciones recibidas
-                    COUNT(ob.id) as observaciones_recibidas,
-                    ROUND(AVG(ob.calificacion), 2) as promedio_calificacion,
-                    MIN(ob.calificacion) as calificacion_minima,
-                    MAX(ob.calificacion) as calificacion_maxima,
-                    
-                    -- Tiempo entre citas
-                    ROUND(AVG(
-                        DATEDIFF(
-                            (SELECT MIN(c2.fecha) FROM citas c2 
-                             WHERE c2.becario_id = c.becario_id 
-                             AND c2.paciente_id = c.paciente_id 
-                             AND c2.id > c.id),
-                            c.fecha
-                        )
-                    ), 1) as dias_promedio_entre_citas
-                    
-                FROM users u
-                LEFT JOIN citas c ON u.id = c.becario_id 
-                    AND c.fecha BETWEEN ? AND ?
-                LEFT JOIN observaciones_becarios ob ON u.id = ob.becario_id
-                    AND ob.fecha BETWEEN ? AND ?
-                WHERE u.id = ?
-                GROUP BY u.id, u.nombre, u.apellido
-            `, {
-                replacements: [becarioId, fechaInicio, fechaFin, fechaInicio, fechaFin],
-                type: QueryTypes.SELECT
-            });
-            
-            return estadisticas;
-            
-        } catch (error) {
-            console.error('Error en calcularEstadisticasBecario:', error);
-            throw error;
-        }
-    }
-    
-    static async calcularTendenciasMensuales(meses = 6) {
-        try {
-            const tendencias = await sequelize.query(`
-                SELECT 
-                    DATE_FORMAT(fecha, '%Y-%m') as mes,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                    COUNT(DISTINCT paciente_id) as pacientes_unicos,
-                    COUNT(DISTINCT psicologo_id) as psicologos_activos,
-                    COUNT(DISTINCT becario_id) as becarios_activos,
-                    (SELECT COUNT(*) FROM altas WHERE DATE_FORMAT(fecha_alta, '%Y-%m') = DATE_FORMAT(c.fecha, '%Y-%m')) as altas_realizadas,
-                    ROUND(SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as tasa_completitud
-                FROM citas c
-                WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
-                GROUP BY DATE_FORMAT(fecha, '%Y-%m')
-                ORDER BY mes
-            `, {
-                replacements: [meses],
-                type: QueryTypes.SELECT
-            });
-            
-            return tendencias;
-            
-        } catch (error) {
-            console.error('Error en calcularTendenciasMensuales:', error);
-            throw error;
-        }
-    }
-    
-    static async calcularDistribucionPorGenero() {
-        try {
-            const distribucion = await sequelize.query(`
-                SELECT 
-                    COALESCE(genero, 'no especificado') as genero,
-                    COUNT(*) as cantidad,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM pacientes
-                WHERE activo = TRUE
-                GROUP BY genero
-                ORDER BY cantidad DESC
-            `, { type: QueryTypes.SELECT });
-            
-            return distribucion;
-            
-        } catch (error) {
-            console.error('Error en calcularDistribucionPorGenero:', error);
-            throw error;
-        }
-    }
-    
-    static async calcularHorariosMasProductivos() {
-        try {
-            const horarios = await sequelize.query(`
-                SELECT 
-                    HOUR(hora) as hora,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    ROUND(SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as tasa_completitud,
-                    ROUND(AVG(duracion_minutos), 1) as duracion_promedio
-                FROM citas
-                WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
-                GROUP BY HOUR(hora)
-                ORDER BY total_citas DESC
-                LIMIT 8
-            `, { type: QueryTypes.SELECT });
-            
-            return horarios;
-            
-        } catch (error) {
-            console.error('Error en calcularHorariosMasProductivos:', error);
-            throw error;
-        }
-    }
-    
-    static async calcularMetricasEficiencia() {
-        try {
-            const [metricas] = await sequelize.query(`
-                SELECT 
-                    -- Tiempo promedio entre primera y última cita por paciente
-                    ROUND(AVG(DATEDIFF(
-                        ultima_cita.ultima,
-                        primera_cita.primera
-                    )), 1) as dias_tratamiento_promedio,
-                    
-                    -- Citas promedio por paciente
-                    ROUND(AVG(total_citas.total), 1) as citas_promedio_por_paciente,
-                    
-                    -- Tasa de retención (pacientes con más de 1 cita)
-                    ROUND(
-                        COUNT(DISTINCT CASE WHEN total_citas.total > 1 THEN total_citas.paciente_id END) * 100.0 / 
-                        COUNT(DISTINCT total_citas.paciente_id),
-                        2
-                    ) as tasa_retencion,
-                    
-                    -- Tiempo promedio para primera cita después del registro
-                    ROUND(AVG(DATEDIFF(
-                        primera_cita.primera,
-                        p.created_at
-                    )), 1) as dias_para_primera_cita
-                    
-                FROM pacientes p
-                LEFT JOIN (
-                    SELECT paciente_id, MIN(fecha) as primera
-                    FROM citas 
-                    WHERE estado = 'completada'
-                    GROUP BY paciente_id
-                ) primera_cita ON p.id = primera_cita.paciente_id
-                LEFT JOIN (
-                    SELECT paciente_id, MAX(fecha) as ultima
-                    FROM citas 
-                    WHERE estado = 'completada'
-                    GROUP BY paciente_id
-                ) ultima_cita ON p.id = ultima_cita.paciente_id
-                LEFT JOIN (
-                    SELECT paciente_id, COUNT(*) as total
-                    FROM citas 
-                    WHERE estado = 'completada'
-                    GROUP BY paciente_id
-                ) total_citas ON p.id = total_citas.paciente_id
-                WHERE p.activo = TRUE
-            `, { type: QueryTypes.SELECT });
-            
-            return metricas;
-            
-        } catch (error) {
-            console.error('Error en calcularMetricasEficiencia:', error);
-            throw error;
-        }
-    }
-    
-    static async calcularSatisfaccionBecarios() {
-        try {
-            const satisfaccion = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as becario,
-                    COUNT(ob.id) as total_observaciones,
-                    ROUND(AVG(ob.calificacion), 2) as promedio_calificacion,
-                    ROUND(STDDEV(ob.calificacion), 2) as desviacion_estandar,
-                    MIN(ob.calificacion) as calificacion_minima,
-                    MAX(ob.calificacion) as calificacion_maxima,
-                    COUNT(DISTINCT ob.aspecto_evaluado) as aspectos_evaluados,
-                    (SELECT CONCAT(sup.nombre, ' ', sup.apellido) 
-                     FROM asignaciones a 
-                     JOIN users sup ON a.psicologo_id = sup.id 
-                     WHERE a.becario_id = u.id AND a.estado = 'activa' LIMIT 1) as supervisor
-                FROM users u
-                LEFT JOIN observaciones_becarios ob ON u.id = ob.becario_id
-                WHERE u.rol = 'becario' AND u.activo = TRUE
-                GROUP BY u.id, u.nombre, u.apellido
-                ORDER BY promedio_calificacion DESC
-            `, { type: QueryTypes.SELECT });
-            
-            return satisfaccion;
-            
-        } catch (error) {
-            console.error('Error en calcularSatisfaccionBecarios:', error);
-            throw error;
-        }
-    }
-    
-    static async predecirDemanda(fechaInicio, fechaFin) {
-        try {
-            // Análisis histórico para predecir demanda
-            const prediccion = await sequelize.query(`
-                SELECT 
-                    -- Por día de la semana
-                    DAYNAME(fecha) as dia_semana,
-                    COUNT(*) as historico_total,
-                    ROUND(AVG(COUNT(*)) OVER(), 0) as promedio_diario,
-                    
-                    -- Por hora
-                    HOUR(hora) as hora_dia,
-                    COUNT(*) as citas_por_hora,
-                    
-                    -- Por psicólogo
-                    psicologo_id,
-                    COUNT(*) as citas_psicologo
-                    
-                FROM citas
-                WHERE fecha BETWEEN ? AND ?
-                AND estado IN ('programada', 'confirmada', 'completada')
-                GROUP BY DAYNAME(fecha), HOUR(hora), psicologo_id
-                ORDER BY dia_semana, hora_dia
-            `, {
-                replacements: [fechaInicio, fechaFin],
-                type: QueryTypes.SELECT
-            });
-            
-            return prediccion;
-            
-        } catch (error) {
-            console.error('Error en predecirDemanda:', error);
-            throw error;
-        }
-    }
-    
-    static async generarReporteComparativo(periodo, tipoComparacion) {
-        try {
-            let query;
-            
-            switch (tipoComparacion) {
-                case 'psicologos':
-                    query = `
-                        SELECT 
-                            u.id,
-                            CONCAT(u.nombre, ' ', u.apellido) as profesional,
-                            'psicologo' as tipo,
-                            COUNT(c.id) as total_citas,
-                            SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                            ROUND(AVG(c.duracion_minutos), 1) as duracion_promedio,
-                            COUNT(DISTINCT c.paciente_id) as pacientes_unicos
-                        FROM users u
-                        LEFT JOIN citas c ON u.id = c.psicologo_id
-                            AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-                        WHERE u.rol = 'psicologo' AND u.activo = TRUE
-                        GROUP BY u.id, u.nombre, u.apellido
-                        ORDER BY citas_completadas DESC
-                    `;
-                    break;
-                    
-                case 'becarios':
-                    query = `
-                        SELECT 
-                            u.id,
-                            CONCAT(u.nombre, ' ', u.apellido) as profesional,
-                            'becario' as tipo,
-                            COUNT(c.id) as total_citas,
-                            SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                            ROUND(AVG(ob.calificacion), 2) as promedio_calificacion,
-                            COUNT(DISTINCT c.paciente_id) as pacientes_unicos
-                        FROM users u
-                        LEFT JOIN citas c ON u.id = c.becario_id
-                            AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-                        LEFT JOIN observaciones_becarios ob ON u.id = ob.becario_id
-                            AND ob.fecha >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-                        WHERE u.rol = 'becario' AND u.activo = TRUE
-                        GROUP BY u.id, u.nombre, u.apellido
-                        ORDER BY citas_completadas DESC
-                    `;
-                    break;
-                    
-                default:
-                    throw new Error('Tipo de comparación no válido');
-            }
-            
-            const resultados = await sequelize.query(query, {
-                replacements: [periodo, periodo],
-                type: QueryTypes.SELECT
-            });
-            
-            return resultados;
-            
-        } catch (error) {
-            console.error('Error en generarReporteComparativo:', error);
-            throw error;
-        }
-    }
-}
-
-module.exports = EstadisticaService;
-
-
-/backend/src/models/reporteModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-const User = require('./userModel');
-
-const Reporte = sequelize.define('Reporte', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    usuario_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    tipo_reporte: {
-        type: DataTypes.ENUM(
-            'mensual',
-            'trimestral',
-            'semestral',
-            'anual',
-            'personalizado',
-            'paciente',
-            'becario',
-            'psicologo'
-        ),
-        allowNull: false
-    },
-    nombre: {
-        type: DataTypes.STRING(255),
-        allowNull: false
-    },
-    descripcion: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    parametros: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        comment: 'JSON con parámetros del reporte'
-    },
-    fecha_inicio: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    fecha_fin: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    formato: {
-        type: DataTypes.ENUM('pdf', 'excel', 'csv', 'html'),
-        defaultValue: 'pdf'
-    },
-    archivo_url: {
-        type: DataTypes.STRING(500),
-        allowNull: true
-    },
-    archivo_tamano: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        comment: 'Tamaño en bytes'
-    },
-    estado: {
-        type: DataTypes.ENUM('pendiente', 'generando', 'completado', 'error'),
-        defaultValue: 'pendiente'
-    },
-    compartido_con: {
-        type: DataTypes.JSON,
-        allowNull: true,
-        comment: 'JSON con IDs de usuarios con acceso'
-    }
-}, {
-    tableName: 'reportes',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['usuario_id']
-        },
-        {
-            fields: ['tipo_reporte', 'estado']
-        },
-        {
-            fields: ['created_at']
-        }
-    ]
-});
-
-Reporte.belongsTo(User, { foreignKey: 'usuario_id' });
-
-module.exports = Reporte;
-
-
-/backend/src/routes/reporteRoutes.js:
---------------------------------------------------------------------------------
-const express = require('express');
-const router = express.Router();
-const ReporteController = require('../controllers/reporteController');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
-const verifyToken = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
-
-// Exportar agenda a CSV
-router.post('/exportar-agenda-csv', ReporteController.exportarAgendaCSV);
-
-// Exportar disponibilidad a CSV
-router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibilidadCSV);
-
-// Generar reporte de conflictos
-router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
-
-router.get('/altas', verifyToken, requireRole(['coordinador']), async (req, res) => {
-    try {
-        const { formato = 'excel', fecha_inicio, fecha_fin } = req.query;
+        <div className="card">
+          <h4>👨‍⚕️ Reportes Clínicos</h4>
+          <p className="text-small mt-10">Análisis de efectividad terapéutica y progreso</p>
+          <ul className="text-small mt-10">
+            <li>Evolución de pacientes</li>
+            <li>Tasas de éxito</li>
+            <li>Tiempos promedio de tratamiento</li>
+            <li>Satisfacción del paciente</li>
+          </ul>
+        </div>
         
-        let query = `
-            SELECT 
-                a.*,
-                CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
-                p.fecha_nacimiento,
-                p.genero,
-                p.telefono,
-                CONCAT(u.nombre, ' ', u.apellido) as profesional_alta,
-                e.motivo_consulta,
-                COUNT(DISTINCT c.id) as sesiones_completadas
-            FROM altas a
-            JOIN pacientes p ON a.paciente_id = p.id
-            JOIN users u ON a.usuario_id = u.id
-            LEFT JOIN expedientes e ON p.id = e.paciente_id
-            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
-            WHERE 1=1
-        `;
+        <div className="card">
+          <h4>👨‍🎓 Reportes de Becarios</h4>
+          <p className="text-small mt-10">Seguimiento y evaluación de becarios</p>
+          <ul className="text-small mt-10">
+            <li>Carga de trabajo</li>
+            <li>Evaluación de supervisiones</li>
+            <li>Desempeño clínico</li>
+            <li>Áreas de mejora</li>
+          </ul>
+        </div>
         
-        const replacements = [];
-        
-        if (fecha_inicio) {
-            query += ` AND a.fecha_alta >= ?`;
-            replacements.push(fecha_inicio);
-        }
-        
-        if (fecha_fin) {
-            query += ` AND a.fecha_alta <= ?`;
-            replacements.push(fecha_fin);
-        }
-        
-        query += ` GROUP BY a.id, p.id, u.id, e.id
-                  ORDER BY a.fecha_alta DESC`;
-        
-        const altas = await sequelize.query(query, {
-            replacements,
-            type: QueryTypes.SELECT
-        });
-        
-        // Para una implementación real, aquí generarías el archivo Excel/PDF
-        // Por ahora, simulamos la URL
-        const archivoUrl = `/temp/reporte-altas-${Date.now()}.${formato}`;
-        
-        res.json({
-            success: true,
-            data: {
-                archivo_url: archivoUrl,
-                total_registros: altas.length,
-                fecha_generacion: new Date().toISOString()
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error generando reporte de altas:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error al generar reporte de altas'
-        });
-    }
-});
-module.exports = router;
+        <div className="card">
+          <h4>💰 Reportes Financieros</h4>
+          <p className="text-small mt-10">Análisis económico y de rentabilidad</p>
+          <ul className="text-small mt-10">
+            <li>Ingresos vs gastos</li>
+            <li>Proyecciones financieras</li>
+            <li>Análisis de rentabilidad</li>
+            <li>Reportes fiscales</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CoordinadorReportes;
 
 
 /frontend/src/global.css:
@@ -2106,7 +870,6 @@ body {
   border-radius: 10px;
   padding: 20px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 .card-primary {
@@ -2154,7 +917,6 @@ body {
   border-radius: 10px;
   padding: 30px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   max-width: 500px;
   width: 90%;
@@ -2819,7 +1581,6 @@ body {
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   border-color: var(--blu);
 }
 
@@ -3038,7 +1799,6 @@ body {
 
 .event-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
 .event-confirmed {
@@ -3453,7 +2213,6 @@ input:checked + .slider:before {
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
   border: 2px solid var(--blu);
 }
@@ -4043,100 +2802,6 @@ input:checked + .slider:before {
 
 
 
-/frontend/src/index.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './global.css';
-import './App.css';
-
-// Importa los estilos de los modales
-import './components/Common/ConfirmModal.css';
-import './components/Common/NotificationModal.css';
-
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-
-
-/backend/src/services/api.js:
---------------------------------------------------------------------------------
-const API_BASE_URL = 'http://localhost:3000/api';
-
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
-
-  static getHeaders() {
-    const token = this.getToken();
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-  }
-
-  static async get(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async post(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async put(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async delete(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async handleResponse(response) {
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error en la petición');
-    }
-    return response.json();
-  }
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-}
-
-export default ApiService;
-
-
 /backend/server.js:
 --------------------------------------------------------------------------------
 const path = require('path');
@@ -4229,94 +2894,1062 @@ sequelize.sync({ force: false, alter: false })
     });
 
 
-/frontend/src/App.js:
+/frontend/src/services/api.js:
 --------------------------------------------------------------------------------
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import Login from './components/Auth/Login';
-import RoleRouter from './components/Auth/RoleRouter';
-import ProtectedRoute from './components/Auth/ProtectedRoute';
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
 
-// Importa los modales
-import ConfirmModal from './components/Common/ConfirmModal';
-import NotificationModal from './components/Common/NotificationModal';
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
 
-// Páginas para Becarios
-import BecarioDashboard from './pages/becario/DashboardPage';
-import BecarioCitas from './pages/becario/CitasPage';
-import BecarioPacientes from './pages/becario/PacientesPage';
-import BecarioNotificaciones from './pages/becario/NotificacionesPage';
-import BecarioObservaciones from './pages/becario/ObservacionesPage';
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
 
-// Páginas para Psicólogos
-import PsicologoDashboard from './pages/psicologo/DashboardPage';
-import PsicologoPacientes from './pages/psicologo/PacientesPage';
-import PsicologoCitas from './pages/psicologo/CitasPage';
-import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
-import PsicologoSesiones from './pages/psicologo/SesionesPage';
-import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
 
-// Páginas para Coordinadores
-import CoordinadorDashboard from './pages/coordinador/DashboardPage';
-import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
-import CoordinadorPacientes from './pages/coordinador/PacientesPage';
-import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
-import CoordinadorAgenda from './pages/coordinador/AgendaPage';
-import CoordinadorReportes from './pages/coordinador/ReportesPage';
-import CoordinadorAltas from './pages/coordinador/AltasPage';
-import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
+  static async get(url) {
+    return this.request(url);
+  }
 
-function App() {
-  return (
-    <Router>
-      <AuthProvider>
-        {/* Agrega los modales aquí */}
-        <ConfirmModal />
-        <NotificationModal />
-        
-        <Routes>
-          <Route path="/login" element={<Login />} />
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+      // Primero verificar si hay contenido
+      if (response.status === 204 || response.status === 205) {
+          return {};
+      }
+      
+      const contentType = response.headers.get('content-type');
+      
+      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
+      if (contentType && contentType.includes('text/csv')) {
+          const text = await response.text();
           
-          {/* Rutas de Becario */}
-          <Route path="/" element={<RoleRouter />}>
-            <Route index element={<BecarioDashboard />} />
-            
-            {/* Becario */}
-            <Route path="becario/dashboard" element={<BecarioDashboard />} />
-            <Route path="becario/citas" element={<BecarioCitas />} />
-            <Route path="becario/pacientes" element={<BecarioPacientes />} />
-            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
-            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
-            
-            {/* Psicólogo */}
-            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
-            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
-            <Route path="psicologo/citas" element={<PsicologoCitas />} />
-            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
-            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
-            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
-            
-            {/* Coordinador */}
-            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
-            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
-            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
-            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
-            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
-            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
-            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
-            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
-          </Route>
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
           
-          {/* Redirección por defecto */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </AuthProvider>
-    </Router>
-  );
+          // Para CSV, devolvemos el texto directamente
+          return text;
+      }
+      
+      // Si no es CSV, verificar si es JSON
+      if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Intentar parsear como JSON si es posible
+          try {
+              return text ? JSON.parse(text) : {};
+          } catch {
+              return text;
+          }
+      }
+      
+      // Si es JSON, parsearlo normalmente
+      const data = await response.json();
+      
+      if (!response.ok) {
+          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+      }
+      
+      return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
 }
 
-export default App;
+export default ApiService;
+
+
+/backend/src/controllers/reporteController.js:
+--------------------------------------------------------------------------------
+// backend/src/controllers/reporteController.js - Añade este método
+const { Parser } = require('json2csv');
+const fs = require('fs');
+const path = require('path');
+const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
+const User = require('../models/userModel');
+const { Op } = require('sequelize');
+const sequelize = require('../config/db');
+
+class ReporteController {
+    // Método para exportar agenda a CSV
+    static async exportarAgendaCSV(req, res) {
+        try {
+            const { 
+                fecha_inicio, 
+                fecha_fin, 
+                psicologo_id, 
+                tipo_consulta 
+            } = req.body;
+
+            // Construir condiciones de filtro
+            const whereClause = {};
+            
+            if (fecha_inicio && fecha_fin) {
+                whereClause.fecha = {
+                    [Op.between]: [fecha_inicio, fecha_fin]
+                };
+            }
+            
+            if (psicologo_id) whereClause.psicologo_id = psicologo_id;
+            if (tipo_consulta) whereClause.tipo_consulta = tipo_consulta;
+
+            // Obtener citas con información relacionada
+            const citas = await Cita.findAll({
+                where: whereClause,
+                include: [
+                    {
+                        model: Paciente,
+                        attributes: ['nombre', 'apellido', 'telefono', 'email']
+                    },
+                    {
+                        model: User,
+                        as: 'Psicologo',
+                        attributes: ['nombre', 'apellido', 'especialidad']
+                    },
+                    {
+                        model: User,
+                        as: 'Becario',
+                        attributes: ['nombre', 'apellido']
+                    }
+                ],
+                order: [
+                    ['fecha', 'ASC'],
+                    ['hora', 'ASC']
+                ]
+            });
+
+            // Preparar datos para CSV
+            const datosCSV = citas.map(cita => ({
+                Fecha: cita.fecha,
+                Hora: cita.hora,
+                'Duración (min)': cita.duracion,
+                Paciente: cita.Paciente ? `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : '',
+                'Teléfono Paciente': cita.Paciente?.telefono || '',
+                'Email Paciente': cita.Paciente?.email || '',
+                Psicólogo: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : '',
+                Especialidad: cita.Psicologo?.especialidad || '',
+                Becario: cita.Becario ? `${cita.Becario.nombre} ${cita.Becario.apellido}` : '',
+                'Tipo Consulta': cita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual',
+                Estado: cita.estado,
+                Notas: cita.notas || '',
+                'Motivo Cancelación': cita.motivo_cancelacion || ''
+            }));
+
+            // Convertir a CSV
+            const json2csvParser = new Parser();
+            const csv = json2csvParser.parse(datosCSV);
+
+            // Crear nombre de archivo
+            const fechaActual = new Date().toISOString().split('T')[0];
+            const nombreArchivo = `agenda_${fecha_inicio || fechaActual}_a_${fecha_fin || fechaActual}.csv`;
+
+            // Configurar headers para descarga
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+            
+            res.send(csv);
+
+        } catch (error) {
+            console.error('Error exportando agenda a CSV:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al exportar agenda',
+                error: error.message
+            });
+        }
+    }
+
+    // Método para exportar disponibilidad a CSV
+    static async exportarDisponibilidadCSV(req, res) {
+        try {
+            const { fecha } = req.body;
+            const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
+            
+            // Consulta de disponibilidad
+            const disponibilidad = await sequelize.query(`
+                SELECT 
+                    u.id,
+                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
+                    u.rol,
+                    u.especialidad,
+                    d.dia_semana,
+                    TIME_FORMAT(d.hora_inicio, '%H:%i') as hora_inicio,
+                    TIME_FORMAT(d.hora_fin, '%H:%i') as hora_fin,
+                    d.max_citas_dia,
+                    (SELECT COUNT(*) FROM citas c 
+                     WHERE c.psicologo_id = u.id 
+                     AND c.fecha = ? 
+                     AND c.estado IN ('programada', 'confirmada')) as citas_programadas
+                FROM users u
+                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
+                    AND d.activo = TRUE
+                WHERE u.rol IN ('psicologo', 'becario')
+                AND u.activo = TRUE
+                ORDER BY u.rol, u.apellido, u.nombre, d.dia_semana
+            `, {
+                replacements: [fechaConsulta],
+                type: QueryTypes.SELECT
+            });
+
+            // Preparar datos para CSV
+            const datosCSV = disponibilidad.map(item => ({
+                Profesional: item.profesional,
+                Rol: item.rol,
+                Especialidad: item.especialidad || '',
+                'Día Semana': item.dia_semana || '',
+                'Hora Inicio': item.hora_inicio || '',
+                'Hora Fin': item.hora_fin || '',
+                'Máx. Citas/Día': item.max_citas_dia || 8,
+                'Citas Programadas': item.citas_programadas || 0,
+                'Disponibilidad': item.citas_programadas >= (item.max_citas_dia || 8) ? 'Completo' : 'Disponible'
+            }));
+
+            // Convertir a CSV
+            const json2csvParser = new Parser();
+            const csv = json2csvParser.parse(datosCSV);
+
+            // Configurar headers para descarga
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="disponibilidad_${fechaConsulta}.csv"`);
+            
+            res.send(csv);
+
+        } catch (error) {
+            console.error('Error exportando disponibilidad a CSV:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al exportar disponibilidad',
+                error: error.message
+            });
+        }
+    }
+
+    static async generarReporteConflictos(req, res) {
+        try {
+            const { fecha_inicio, fecha_fin } = req.body;
+
+            // Buscar citas solapadas
+            const conflictos = await sequelize.query(`
+                SELECT 
+                    c1.id as cita1_id,
+                    c1.paciente_id as paciente1_id,
+                    p1.nombre as paciente1_nombre,
+                    p1.apellido as paciente1_apellido,
+                    c1.psicologo_id as psicologo1_id,
+                    u1.nombre as psicologo1_nombre,
+                    u1.apellido as psicologo1_apellido,
+                    c1.fecha as fecha_conflicto,
+                    c1.hora as hora_inicio1,
+                    ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)) as hora_fin1,
+                    
+                    c2.id as cita2_id,
+                    c2.paciente_id as paciente2_id,
+                    p2.nombre as paciente2_nombre,
+                    p2.apellido as paciente2_apellido,
+                    c2.psicologo_id as psicologo2_id,
+                    u2.nombre as psicologo2_nombre,
+                    u2.apellido as psicologo2_apellido,
+                    c2.hora as hora_inicio2,
+                    ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)) as hora_fin2
+                    
+                FROM citas c1
+                JOIN citas c2 ON 
+                    c1.psicologo_id = c2.psicologo_id 
+                    AND c1.fecha = c2.fecha
+                    AND c1.id < c2.id
+                    AND (
+                        (c1.hora BETWEEN c2.hora AND ADDTIME(c2.hora, SEC_TO_TIME(c2.duracion * 60)))
+                        OR 
+                        (c2.hora BETWEEN c1.hora AND ADDTIME(c1.hora, SEC_TO_TIME(c1.duracion * 60)))
+                    )
+                JOIN pacientes p1 ON c1.paciente_id = p1.id
+                JOIN pacientes p2 ON c2.paciente_id = p2.id
+                JOIN users u1 ON c1.psicologo_id = u1.id
+                JOIN users u2 ON c2.psicologo_id = u2.id
+                WHERE c1.estado IN ('programada', 'confirmada')
+                    AND c2.estado IN ('programada', 'confirmada')
+                    ${fecha_inicio && fecha_fin ? 'AND c1.fecha BETWEEN ? AND ?' : ''}
+                ORDER BY c1.fecha, c1.hora
+            `, {
+                replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : [],
+                type: QueryTypes.SELECT
+            });
+
+            res.json({
+                success: true,
+                data: {
+                    conflictos,
+                    total_conflictos: conflictos.length,
+                    periodo: fecha_inicio && fecha_fin ? `${fecha_inicio} a ${fecha_fin}` : 'Todo el período'
+                }
+            });
+
+        } catch (error) {
+            console.error('Error generando reporte de conflictos:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al generar reporte de conflictos',
+                error: error.message
+            });
+        }
+    }
+}
+
+module.exports = ReporteController;
+
+
+/backend/src/db/db.sql:
+--------------------------------------------------------------------------------
+CREATE DATABASE IF NOT EXISTS psicogestion_db;
+USE psicogestion_db;
+
+CREATE TABLE fundaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(255) NOT NULL UNIQUE,
+    direccion TEXT,
+    telefono VARCHAR(20),
+    email VARCHAR(255),
+    responsable VARCHAR(255),
+    activo BOOLEAN DEFAULT TRUE,
+    convenio_inicio DATE,
+    convenio_fin DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20),
+    rol ENUM('coordinador', 'psicologo', 'becario') NOT NULL DEFAULT 'becario',
+    especialidad VARCHAR(100),
+    fundacion_id INT,
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL
+);
+
+CREATE TABLE pacientes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    email VARCHAR(255),
+    telefono VARCHAR(20),
+    fecha_nacimiento DATE,
+    genero ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
+    direccion TEXT,
+    estado VARCHAR(50) DEFAULT 'activo',
+    activo BOOLEAN DEFAULT TRUE,
+    notas TEXT,
+    fundacion_id INT,
+    ultimo_no_aprobado DATE NULL DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (fundacion_id) REFERENCES fundaciones(id) ON DELETE SET NULL,
+    INDEX idx_activo (activo),
+    INDEX idx_apellido_nombre (apellido, nombre),
+    INDEX idx_ultimo_no_aprobado (ultimo_no_aprobado)
+);
+
+CREATE TABLE expedientes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL UNIQUE,
+    psicologo_id INT,
+    motivo_consulta TEXT,
+    historia_personal TEXT,
+    historia_familiar TEXT,
+    antecedentes_medicos TEXT,
+    antecedentes_psiquiatricos TEXT,
+    diagnostico_presuntivo VARCHAR(500),
+    diagnostico_definitivo VARCHAR(500),
+    tratamiento_actual TEXT,
+    medicamentos JSON,
+    alergias TEXT,
+    factores_riesgo JSON,
+    redes_apoyo TEXT,
+    emergencia_contacto VARCHAR(255),
+    emergencia_telefono VARCHAR(20),
+    consentimiento_informado BOOLEAN DEFAULT FALSE,
+    fecha_consentimiento DATE,
+    restricciones_acceso JSON,
+    notas_confidenciales TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE asignaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    psicologo_id INT NOT NULL,
+    becario_id INT,
+    fecha_inicio DATE NOT NULL DEFAULT (CURRENT_DATE),
+    fecha_fin DATE,
+    motivo_fin VARCHAR(255),
+    estado ENUM('activa', 'finalizada', 'suspendida') DEFAULT 'activa',
+    notas TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_paciente_estado (paciente_id, estado),
+    INDEX idx_psicologo_estado (psicologo_id, estado),
+    INDEX idx_becario (becario_id)
+);
+
+CREATE TABLE citas (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    psicologo_id INT,
+    becario_id INT,
+    fecha DATE NOT NULL,
+    hora TIME NOT NULL,
+    tipo_consulta ENUM('presencial', 'virtual') DEFAULT 'presencial',
+    estado ENUM('programada', 'confirmada', 'completada', 'cancelada') DEFAULT 'programada',
+    notas TEXT,
+    motivo_cancelacion VARCHAR(255),
+    duracion INT DEFAULT 50,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_fecha_estado (fecha, estado),
+    INDEX idx_psicologo_fecha (psicologo_id, fecha),
+    INDEX idx_becario (becario_id),
+    INDEX idx_paciente_id (paciente_id)
+);
+
+CREATE TABLE sesiones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    cita_id INT NOT NULL UNIQUE,
+    psicologo_id INT NOT NULL,
+    fecha DATE NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    tipo_sesion ENUM('evaluacion', 'terapia', 'seguimiento', 'crisis') DEFAULT 'terapia',
+    objetivo TEXT,
+    desarrollo TEXT,
+    conclusion TEXT,
+    tareas_asignadas TEXT,
+    emocion_predominante VARCHAR(100),
+    riesgo_suicida ENUM('ninguno', 'bajo', 'moderado', 'alto') DEFAULT 'ninguno',
+    escalas_aplicadas JSON,
+    siguiente_cita DATE,
+    privado BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (cita_id) REFERENCES citas(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_cita_id (cita_id),
+    INDEX idx_psicologo_fecha (psicologo_id, fecha),
+    INDEX idx_fecha (fecha)
+);
+
+CREATE TABLE notificaciones (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    tipo ENUM('cita_programada', 'cita_modificada', 'cita_cancelada', 'asignacion_nueva', 'observacion_nueva', 'alerta_sistema', 'reporte_generado') NOT NULL,
+    titulo VARCHAR(255) NOT NULL,
+    mensaje TEXT NOT NULL,
+    leido BOOLEAN DEFAULT FALSE,
+    leido_at TIMESTAMP NULL,
+    accion_url VARCHAR(500),
+    prioridad ENUM('baja', 'media', 'alta', 'urgente') DEFAULT 'media',
+    datos_extra JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_leido (usuario_id, leido),
+    INDEX idx_created_at (created_at),
+    INDEX idx_tipo (tipo)
+);
+
+CREATE TABLE altas (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    paciente_id INT NOT NULL,
+    usuario_id INT NOT NULL,
+    tipo_alta ENUM('terapeutica', 'abandono', 'traslado', 'graduacion', 'no_continua', 'otro', 'no_aprobado') NOT NULL,
+    fecha_alta DATE NOT NULL DEFAULT (CURRENT_DATE),
+    motivo_detallado TEXT,
+    recomendaciones TEXT,
+    sesiones_totales INT,
+    evaluacion_final ENUM('excelente', 'buena', 'regular', 'mala'),
+    seguimiento_recomendado BOOLEAN DEFAULT FALSE,
+    fecha_seguimiento DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_paciente_id (paciente_id),
+    INDEX idx_fecha_alta (fecha_alta),
+    INDEX idx_tipo_alta (tipo_alta)
+);
+
+CREATE TABLE reportes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    tipo_reporte ENUM('mensual', 'trimestral', 'semestral', 'anual', 'personalizado', 'paciente', 'becario', 'psicologo') NOT NULL,
+    nombre VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    parametros JSON,
+    fecha_inicio DATE,
+    fecha_fin DATE,
+    formato ENUM('pdf', 'excel', 'csv', 'html') DEFAULT 'pdf',
+    archivo_url VARCHAR(500),
+    archivo_tamano INT,
+    estado ENUM('pendiente', 'generando', 'completado', 'error') DEFAULT 'pendiente',
+    compartido_con JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_id (usuario_id),
+    INDEX idx_tipo_reporte_estado (tipo_reporte, estado),
+    INDEX idx_created_at (created_at)
+);
+
+CREATE TABLE observaciones_becarios (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    becario_id INT NOT NULL,
+    supervisor_id INT NOT NULL,
+    cita_id INT,
+    fecha DATE NOT NULL DEFAULT (CURRENT_DATE),
+    tipo_observacion ENUM('sesion_observada', 'retroalimentacion', 'evaluacion_periodica', 'incidencia', 'reconocimiento') DEFAULT 'sesion_observada',
+    aspecto_evaluado ENUM('empatia', 'tecnicas', 'documentacion', 'puntualidad', 'profesionalismo', 'etica') NOT NULL,
+    calificacion INT NOT NULL CHECK (calificacion BETWEEN 1 AND 10),
+    fortalezas TEXT,
+    areas_mejora TEXT,
+    recomendaciones TEXT,
+    plan_accion TEXT,
+    fecha_seguimiento DATE,
+    privada BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (becario_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (supervisor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (cita_id) REFERENCES citas(id) ON DELETE SET NULL,
+    INDEX idx_becario_fecha (becario_id, fecha),
+    INDEX idx_supervisor (supervisor_id),
+    INDEX idx_tipo_observacion (tipo_observacion)
+);
+
+CREATE TABLE disponibilidades (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    dia_semana ENUM('lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo') NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    tipo_disponibilidad ENUM('regular', 'extraordinaria', 'limitada') DEFAULT 'regular',
+    activo BOOLEAN DEFAULT TRUE,
+    fecha_inicio_vigencia DATE NOT NULL DEFAULT (CURRENT_DATE),
+    fecha_fin_vigencia DATE,
+    notas TEXT,
+    max_citas_dia INT DEFAULT 8,
+    intervalo_citas INT DEFAULT 50,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_usuario_dia_activo (usuario_id, dia_semana, activo),
+    INDEX idx_fecha_vigencia (fecha_inicio_vigencia, fecha_fin_vigencia)
+);
+
+CREATE TABLE logs_sistema (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT,
+    tipo_log ENUM('login', 'logout', 'creacion', 'modificacion', 'eliminacion', 'error', 'seguridad', 'backup', 'reporte', 'sistema') NOT NULL,
+    modulo VARCHAR(100) NOT NULL,
+    accion VARCHAR(255) NOT NULL,
+    descripcion TEXT,
+    datos_antes JSON,
+    datos_despues JSON,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    severidad ENUM('info', 'advertencia', 'error', 'critico') DEFAULT 'info',
+    resuelto BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_tipo_log_fecha (tipo_log, created_at),
+    INDEX idx_usuario_id (usuario_id),
+    INDEX idx_modulo (modulo),
+    INDEX idx_severidad_resuelto (severidad, resuelto)
+);
+
+CREATE TABLE permisos (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    descripcion TEXT,
+    categoria ENUM('administracion', 'pacientes', 'citas', 'reportes', 'configuracion', 'usuarios') NOT NULL,
+    nivel_requerido ENUM('basico', 'intermedio', 'avanzado', 'administrador') DEFAULT 'basico',
+    activo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE usuario_permisos (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    usuario_id INT NOT NULL,
+    permiso_id INT NOT NULL,
+    concedido BOOLEAN DEFAULT FALSE,
+    concedido_por INT,
+    fecha_concesion TIMESTAMP NULL,
+    fecha_expiracion TIMESTAMP NULL,
+    motivo TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (permiso_id) REFERENCES permisos(id) ON DELETE CASCADE,
+    FOREIGN KEY (concedido_por) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE KEY idx_usuario_permiso (usuario_id, permiso_id)
+);
+
+CREATE TABLE backups (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    tipo ENUM('completo', 'incremental') NOT NULL,
+    ruta VARCHAR(500) NOT NULL,
+    tamano BIGINT,
+    base_backup_id INT,
+    cambios INT DEFAULT 0,
+    estado ENUM('pendiente', 'generando', 'completado', 'error', 'eliminado') DEFAULT 'pendiente',
+    ultima_restauracion TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (base_backup_id) REFERENCES backups(id) ON DELETE SET NULL
+);
+
+INSERT INTO permisos (nombre, descripcion, categoria, nivel_requerido) VALUES
+('ver_panel_coordinacion', 'Ver panel de coordinación', 'administracion', 'avanzado'),
+('gestionar_usuarios', 'Gestionar usuarios (alta/baja/edición)', 'usuarios', 'avanzado'),
+('gestionar_fundaciones', 'Gestionar fundaciones', 'administracion', 'avanzado'),
+('gestionar_pacientes', 'Gestionar pacientes', 'pacientes', 'intermedio'),
+('gestionar_asignaciones', 'Asignar pacientes a psicólogos/becarios', 'pacientes', 'intermedio'),
+('ver_agenda_global', 'Ver agenda global completa', 'citas', 'intermedio'),
+('generar_reportes', 'Generar reportes estadísticos', 'reportes', 'avanzado'),
+('gestionar_altas', 'Gestionar altas de pacientes', 'pacientes', 'intermedio'),
+('ver_expedientes_completos', 'Ver expedientes completos de pacientes', 'pacientes', 'avanzado'),
+('configurar_sistema', 'Configurar parámetros del sistema', 'configuracion', 'administrador'),
+('ver_panel_psicologo', 'Ver panel principal de psicólogo', 'administracion', 'basico'),
+('ver_mis_pacientes', 'Ver pacientes asignados', 'pacientes', 'basico'),
+('gestionar_mis_citas', 'Gestionar mis propias citas', 'citas', 'basico'),
+('registrar_sesiones', 'Registrar contenido de sesiones', 'citas', 'intermedio'),
+('supervisar_becarios', 'Supervisar becarios asignados', 'usuarios', 'intermedio'),
+('crear_observaciones', 'Crear observaciones de becarios', 'usuarios', 'intermedio'),
+('ver_expedientes_asignados', 'Ver expedientes de pacientes asignados', 'pacientes', 'intermedio'),
+('dar_altas_pacientes', 'Dar de alta a pacientes', 'pacientes', 'intermedio'),
+('ver_panel_becario', 'Ver panel principal de becario', 'administracion', 'basico'),
+('ver_citas_dia', 'Ver citas del día', 'citas', 'basico'),
+('gestionar_citas_asignadas', 'Gestionar citas asignadas', 'citas', 'basico'),
+('ver_pacientes_asignados', 'Ver pacientes asignados', 'pacientes', 'basico'),
+('ver_observaciones_propias', 'Ver observaciones propias', 'usuarios', 'basico'),
+('configurar_disponibilidad', 'Configurar disponibilidad personal', 'configuracion', 'basico');
+
+INSERT INTO fundaciones (nombre, telefono, email, responsable) VALUES
+('Fundación Salud Mental Comunitaria', '555-1234', 'contacto@fsmc.org', 'Dra. María González'),
+('Asociación de Psicología Aplicada', '555-5678', 'info@asocpsicologia.edu', 'Lic. Carlos Rodríguez');
+
+INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialidad, fundacion_id) VALUES
+('coordinador@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ana', 'Martínez', '555-1111', 'coordinador', 'Coordinación Clínica', 1),
+('psicologo1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Luis', 'Fernández', '555-2222', 'psicologo', 'Terapia Cognitivo-Conductual', 1),
+('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
+('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
+('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1),
+('alan@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Alan', 'Jassiel', '555-666', 'psicologo', 'Terapia Familiar', 1),
+('ale@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ale', 'Jandro', '555-333', 'becario', 'Practicante de Psicología', 1),
+('emanuel@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Emanuel', 'Iribe', '555-777', 'coordinador', 'Coordinación Clínica', 1);
+
+INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
+('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),
+('Mariana', 'López', '1995-08-22', 'femenino', '555-0022', 'mariana@hotmail.com'),
+('Roberto', 'Sánchez', '2000-02-10', 'masculino', '555-0033', 'roberto@yahoo.com');
+
+INSERT INTO expedientes (paciente_id, psicologo_id, motivo_consulta) VALUES
+(1, 2, 'Ansiedad académica con síntomas de estrés elevado'),
+(2, 2, 'Estrés laboral crónico con afectación del sueño'),
+(3, 2, 'Dificultades de adaptación al entorno universitario');
+
+INSERT INTO asignaciones (paciente_id, psicologo_id, becario_id, fecha_inicio) VALUES
+(1, 2, 3, CURDATE()),
+(2, 2, 4, CURDATE()),
+(3, 2, NULL, CURDATE());
+
+INSERT INTO citas (paciente_id, psicologo_id, becario_id, fecha, hora, estado, tipo_consulta, notas) VALUES
+(1, 2, 3, DATE_ADD(CURDATE(), INTERVAL 1 DAY), '10:00:00', 'programada', 'presencial', 'Primera consulta'),
+(2, 2, 4, DATE_ADD(CURDATE(), INTERVAL 2 DAY), '11:00:00', 'confirmada', 'virtual', 'Seguimiento'),
+(3, 2, NULL, DATE_ADD(CURDATE(), INTERVAL 3 DAY), '09:00:00', 'programada', 'presencial', 'Evaluación inicial');
+
+INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje) VALUES
+(3, 'cita_programada', 'Nueva cita asignada', 'Tienes una nueva cita con Carlos Gómez para mañana a las 10:00 AM'),
+(4, 'cita_modificada', 'Cita modificada', 'La cita con Mariana López ha sido cambiada a modalidad virtual');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'coordinador'
+AND p.nivel_requerido IN ('basico', 'intermedio', 'avanzado', 'administrador');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'psicologo'
+AND p.nivel_requerido IN ('basico', 'intermedio');
+
+INSERT INTO usuario_permisos (usuario_id, permiso_id, concedido, concedido_por, fecha_concesion)
+SELECT u.id, p.id, TRUE, 1, NOW()
+FROM users u
+CROSS JOIN permisos p
+WHERE u.rol = 'becario'
+AND p.nivel_requerido = 'basico';
+
+CREATE VIEW vista_citas_hoy AS
+SELECT 
+    c.id,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    c.fecha,
+    TIME_FORMAT(c.hora, '%H:%i') AS hora,
+    c.estado,
+    c.tipo_consulta,
+    u_psi.nombre AS psicologo_nombre,
+    u_bec.nombre AS becario_nombre
+FROM citas c
+JOIN pacientes p ON c.paciente_id = p.id
+JOIN users u_psi ON c.psicologo_id = u_psi.id
+LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+WHERE c.fecha = CURDATE()
+AND c.estado IN ('programada', 'confirmada')
+ORDER BY c.hora;
+
+CREATE VIEW vista_pacientes_asignados AS
+SELECT 
+    a.id,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    p.telefono,
+    p.email,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    CONCAT(ub.nombre, ' ', ub.apellido) AS becario,
+    a.fecha_inicio,
+    a.estado AS estado_asignacion,
+    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado = 'completada') AS sesiones_completadas,
+    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado IN ('programada', 'confirmada') AND fecha >= CURDATE()) AS citas_pendientes
+FROM asignaciones a
+JOIN pacientes p ON a.paciente_id = p.id
+JOIN users u ON a.psicologo_id = u.id
+LEFT JOIN users ub ON a.becario_id = ub.id
+WHERE p.activo = TRUE AND a.estado = 'activa';
+
+CREATE VIEW vista_resumen_coordinacion AS
+SELECT 
+    (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) AS becarios_activos,
+    (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) AS psicologos_activos,
+    (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) AS pacientes_activos,
+    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado IN ('programada', 'confirmada')) AS citas_hoy,
+    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') AS citas_completadas_hoy,
+    (SELECT COUNT(*) FROM altas WHERE MONTH(fecha_alta) = MONTH(CURDATE())) AS altas_mes_actual;
+
+CREATE VIEW vista_historial_sesiones AS
+SELECT 
+    s.id,
+    s.fecha,
+    CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    s.desarrollo AS contenido_sesion,
+    s.conclusion AS observaciones,
+    s.tareas_asignadas,
+    s.siguiente_cita AS proxima_sesion
+FROM sesiones s
+JOIN citas c ON s.cita_id = c.id
+JOIN pacientes p ON c.paciente_id = p.id
+JOIN users u ON s.psicologo_id = u.id
+ORDER BY s.fecha DESC;
+
+CREATE VIEW vista_estadisticas_psicologos AS
+SELECT 
+    u.id,
+    CONCAT(u.nombre, ' ', u.apellido) AS psicologo,
+    COUNT(DISTINCT a.paciente_id) AS pacientes_asignados,
+    COUNT(c.id) AS total_citas,
+    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS citas_completadas,
+    ROUND(AVG(CASE WHEN c.estado = 'completada' THEN c.duracion END), 1) AS duracion_promedio,
+    COUNT(DISTINCT a.becario_id) AS becarios_supervisados
+FROM users u
+LEFT JOIN asignaciones a ON u.id = a.psicologo_id AND a.estado = 'activa'
+LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+WHERE u.rol = 'psicologo' AND u.activo = TRUE
+GROUP BY u.id, u.nombre, u.apellido;
+
+CREATE VIEW vista_disponibilidad_semanal AS
+SELECT 
+    u.id,
+    CONCAT(u.nombre, ' ', u.apellido) AS profesional,
+    u.rol,
+    d.dia_semana,
+    TIME_FORMAT(d.hora_inicio, '%H:%i') AS hora_inicio,
+    TIME_FORMAT(d.hora_fin, '%H:%i') AS hora_fin,
+    d.max_citas_dia,
+    (SELECT COUNT(*) FROM citas c 
+     WHERE (c.psicologo_id = u.id OR c.becario_id = u.id)
+     AND c.fecha = CURDATE()
+     AND c.estado IN ('programada', 'confirmada')) AS citas_hoy
+FROM users u
+LEFT JOIN disponibilidades d ON u.id = d.usuario_id AND d.activo = TRUE
+WHERE u.rol IN ('psicologo', 'becario') AND u.activo = TRUE
+ORDER BY u.rol, u.apellido, FIELD(d.dia_semana, 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo');
+
+DELIMITER $$
+CREATE PROCEDURE sp_obtener_citas_por_fecha_becario(
+    IN p_fecha DATE,
+    IN p_becario_id INT
+)
+BEGIN
+    SELECT 
+        c.*,
+        CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+        p.telefono AS paciente_telefono,
+        p.email AS paciente_email,
+        u_psi.nombre AS psicologo_nombre,
+        u_bec.nombre AS becario_nombre,
+        c.duracion AS duracion_minutos,
+        c.notas AS motivo
+    FROM citas c
+    JOIN pacientes p ON c.paciente_id = p.id
+    LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
+    LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+    WHERE c.fecha = p_fecha
+    AND (c.becario_id = p_becario_id OR p_becario_id IS NULL)
+    ORDER BY c.hora;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE PROCEDURE sp_generar_reporte_mensual(
+    IN p_mes INT,
+    IN p_anio INT,
+    IN p_psicologo_id INT
+)
+BEGIN
+    SELECT 
+        p.id,
+        CONCAT(p.nombre, ' ', p.apellido) AS paciente,
+        COUNT(c.id) AS total_sesiones,
+        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) AS sesiones_completadas,
+        SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) AS sesiones_canceladas,
+        SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) AS sesiones_programadas,
+        MIN(c.fecha) AS primera_sesion_mes,
+        MAX(c.fecha) AS ultima_sesion_mes
+    FROM pacientes p
+    LEFT JOIN citas c ON p.id = c.paciente_id 
+        AND MONTH(c.fecha) = p_mes 
+        AND YEAR(c.fecha) = p_anio
+        AND (c.psicologo_id = p_psicologo_id OR p_psicologo_id IS NULL)
+    WHERE p.activo = TRUE
+    GROUP BY p.id, p.nombre, p.apellido
+    ORDER BY p.apellido, p.nombre;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_insert_alta
+AFTER INSERT ON altas
+FOR EACH ROW
+BEGIN
+    UPDATE pacientes 
+    SET estado = CONCAT('alta_', NEW.tipo_alta),
+        activo = FALSE,
+        updated_at = NOW()
+    WHERE id = NEW.paciente_id;
+    
+    UPDATE citas 
+    SET estado = 'cancelada',
+        motivo_cancelacion = CONCAT('Paciente dado de alta (', NEW.tipo_alta, ')'),
+        updated_at = NOW()
+    WHERE paciente_id = NEW.paciente_id 
+    AND fecha >= CURDATE()
+    AND estado IN ('programada', 'confirmada');
+    
+    UPDATE asignaciones 
+    SET estado = 'finalizada',
+        fecha_fin = CURDATE(),
+        motivo_fin = CONCAT('Paciente dado de alta (', NEW.tipo_alta, ')')
+    WHERE paciente_id = NEW.paciente_id 
+    AND estado = 'activa';
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_update_cita
+AFTER UPDATE ON citas
+FOR EACH ROW
+BEGIN
+    DECLARE paciente_nombre VARCHAR(200);
+    DECLARE paciente_email VARCHAR(255);
+    
+    IF OLD.fecha != NEW.fecha OR OLD.hora != NEW.hora OR OLD.tipo_consulta != NEW.tipo_consulta THEN
+        
+        SELECT CONCAT(nombre, ' ', apellido), email INTO paciente_nombre, paciente_email
+        FROM pacientes WHERE id = NEW.paciente_id;
+        
+        IF NEW.psicologo_id IS NOT NULL THEN
+            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+            VALUES (
+                NEW.psicologo_id,
+                'cita_modificada',
+                'Cita modificada',
+                CONCAT('La cita con ', paciente_nombre, ' ha sido modificada. Nueva fecha: ', NEW.fecha, ' ', TIME_FORMAT(NEW.hora, '%H:%i')),
+                NOW()
+            );
+        END IF;
+        
+        IF NEW.becario_id IS NOT NULL THEN
+            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+            VALUES (
+                NEW.becario_id,
+                'cita_modificada',
+                'Cita modificada',
+                CONCAT('La cita con ', paciente_nombre, ' ha sido modificada. Nueva fecha: ', NEW.fecha, ' ', TIME_FORMAT(NEW.hora, '%H:%i')),
+                NOW()
+            );
+        END IF;
+        
+        INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
+        VALUES (
+            NEW.psicologo_id,
+            'modificacion',
+            'citas',
+            'Actualizar cita',
+            CONCAT('Cita ', NEW.id, ' modificada para paciente ', paciente_nombre),
+            NOW()
+        );
+    END IF;
+END$$
+DELIMITER ;
+
+DELIMITER $$
+CREATE TRIGGER tr_after_insert_sesion
+AFTER INSERT ON sesiones
+FOR EACH ROW
+BEGIN
+    UPDATE expedientes 
+    SET riesgo_suicida = NEW.riesgo_suicida,
+        updated_at = NOW()
+    WHERE paciente_id = (SELECT paciente_id FROM citas WHERE id = NEW.cita_id);
+END$$
+DELIMITER ;
+
+CREATE INDEX idx_pacientes_activo ON pacientes(activo);
+CREATE INDEX idx_citas_psicologo_fecha ON citas(psicologo_id, fecha, estado);
+CREATE INDEX idx_sesiones_cita ON sesiones(cita_id);
+CREATE INDEX idx_asignaciones_psicologo ON asignaciones(psicologo_id, fecha_fin);
+CREATE INDEX idx_users_rol_activo ON users(rol, activo);
+CREATE INDEX idx_expediente_paciente ON expedientes(paciente_id);
+CREATE INDEX idx_expediente_psicologo ON expedientes(psicologo_id);
+CREATE INDEX idx_reportes_usuario ON reportes(usuario_id, estado);
+CREATE INDEX idx_reportes_tipo ON reportes(tipo_reporte, created_at);
+CREATE INDEX idx_disponibilidades_vigencia ON disponibilidades(fecha_inicio_vigencia, fecha_fin_vigencia);
+CREATE INDEX idx_logs_severidad ON logs_sistema(severidad, resuelto);
+CREATE INDEX idx_observaciones_fecha_seguimiento ON observaciones_becarios(fecha_seguimiento);
+
+CREATE USER IF NOT EXISTS 'psicogestion_user'@'localhost' IDENTIFIED BY 'SecurePass123!';
+GRANT ALL PRIVILEGES ON psicogestion_db.* TO 'psicogestion_user'@'localhost';
+GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_obtener_citas_por_fecha_becario TO 'psicogestion_user'@'localhost';
+GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicogestion_user'@'localhost';
+FLUSH PRIVILEGES;
+
+
+/frontend/src/index.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
+
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
+
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
 
 
 /backend/src/services/reporteService.js:
@@ -4645,9 +4278,1552 @@ class ReporteService {
 module.exports = ReporteService;
 
 
+/frontend/src/App.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Login from './components/Auth/Login';
+import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
+
+// Páginas para Becarios
+import BecarioDashboard from './pages/becario/DashboardPage';
+import BecarioCitas from './pages/becario/CitasPage';
+import BecarioPacientes from './pages/becario/PacientesPage';
+import BecarioNotificaciones from './pages/becario/NotificacionesPage';
+import BecarioObservaciones from './pages/becario/ObservacionesPage';
+
+// Páginas para Psicólogos
+import PsicologoDashboard from './pages/psicologo/DashboardPage';
+import PsicologoPacientes from './pages/psicologo/PacientesPage';
+import PsicologoCitas from './pages/psicologo/CitasPage';
+import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
+import PsicologoSesiones from './pages/psicologo/SesionesPage';
+import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+
+// Páginas para Coordinadores
+import CoordinadorDashboard from './pages/coordinador/DashboardPage';
+import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
+import CoordinadorPacientes from './pages/coordinador/PacientesPage';
+import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
+import CoordinadorAgenda from './pages/coordinador/AgendaPage';
+import CoordinadorReportes from './pages/coordinador/ReportesPage';
+import CoordinadorAltas from './pages/coordinador/AltasPage';
+import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          {/* Rutas de Becario */}
+          <Route path="/" element={<RoleRouter />}>
+            <Route index element={<BecarioDashboard />} />
+            
+            {/* Becario */}
+            <Route path="becario/dashboard" element={<BecarioDashboard />} />
+            <Route path="becario/citas" element={<BecarioCitas />} />
+            <Route path="becario/pacientes" element={<BecarioPacientes />} />
+            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
+            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
+            
+            {/* Psicólogo */}
+            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
+            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
+            <Route path="psicologo/citas" element={<PsicologoCitas />} />
+            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
+            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
+            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
+            
+            {/* Coordinador */}
+            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
+            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
+            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
+            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
+            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
+            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
+            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
+            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
+          </Route>
+          
+          {/* Redirección por defecto */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;
+
+
+/frontend/src/utils/confirmations.js:
+--------------------------------------------------------------------------------
+import { showConfirm } from '../components/Common/ConfirmModal'
+
+// Función para confirmaciones de peligro (rojo - para eliminar)
+export const confirmDanger = (message) => {
+  return showConfirm(message, 'danger')
+}
+
+// Función para confirmaciones de advertencia (amarillo - estándar)
+export const confirmWarning = (message) => {
+  return showConfirm(message, 'warning')
+}
+
+// Función para confirmaciones de información (azul - neutral)
+export const confirmInfo = (message) => {
+  return showConfirm(message, 'info')
+}
+
+// Alias para la función principal
+export const confirm = showConfirm
+
+// Exporta como objeto global
+export default {
+  danger: confirmDanger,
+  warning: confirmWarning,
+  info: confirmInfo,
+  show: confirm
+}
+
+
+/frontend/src/utils/notifications.js:
+--------------------------------------------------------------------------------
+import { showNotification } from '../components/Common/NotificationModal'
+
+// Función para notificaciones de éxito (verde)
+export const notifySuccess = (message) => {
+  showNotification(message, 'success')
+}
+
+// Función para notificaciones de error (rojo)
+export const notifyError = (message) => {
+  showNotification(message, 'error')
+}
+
+// Función para notificaciones de advertencia (amarillo)
+export const notifyWarning = (message) => {
+  showNotification(message, 'warning')
+}
+
+// Función para notificaciones de información (azul)
+export const notifyInfo = (message) => {
+  showNotification(message, 'info')
+}
+
+// Alias para la función principal
+export const notify = showNotification
+
+// Exporta como objeto global
+export default {
+  success: notifySuccess,
+  error: notifyError,
+  warning: notifyWarning,
+  info: notifyInfo,
+  show: notify
+}
+
+
+/backend/src/services/api.js:
+--------------------------------------------------------------------------------
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  static async get(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async post(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async put(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async delete(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async handleResponse(response) {
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
+  }
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+}
+
+export default ApiService;
+
+
+/backend/src/routes/reporteRoutes.js:
+--------------------------------------------------------------------------------
+const express = require('express');
+const router = express.Router();
+const ReporteController = require('../controllers/reporteController');
+const { QueryTypes } = require('sequelize');
+const sequelize = require('../config/db');
+const verifyToken = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
+
+// Exportar agenda a CSV
+router.post('/exportar-agenda-csv', ReporteController.exportarAgendaCSV);
+
+// Exportar disponibilidad a CSV
+router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibilidadCSV);
+
+// Generar reporte de conflictos
+router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
+
+router.get('/altas', verifyToken, requireRole(['coordinador']), async (req, res) => {
+    try {
+        const { formato = 'excel', fecha_inicio, fecha_fin } = req.query;
+        
+        let query = `
+            SELECT 
+                a.*,
+                CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                p.fecha_nacimiento,
+                p.genero,
+                p.telefono,
+                CONCAT(u.nombre, ' ', u.apellido) as profesional_alta,
+                e.motivo_consulta,
+                COUNT(DISTINCT c.id) as sesiones_completadas
+            FROM altas a
+            JOIN pacientes p ON a.paciente_id = p.id
+            JOIN users u ON a.usuario_id = u.id
+            LEFT JOIN expedientes e ON p.id = e.paciente_id
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            WHERE 1=1
+        `;
+        
+        const replacements = [];
+        
+        if (fecha_inicio) {
+            query += ` AND a.fecha_alta >= ?`;
+            replacements.push(fecha_inicio);
+        }
+        
+        if (fecha_fin) {
+            query += ` AND a.fecha_alta <= ?`;
+            replacements.push(fecha_fin);
+        }
+        
+        query += ` GROUP BY a.id, p.id, u.id, e.id
+                  ORDER BY a.fecha_alta DESC`;
+        
+        const altas = await sequelize.query(query, {
+            replacements,
+            type: QueryTypes.SELECT
+        });
+        
+        // Para una implementación real, aquí generarías el archivo Excel/PDF
+        // Por ahora, simulamos la URL
+        const archivoUrl = `/temp/reporte-altas-${Date.now()}.${formato}`;
+        
+        res.json({
+            success: true,
+            data: {
+                archivo_url: archivoUrl,
+                total_registros: altas.length,
+                fecha_generacion: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error generando reporte de altas:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error al generar reporte de altas'
+        });
+    }
+});
+module.exports = router;
+
+
+/frontend/src/pages/coordinador/coordinador.css:
+--------------------------------------------------------------------------------
+
+/* Mejoras para tablas */
+.table-container {
+  background: var(--blud);
+  border-radius: 8px;
+  border: 1px solid var(--blub);
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  background: var(--blub);
+  padding: 12px 15px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--white);
+  border-bottom: 2px solid var(--blu);
+}
+
+.data-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.data-table tr:hover {
+  background: rgba(31, 133, 186, 0.1);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Badges mejorados */
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Para .badge-success */
+.badge-success {
+  background: 
+    linear-gradient(var(--bludSET), var(--bludSET)), /* Capa sólida primero */
+    rgba(31, 186, 101, 0.2); /* Capa transparente después */
+  color: var(--grnb);
+  border: 1px solid var(--grnb);
+  background-blend-mode: overlay; /* Mezcla las capas */
+}
+
+/* Para .badge-warning */
+.badge-warning {
+  background: 
+    linear-gradient(var(--bludSET), var(--bludSET)),
+    rgba(255, 166, 49, 0.2);
+  color: var(--yy);
+  border: 1px solid var(--yy);
+  background-blend-mode: overlay;
+}
+
+/* Para .badge-danger */
+.badge-danger {
+  background: 
+    linear-gradient(var(--bludSET), var(--bludSET)),
+    rgba(250, 49, 68, 0.2);
+  color: var(--rr);
+  border: 1px solid var(--rr);
+  background-blend-mode: overlay;
+}
+
+/* Para .badge-primary */
+.badge-primary {
+  background: 
+    linear-gradient(var(--bludSET), var(--bludSET)),
+    rgba(64, 148, 232, 0.2);
+  color: var(--blu);
+  border: 1px solid var(--blu);
+  background-blend-mode: overlay;
+}
+
+/* Para .badge-info */
+.badge-info {
+  background: 
+    linear-gradient(var(--bludSET), var(--bludSET)),
+    rgba(55, 182, 156, 0.2);
+  color: var(--grnd);
+  border: 1px solid var(--grnd);
+  background-blend-mode: overlay;
+}
+
+/* Cards especiales para reportes */
+.card-progress {
+  margin-top: 15px;
+}
+
+.card-progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: var(--gray);
+}
+
+/* Calendario semanal mejorado */
+.calendar-week-view {
+  display: flex;
+  flex-direction: column;
+  height: 500px;
+  background: var(--blud);
+  border-radius: 10px;
+  border: 1px solid var(--blub);
+  overflow: hidden;
+}
+
+.week-header {
+  display: flex;
+  background: var(--blub);
+  border-bottom: 2px solid var(--blu);
+}
+
+.week-header > div {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.week-body {
+  display: flex;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.time-column {
+  width: 80px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.time-slot {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--gray);
+  font-size: 12px;
+}
+
+.day-column {
+  flex: 1;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+.hour-cell {
+  height: 60px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+.week-event {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  padding: 5px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 11px;
+  color: var(--white);
+}
+
+.week-event:hover {
+  transform: scale(1.02);
+}
+
+.week-event-time {
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.week-event-patient {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-event-psicologo {
+  font-size: 10px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+.week-event-more {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: var(--white);
+}
+
+.day-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 5px;
+}
+
+.day-name {
+  font-size: 12px;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.day-number {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.time-header {
+  width: 80px;
+}
+
+/* Mejoras para formularios */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--white);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+/* Utilidades adicionales */
+.mb-30 { margin-bottom: 30px; }
+.mt-30 { margin-top: 30px; }
+.mt-15 { margin-top: 15px; }
+.ml-5 { margin-left: 5px; }
+
+.flex-1 { flex: 1; }
+.flex-col { display: flex; flex-direction: column; }
+.justify-between { justify-content: space-between; }
+.align-start { align-items: flex-start; }
+
+.text-right { text-align: right; }
+.font-bold { font-weight: bold; }
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .form-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .grid-4 {
+    grid-template-columns: 1fr;
+  }
+  
+  .calendar-week-view {
+    height: 400px;
+  }
+  
+  .week-event {
+    font-size: 10px;
+    padding: 3px;
+  }
+}
+
+/* Animaciones para modales */
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-container {
+  animation: modalFadeIn 0.3s ease;
+}
+
+/* Estilos para switches personalizados */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--blub);
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: var(--white);
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--blu);
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+/* Scrollbars personalizados */
+.scrollable {
+  overflow-y: auto;
+}
+
+.scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.scrollable::-webkit-scrollbar-thumb {
+  background: var(--white);
+  border-radius: 3px;
+}
+
+.scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--gray);
+}
+
+
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Alertas y mensajes */
+.alert-message {
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border-left: 4px solid;
+  animation: slideIn 0.3s ease;
+}
+
+.alert-message.success {
+  background: rgba(31, 133, 186, 0.1);
+  border-color: var(--grnb);
+  color: var(--grnb);
+}
+
+.alert-message.error {
+  background: rgba(250, 49, 68, 0.1);
+  border-color: var(--rr);
+  color: var(--rr);
+}
+
+.alert-message.warning {
+  background: rgba(255, 166, 49, 0.1);
+  border-color: var(--yy);
+  color: var(--yy);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Mejoras para accordions */
+.accordion {
+  border: 1px solid var(--blub);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.accordion-header {
+  padding: 15px 20px;
+  background: var(--blud);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  transition: background 0.3s ease;
+}
+
+.accordion-header:hover {
+  background: var(--blub);
+}
+
+.accordion-content {
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.1);
+  border-top: 1px solid var(--blub);
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.accordion.active .accordion-content {
+  max-height: 1000px;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 20px;
+}
+
+.page-item {
+  padding: 8px 12px;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  color: var(--white);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.page-item:hover {
+  background: var(--blu);
+  border-color: var(--blu);
+}
+
+.page-item.active {
+  background: var(--blu);
+  border-color: var(--blu);
+  color: var(--blud);
+}
+
+
+
+/* Mejoras para tabs */
+.config-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 200px;
+}
+
+.config-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+  background: transparent;
+  border: none;
+  color: var(--gray);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.config-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--white);
+}
+
+.config-tab.active {
+  background: rgba(31, 133, 186, 0.1);
+  color: var(--blu);
+  border: 1px solid var(--blu);
+}
+
+.config-tab svg {
+  font-size: 18px;
+}
+
+/* Mejoras para modales grandes */
+.modal-large {
+  max-width: 800px;
+  width: 95%;
+  max-height: 90vh;
+}
+
+
+
+/* Grid responsive mejorado */
+.grid-responsive {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* Media queries adicionales */
+@media (max-width: 1024px) {
+  .configuracion-container {
+    flex-direction: column;
+  }
+  
+  .config-tabs {
+    flex-direction: row;
+    overflow-x: auto;
+    min-width: 100%;
+    margin-bottom: 20px;
+  }
+  
+  .config-tab {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .grid-2, .grid-3, .grid-4 {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-container {
+    width: 95%;
+    padding: 15px;
+  }
+  
+  .stat-value {
+    font-size: 24px;
+  }
+}
+
+/* frontend/src/pages/coordinador/coordinador.css - Añadir al final */
+
+/* Alertas */
+.alertas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alerta-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  border-left: 4px solid var(--rl);
+  transition: transform 0.2s;
+}
+
+.alerta-item:hover {
+  transform: translateX(5px);
+  background: var(--bgh);
+}
+
+.alerta-icon {
+  margin-right: 12px;
+  font-size: 20px;
+}
+
+.alerta-content {
+  flex: 1;
+}
+
+.alerta-titulo {
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.alerta-subtitulo {
+  font-size: 12px;
+  color: var(--text-light);
+}
+
+/* Alertas de estado */
+.alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin: 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alert-warning {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  color: #ffc107;
+}
+
+/* frontend/src/pages/coordinador/coordinador.css - Añadir estos estilos */
+
+.alert-info {
+  background: rgba(13, 110, 253, 0.1);
+  border: 1px solid rgba(13, 110, 253, 0.3);
+  color: #0d6efd;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mejoras para las barras del gráfico */
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 200px;
+  padding: 20px;
+  gap: 10px;
+}
+
+.chart-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 60px;
+}
+
+.bar-fill {
+  width: 40px;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s ease;
+}
+
+.bar-label {
+  margin-top: 5px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-light);
+}
+
+.bar-value {
+  font-size: 11px;
+  color: var(--text-lighter);
+  margin-top: 2px;
+}
+
+/* ===== NUEVOS ESTILOS PARA DASHBOARD COORDINADOR ===== */
+
+/* Distribución de citas - gráfico mejorado */
+.distribution-chart {
+  height: 250px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 20px;
+  background: var(--blud);
+  border-radius: 10px;
+  margin-top: 15px;
+}
+
+.distribution-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 25px;
+  height: 100%;
+  width: 100%;
+}
+
+.distribution-bar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.distribution-bar-wrapper {
+  position: relative;
+  height: 100%;
+  width: 60px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.distribution-bar {
+  width: 100%;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.3s ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+}
+
+.distribution-bar:hover {
+  transform: translateY(-5px);
+}
+
+.bar-value-inside {
+  position: absolute;
+  top: -25px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-weight: bold;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.distribution-label {
+  margin-top: 10px;
+  text-align: center;
+  width: 100px;
+}
+
+.psychologist-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 3px;
+  white-space: normal;
+  word-wrap: break-word;
+  line-height: 1.2;
+}
+
+.psychologist-sessions {
+  font-size: 11px;
+  color: var(--text-light);
+}
+
+/* Mensaje cuando no hay datos */
+.no-data-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  color: var(--text-light);
+  text-align: center;
+}
+
+.no-data-message svg {
+  margin-bottom: 10px;
+  opacity: 0.5;
+}
+
+.no-data-message p {
+  font-size: 14px;
+}
+
+/* Alertas mejoradas */
+.alerta-item-success {
+  border-left-color: var(--grnb);
+}
+
+.alerta-item-success .alerta-icon {
+  color: var(--grnb);
+}
+
+/* Quick actions grid */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.quick-action-btn {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: var(--text);
+}
+
+.quick-action-btn:hover {
+  background: var(--blub);
+  transform: translateY(-2px);
+}
+
+.quick-action-icon {
+  margin-right: 15px;
+  font-size: 24px;
+  color: var(--blu);
+}
+
+.quick-action-content h4 {
+  margin: 0 0 5px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.quick-action-content p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-light);
+  line-height: 1.3;
+}
+
+.timeline-item:hover {
+  transform: translateX(5px);
+}
+
+/* Progress bars para carga de pacientes */
+.progress-container {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blu), var(--blull));
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.paciente-progreso {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 60%;
+}
+
+.progreso-text {
+  font-size: 12px;
+  color: var(--text-light);
+  min-width: 40px;
+}
+
+/* Botones de texto */
+.btn-text {
+  background: transparent;
+  border: none;
+  color: var(--blu);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.btn-text:hover {
+  background: rgba(31, 133, 186, 0.1);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .quick-actions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .distribution-bars {
+    gap: 15px;
+  }
+  
+  .distribution-bar-wrapper {
+    width: 50px;
+  }
+  
+  .distribution-label {
+    width: 80px;
+  }
+}
+
+@media (max-width: 768px) {
+  .quick-actions-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .distribution-bars {
+    flex-direction: column;
+    align-items: center;
+    height: auto;
+    gap: 20px;
+  }
+  
+  .distribution-bar-container {
+    flex-direction: row;
+    align-items: center;
+    height: auto;
+    width: 100%;
+  }
+  
+  .distribution-bar-wrapper {
+    width: 60px;
+    height: 150px;
+  }
+  
+  .distribution-label {
+    margin-top: 0;
+    margin-left: 15px;
+    text-align: left;
+    width: auto;
+  }
+  
+  .bar-value-inside {
+    top: -20px;
+    font-size: 12px;
+  }
+}
+
+/* Añade esto a tu CSS */
+.btn-text-modal {
+  background: none;
+  border: none;
+  color: var(--blu);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  transition: all 0.3s ease;
+}
+
+.btn-text-modal:hover {
+  background: none;
+  text-decoration: none;
+}
+
+.modal-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+
+
+.stat-label {
+  font-size: 11px;
+  color: var(--grayl);
+  text-transform: uppercase;
+}
+
+
+
+/* Estadísticas mejoradas */
+.stat-box {
+  display: flex;
+  margin-top: 10px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+
+.stat-icon {
+  font-size: 24px;
+  min-width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--white);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--grayl);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Botones de acción mejorados */
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  min-height: 50px;
+}
+
+
+/* Formularios mejorados */
+.form-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--white);
+  font-weight: 500;
+}
+
+.filters-header {
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--blu);
+  margin-bottom: 20px;
+}
+
+.filters-header h4 {
+  color: var(--blu);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Search box mejorado */
+.search-box-wrapper {
+  position: relative;
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 0 0 8px 8px;
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.search-result-item {
+  padding: 10px 15px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  border-bottom: 1px solid var(--blub);
+}
+
+.search-result-item:hover {
+  background: rgba(31, 133, 186, 0.2);
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-name {
+  font-weight: bold;
+  color: var(--white);
+}
+
+.search-result-email {
+  font-size: 11px;
+  color: var(--grayl);
+  margin-top: 2px;
+}
+
+/* Modal extra grande */
+.modal-extra-large {
+  max-width: 1000px !important;
+  width: 95% !important;
+}
+
+.wide-table th,
+.wide-table td {
+  padding: 12px 15px;
+}
+
+/* Grid de estadísticas del modal */
+.modal-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+  margin-bottom: 25px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  border: 1px solid var(--blub);
+}
+
+.modal-stats-grid .stat-item {
+  text-align: center;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.modal-stats-grid .stat-value {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.modal-stats-grid .stat-label {
+  font-size: 11px;
+  color: var(--grayl);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Border top para separadores */
+.border-top {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Ajustes responsive */
+@media (max-width: 1200px) {
+  .modal-extra-large {
+    max-width: 95% !important;
+    width: 95% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .grid-2.action-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .stat-box {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .modal-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.star-filled {
+  color: var(--blu);
+  fill: var(--blu);
+}
+
+.star-empty {
+  color: var(--blub);
+  fill: var(--blub);
+}
+
+.no-citas-icon svg {
+  font-size: 48px;
+  color: #28a745;
+  margin-bottom: 15px;
+}
+
+.badge svg {
+  margin-right: 5px;
+  vertical-align: -2px;
+}
+
+
 ================================================================================
 RESUMEN PARA COORDINADOR_REPORTES:
 ----------------------------------------
-Archivos necesarios: 12
-Archivos encontrados: 12
+Archivos necesarios: 14
+Archivos encontrados: 14
 Archivos no encontrados: 0

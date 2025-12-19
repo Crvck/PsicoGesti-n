@@ -1,304 +1,98 @@
 ARCHIVOS BACKEND PARA: PSICOLOGO_DASHBOARD
 ================================================================================
-Generado: 2025-12-18 12:44:17
+Generado: 2025-12-18 16:35:55
 ================================================================================
 
-/frontend/src/services/dashboardService.js:
+/backend/server.js:
 --------------------------------------------------------------------------------
-// frontend/src/services/dashboardService.js
-import ApiService from './api';
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
-class DashboardService {
-  static async obtenerDashboardCoordinador() {
-    try {
-      console.log('Obteniendo dashboard coordinador...');
-      const response = await ApiService.getDashboardCoordinador();
-      console.log('Respuesta recibida:', response);
-      return response.data;
-    } catch (error) {
-      console.error('Error obteniendo dashboard coordinador:', error);
-      throw error;
-    }
-  }
+const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/doc/swagger.json');
+const cors = require('cors');
 
-  static async obtenerMetricasGlobales(periodo = 'mes') {
-    try {
-      const response = await ApiService.getMetricasGlobales(periodo);
-      return response.data;
-    } catch (error) {
-      console.error('Error obteniendo métricas globales:', error);
-      throw error;
-    }
-  }
+const sequelize = require('./src/config/db');
 
-  static async obtenerEstadisticas() {
-    try {
-      const response = await ApiService.getEstadisticas();
-      return response.data;
-    } catch (error) {
-      console.error('Error obteniendo estadísticas:', error);
-      throw error;
-    }
-  }
+// Importar modelos
+require('./src/models/userModel');
+require('./src/models/pacienteModel');
+require('./src/models/citaModel');
+// Importar otros modelos según necesites
 
-  // Método para transformar los datos del backend al formato que usa el frontend
-  static transformarDatosCoordinador(datosBackend) {
-    if (!datosBackend) {
-      throw new Error('No se recibieron datos del backend');
-    }
-    
-    const { estadisticas = {}, top_psicologos = [], alertas = [], evolucion_mensual = [], citas_por_dia = [] } = datosBackend;
-    
-    // Transformar estadísticas principales
-    const estadisticasTransformadas = {
-      becariosActivos: estadisticas.becarios_activos || 0,
-      psicologosActivos: estadisticas.psicologos_activos || 0,
-      pacientesActivos: estadisticas.pacientes_activos || 0,
-      citasHoy: estadisticas.citas_hoy || 0,
-      citasCompletadasHoy: estadisticas.citas_completadas_hoy || 0,
-      altasMesActual: estadisticas.altas_mes || 0
-    };
+const authRoutes = require('./src/routes/authRoutes');
+const citaRoutes = require('./src/routes/citaRoutes');
+const roleRoutes = require('./src/routes/roleRoutes');
+const fundacionRoutes = require('./src/routes/fundacionRoutes');
+const asignacionRoutes = require('./src/routes/asignacionRoutes');
+const sesionRoutes = require('./src/routes/sesionRoutes');
+const notificacionRoutes = require('./src/routes/notificacionRoutes');
+const altaRoutes = require('./src/routes/altaRoutes');
+const reporteRoutes = require('./src/routes/reporteRoutes');
+const observacionRoutes = require('./src/routes/observacionRoutes');
+const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
+const expedienteRoutes = require('./src/routes/expedienteRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const agendaRoutes = require('./src/routes/agendaRoutes');
+const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const pacienteRoutes = require('./src/routes/pacienteRoutes');
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-    // Transformar actividad reciente
-    const actividadReciente = this.generarActividadReciente(datosBackend);
 
-    // Transformar distribución de citas por psicólogo
-    const distribucionPsicologos = top_psicologos.map(psicologo => ({
-      nombre: psicologo.nombre_completo || psicologo.nombre || 'Psicólogo',
-      citas: psicologo.total_citas || psicologo.citas_completadas || 0,
-      color: this.asignarColor(psicologo.id || 0)
-    }));
 
-    // Transformar alertas
-    const alertasTransformadas = alertas.map((alerta, index) => ({
-      id: index + 1,
-      tipo: alerta.tipo || 'alerta',
-      descripcion: alerta.descripcion || 'Alerta del sistema',
-      cantidad: alerta.cantidad || 1
-    }));
+app.use(cors({
+  origin: 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+}));
 
-    return {
-      estadisticas: estadisticasTransformadas,
-      actividadReciente,
-      distribucionPsicologos,
-      alertas: alertasTransformadas,
-      evolucionMensual: evolucion_mensual,
-      citasPorDia: citas_por_dia
-    };
-  }
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-  static asignarColor(id) {
-    const colores = [
-      'var(--grnb)',  // Verde azulado
-      'var(--blu)',   // Azul
-      'var(--yy)',    // Amarillo
-      'var(--grnd)',  // Verde oscuro
-      'var(--grnl)',  // Verde claro
-      'var(--rr)',    // Rojo
-      'var(--rl)'     // Rojo claro
-    ];
-    return colores[id % colores.length];
-  }
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-  static generarActividadReciente(datosBackend) {
-    const actividades = [];
-    const ahora = new Date().toISOString();
-    
-    if (datosBackend.estadisticas) {
-      // Si hay nuevas altas hoy
-      if (datosBackend.estadisticas.altas_hoy > 0) {
-        actividades.push({
-          id: 1,
-          tipo: 'alta_paciente',
-          descripcion: `${datosBackend.estadisticas.altas_hoy} paciente(s) dado(s) de alta hoy`,
-          fecha: ahora,
-          usuario: 'Sistema'
+app.get('/', (req, res) => {
+  res.send('Server is running! Check /api-docs for documentation.');
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/citas', citaRoutes);
+app.use('/api/fundaciones', fundacionRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/sesiones', sesionRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/altas', altaRoutes);
+app.use('/api/reportes', reporteRoutes);
+app.use('/api/observaciones', observacionRoutes);
+app.use('/api/disponibilidad', disponibilidadRoutes);
+app.use('/api/expedientes', expedienteRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/agenda', agendaRoutes);
+app.use('/api/estadisticas', estadisticaRoutes);
+const userRoutes = require('./src/routes/userRoutes');
+app.use('/api/users', userRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/pacientes', pacienteRoutes);
+// Sincronizar modelos
+sequelize.sync({ force: false, alter: false })
+    .then(() => {
+        console.log("✅ Tablas sincronizadas (base de datos lista)");
+        app.listen(PORT, () => {
+          console.log(`Backend running on http://localhost:${PORT}`);
+          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+          console.log(`CORS permitido para: http://localhost:3001`);
+          console.log(`Endpoints disponibles:`);
+          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
+          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
+          console.log(`  POST /api/citas/alta-paciente`);
+          console.log(`  PUT  /api/citas/cita/:id`);
         });
-      }
-
-      // Si hay pacientes nuevos hoy
-      if (datosBackend.estadisticas.pacientes_nuevos_hoy > 0) {
-        actividades.push({
-          id: 2,
-          tipo: 'nuevo_paciente',
-          descripcion: `${datosBackend.estadisticas.pacientes_nuevos_hoy} nuevo(s) paciente(s) registrado(s) hoy`,
-          fecha: ahora,
-          usuario: 'Sistema'
-        });
-      }
-
-      // Si hay citas hoy
-      if (datosBackend.estadisticas.citas_hoy > 0) {
-        actividades.push({
-          id: 3,
-          tipo: 'citas_hoy',
-          descripcion: `${datosBackend.estadisticas.citas_hoy} cita(s) programada(s) para hoy`,
-          fecha: ahora,
-          usuario: 'Sistema'
-        });
-      }
-
-      // Si hay citas completadas hoy
-      if (datosBackend.estadisticas.citas_completadas_hoy > 0) {
-        actividades.push({
-          id: 4,
-          tipo: 'citas_completadas',
-          descripcion: `${datosBackend.estadisticas.citas_completadas_hoy} cita(s) completada(s) hoy`,
-          fecha: ahora,
-          usuario: 'Sistema'
-        });
-      }
-    }
-
-    // Si no hay actividades específicas, mostrar mensaje de sistema
-    if (actividades.length === 0) {
-      actividades.push({
-        id: 1,
-        tipo: 'sistema',
-        descripcion: 'Sistema sincronizado con el backend',
-        fecha: ahora,
-        usuario: 'Sistema'
-      });
-    }
-
-    return actividades;
-  }
-}
-
-export default DashboardService;
-
-
-/frontend/src/services/api.js:
---------------------------------------------------------------------------------
-// frontend/src/services/api.js
-const API_BASE_URL = 'http://localhost:3000/api';
-
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
-
-  static getHeaders() {
-    const token = this.getToken();
-    const headers = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
-    return headers;
-  }
-
-  static async request(url, options = {}) {
-    const { method = 'GET', data } = options;
-    
-    const config = {
-      method,
-      headers: this.getHeaders(),
-      credentials: 'include' // Importante para cookies si las usas
-    };
-    
-    if (data) {
-      config.body = JSON.stringify(data);
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}${url}`, config);
-      return this.handleResponse(response);
-    } catch (error) {
-      console.error('Fetch error:', error);
-      throw error;
-    }
-  }
-
-  static async get(url) {
-    return this.request(url);
-  }
-
-  static async post(url, data) {
-    return this.request(url, { method: 'POST', data });
-  }
-
-  static async put(url, data) {
-    return this.request(url, { method: 'PUT', data });
-  }
-
-  static async delete(url) {
-    return this.request(url, { method: 'DELETE' });
-  }
-
-  static async handleResponse(response) {
-      // Primero verificar si hay contenido
-      if (response.status === 204 || response.status === 205) {
-          return {};
-      }
-      
-      const contentType = response.headers.get('content-type');
-      
-      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
-      if (contentType && contentType.includes('text/csv')) {
-          const text = await response.text();
-          
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
-          
-          // Para CSV, devolvemos el texto directamente
-          return text;
-      }
-      
-      // Si no es CSV, verificar si es JSON
-      if (!contentType || !contentType.includes('application/json')) {
-          const text = await response.text();
-          
-          if (!response.ok) {
-              throw new Error(text || `HTTP error! status: ${response.status}`);
-          }
-          
-          // Intentar parsear como JSON si es posible
-          try {
-              return text ? JSON.parse(text) : {};
-          } catch {
-              return text;
-          }
-      }
-      
-      // Si es JSON, parsearlo normalmente
-      const data = await response.json();
-      
-      if (!response.ok) {
-          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
-          const error = new Error(errorMessage);
-          error.status = response.status;
-          error.data = data;
-          throw error;
-      }
-      
-      return data;
-  }
-
-  // Métodos específicos para el dashboard
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-
-  // Método para obtener información del usuario actual
-  static async getCurrentUser() {
-    return this.get('/auth/me');
-  }
-}
-
-export default ApiService;
+    })
+    .catch((error) => {
+        console.error("❌ Error al sincronizar la base de datos:", error.message);
+    });
 
 
 /backend/src/db/db.sql:
@@ -661,7 +455,10 @@ INSERT INTO users (email, password, nombre, apellido, telefono, rol, especialida
 ('becario1@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Juan', 'Pérez', '555-3333', 'becario', 'Practicante de Psicología', 1),
 ('becario2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Sofía', 'Ramírez', '555-4444', 'becario', 'Practicante de Psicología', 2),
 ('psicologo2@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Laura', 'Gutiérrez', '555-5555', 'psicologo', 'Terapia Familiar', 1),
-('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1);
+('becario3@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Pedro', 'Hernández', '555-6666', 'becario', 'Practicante de Psicología', 1),
+('alan@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Alan', 'Jassiel', '555-666', 'psicologo', 'Terapia Familiar', 1),
+('ale@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Ale', 'Jandro', '555-333', 'becario', 'Practicante de Psicología', 1),
+('emanuel@psicogestion.com', '$2b$12$hae1TqJNVYIumXT7aPXKCO/lVf418E5.nXUCem30mFsG5itFuLDjq', 'Emanuel', 'Iribe', '555-777', 'coordinador', 'Coordinación Clínica', 1);
 
 INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, genero, telefono, email) VALUES 
 ('Carlos', 'Gómez', '1998-05-15', 'masculino', '555-0011', 'carlos@gmail.com'),
@@ -962,118 +759,28 @@ GRANT EXECUTE ON PROCEDURE psicogestion_db.sp_generar_reporte_mensual TO 'psicog
 FLUSH PRIVILEGES;
 
 
-/backend/src/models/citaModel.js:
+/frontend/src/index.js:
 --------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-const Paciente = require('./pacienteModel');
-const User = require('./userModel');
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './global.css';
+import './App.css';
 
-const Cita = sequelize.define('Cita', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    paciente_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-            model: Paciente,
-            key: 'id'
-        }
-    },
-    psicologo_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    becario_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        references: {
-            model: User,
-            key: 'id'
-        }
-    },
-    fecha: {
-        type: DataTypes.DATEONLY,
-        allowNull: false
-    },
-    hora: {
-        type: DataTypes.TIME,
-        allowNull: false,
-        get() {
-            // Obtener la hora sin segundos
-            const rawValue = this.getDataValue('hora');
-            return rawValue ? rawValue.substring(0, 5) : null;
-        }
-    },
-    tipo_consulta: {
-        type: DataTypes.ENUM('presencial', 'virtual'),
-        allowNull: false,
-        defaultValue: 'presencial'
-    },
-    estado: {
-        type: DataTypes.ENUM('programada', 'confirmada', 'completada', 'cancelada'),
-        allowNull: false,
-        defaultValue: 'programada'
-    },
-    notas: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    motivo_cancelacion: {
-        type: DataTypes.STRING(255),
-        allowNull: true
-    },
-    duracion: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 50,
-        comment: 'Duración en minutos'
-    },
-    // Mantén compatibilidad con duracion_minutos
-    duracion_minutos: {
-        type: DataTypes.VIRTUAL,
-        get() {
-            return this.getDataValue('duracion');
-        }
-    }
-}, {
-    tableName: 'citas',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['fecha', 'estado']
-        },
-        {
-            fields: ['psicologo_id', 'fecha']
-        },
-        {
-            fields: ['becario_id']
-        },
-        {
-            fields: ['paciente_id']
-        }
-    ]
-});
+// Importa los estilos de los modales
+import './components/Common/ConfirmModal.css';
+import './components/Common/NotificationModal.css';
 
-// Relaciones
-Cita.belongsTo(Paciente, { foreignKey: 'paciente_id' });
-Cita.belongsTo(User, { as: 'Psicologo', foreignKey: 'psicologo_id' });
-Cita.belongsTo(User, { as: 'Becario', foreignKey: 'becario_id' });
+import App from './App';
 
-module.exports = Cita;
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
 
 
-/backend/src/services/dashboardService.js:
+/frontend/src/services/dashboardService.js:
 --------------------------------------------------------------------------------
 // frontend/src/services/dashboardService.js
 import ApiService from './api';
@@ -1081,7 +788,9 @@ import ApiService from './api';
 class DashboardService {
   static async obtenerDashboardCoordinador() {
     try {
+      console.log('Obteniendo dashboard coordinador...');
       const response = await ApiService.getDashboardCoordinador();
+      console.log('Respuesta recibida:', response);
       return response.data;
     } catch (error) {
       console.error('Error obteniendo dashboard coordinador:', error);
@@ -1111,7 +820,11 @@ class DashboardService {
 
   // Método para transformar los datos del backend al formato que usa el frontend
   static transformarDatosCoordinador(datosBackend) {
-    const { estadisticas, top_psicologos, alertas, evolucion_mensual, citas_por_dia } = datosBackend;
+    if (!datosBackend) {
+      throw new Error('No se recibieron datos del backend');
+    }
+    
+    const { estadisticas = {}, top_psicologos = [], alertas = [], evolucion_mensual = [], citas_por_dia = [] } = datosBackend;
     
     // Transformar estadísticas principales
     const estadisticasTransformadas = {
@@ -1123,21 +836,22 @@ class DashboardService {
       altasMesActual: estadisticas.altas_mes || 0
     };
 
-    // Transformar actividad reciente (puedes obtener esto de otra fuente o simularlo)
+    // Transformar actividad reciente
     const actividadReciente = this.generarActividadReciente(datosBackend);
 
     // Transformar distribución de citas por psicólogo
     const distribucionPsicologos = top_psicologos.map(psicologo => ({
-      nombre: psicologo.nombre_completo,
-      citas: psicologo.total_citas || 0,
-      color: this.asignarColor(psicologo.id)
+      nombre: psicologo.nombre_completo || psicologo.nombre || 'Psicólogo',
+      citas: psicologo.total_citas || psicologo.citas_completadas || 0,
+      color: this.asignarColor(psicologo.id || 0)
     }));
 
     // Transformar alertas
-    const alertasTransformadas = alertas.map(alerta => ({
-      tipo: alerta.tipo,
-      descripcion: alerta.descripcion,
-      cantidad: alerta.cantidad
+    const alertasTransformadas = alertas.map((alerta, index) => ({
+      id: index + 1,
+      tipo: alerta.tipo || 'alerta',
+      descripcion: alerta.descripcion || 'Alerta del sistema',
+      cantidad: alerta.cantidad || 1
     }));
 
     return {
@@ -1151,51 +865,872 @@ class DashboardService {
   }
 
   static asignarColor(id) {
-    const colores = ['var(--grnb)', 'var(--blu)', 'var(--yy)', 'var(--grnd)', 'var(--grnl)', 'var(--rr)'];
+    const colores = [
+      'var(--grnb)',  // Verde azulado
+      'var(--blu)',   // Azul
+      'var(--yy)',    // Amarillo
+      'var(--grnd)',  // Verde oscuro
+      'var(--grnl)',  // Verde claro
+      'var(--rr)',    // Rojo
+      'var(--rl)'     // Rojo claro
+    ];
     return colores[id % colores.length];
   }
 
   static generarActividadReciente(datosBackend) {
-    // Aquí puedes implementar lógica para generar actividad reciente
-    // basada en los datos del backend, logs, o mantenerlo simulado
-    // por ahora devolveré datos de ejemplo transformados
     const actividades = [];
+    const ahora = new Date().toISOString();
     
-    // Ejemplo: si hay nuevas altas hoy
-    if (datosBackend.estadisticas.altas_hoy > 0) {
-      actividades.push({
-        id: 1,
-        tipo: 'alta_paciente',
-        descripcion: `${datosBackend.estadisticas.altas_hoy} paciente(s) dado(s) de alta hoy`,
-        fecha: new Date().toISOString(),
-        usuario: 'Sistema'
-      });
+    if (datosBackend.estadisticas) {
+      // Si hay nuevas altas hoy
+      if (datosBackend.estadisticas.altas_hoy > 0) {
+        actividades.push({
+          id: 1,
+          tipo: 'alta_paciente',
+          descripcion: `${datosBackend.estadisticas.altas_hoy} paciente(s) dado(s) de alta hoy`,
+          fecha: ahora,
+          usuario: 'Sistema'
+        });
+      }
+
+      // Si hay pacientes nuevos hoy
+      if (datosBackend.estadisticas.pacientes_nuevos_hoy > 0) {
+        actividades.push({
+          id: 2,
+          tipo: 'nuevo_paciente',
+          descripcion: `${datosBackend.estadisticas.pacientes_nuevos_hoy} nuevo(s) paciente(s) registrado(s) hoy`,
+          fecha: ahora,
+          usuario: 'Sistema'
+        });
+      }
+
+      // Si hay citas hoy
+      if (datosBackend.estadisticas.citas_hoy > 0) {
+        actividades.push({
+          id: 3,
+          tipo: 'citas_hoy',
+          descripcion: `${datosBackend.estadisticas.citas_hoy} cita(s) programada(s) para hoy`,
+          fecha: ahora,
+          usuario: 'Sistema'
+        });
+      }
+
+      // Si hay citas completadas hoy
+      if (datosBackend.estadisticas.citas_completadas_hoy > 0) {
+        actividades.push({
+          id: 4,
+          tipo: 'citas_completadas',
+          descripcion: `${datosBackend.estadisticas.citas_completadas_hoy} cita(s) completada(s) hoy`,
+          fecha: ahora,
+          usuario: 'Sistema'
+        });
+      }
     }
 
-    // Ejemplo: si hay pacientes nuevos hoy
-    if (datosBackend.estadisticas.pacientes_nuevos_hoy > 0) {
+    // Si no hay actividades específicas, mostrar mensaje de sistema
+    if (actividades.length === 0) {
       actividades.push({
-        id: 2,
-        tipo: 'nuevo_paciente',
-        descripcion: `${datosBackend.estadisticas.pacientes_nuevos_hoy} nuevo(s) paciente(s) registrado(s) hoy`,
-        fecha: new Date().toISOString(),
-        usuario: 'Sistema'
-      });
-    }
-
-    return actividades.length > 0 ? actividades : [
-      {
         id: 1,
         tipo: 'sistema',
-        descripcion: 'Dashboard sincronizado con datos reales',
-        fecha: new Date().toISOString(),
+        descripcion: 'Sistema sincronizado con el backend',
+        fecha: ahora,
         usuario: 'Sistema'
-      }
-    ];
+      });
+    }
+
+    return actividades;
   }
 }
 
 export default DashboardService;
+
+
+/frontend/src/components/Layout/PsicologoLayout.js:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { 
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiFileText,
+  FiBarChart2, FiUserCheck, FiLogOut, FiClock, FiSun, FiMoon
+} from 'react-icons/fi';
+
+const PsicologoLayout = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  // Inicializar el tema desde localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  }, []);
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    
+    if (newDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const navItems = [
+    { path: '/psicologo/dashboard', icon: <FiHome />, label: 'Panel Principal', permiso: 'ver_panel_psicologo' },
+    { path: '/psicologo/pacientes', icon: <FiUsers />, label: 'Mis Pacientes', permiso: 'ver_mis_pacientes' },
+    { path: '/psicologo/citas', icon: <FiCalendar />, label: 'Mis Citas', permiso: 'gestionar_mis_citas' },
+    { path: '/psicologo/expedientes', icon: <FiFileText />, label: 'Expedientes', permiso: 'ver_expedientes' },
+    { path: '/psicologo/sesiones', icon: <FiBarChart2 />, label: 'Registro Sesiones', permiso: 'registrar_sesiones' },
+    { path: '/psicologo/supervision', icon: <FiUserCheck />, label: 'Supervisión', permiso: 'supervisar_becarios' },
+  ];
+
+  return (
+    <div className="main-container">
+      <header className="top-header">
+        <div className="flex-row align-center">
+          <button 
+            className="control-btn"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
+          </button>
+          <img 
+            src="/images/logoCESUN2wide.png" 
+            alt="PsicoGestión" 
+            className="dashboard-logo"
+          />
+          <h2 className="app-name">- Psicólogo</h2>
+        </div>
+        
+        <div className="flex-row align-center gap-20">
+          {/* Toggle Switch Dark Mode */}
+          <div className="toggle-container">
+            <input 
+              type="checkbox" 
+              id="dark-mode-toggle" 
+              className="toggle-checkbox"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+            />
+            <label 
+              htmlFor="dark-mode-toggle" 
+              className="toggle-label"
+              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
+            >
+              <div className="toggle-ball">
+                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
+              </div>
+              <div className="toggle-icons">
+                <FiSun className="sun-icon" size={14} />
+                <FiMoon className="moon-icon" size={14} />
+              </div>
+            </label>
+          </div>
+          
+          <div className="user-info">
+            <span className="user-email">{user?.email}</span>
+            <span className="user-rol">Psicólogo</span>
+            {user?.especialidad && (
+              <span className="user-especialidad">• {user.especialidad}</span>
+            )}
+          </div>
+          
+          <button 
+            className="btn-header"
+            onClick={handleLogout}
+            title="Cerrar sesión"
+          >
+            <FiLogOut />
+            <span>Salir</span>
+          </button>
+        </div>
+      </header>
+
+      <div className="content-wrapper">
+        <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+          <nav className="sidebar-nav">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) => 
+                  `sidebar-nav-item ${isActive ? 'active' : ''}`
+                }
+              >
+                {item.icon}
+                {sidebarOpen && <span>{item.label}</span>}
+              </NavLink>
+            ))}
+          </nav>
+          
+          {sidebarOpen && (
+            <div className="sidebar-info">
+              <div className="sidebar-info-item">
+                <FiClock />
+                <span>Citas hoy: Cargando...</span>
+              </div>
+              <div className="sidebar-info-item">
+                <FiUsers />
+                <span>Pacientes activos: Cargando...</span>
+              </div>
+            </div>
+          )}
+        </aside>
+
+        <main className="main-content">
+          <div className="content-area">
+            <Outlet />
+          </div>
+        </main>
+      </div>
+
+      <footer className="status-bar">
+        <div className="status-info">
+          <span>Sesión: {user?.email}</span>
+          <span>Rol: Psicólogo • Especialidad: {user?.especialidad || 'No especificada'}</span>
+          <span>Última actualización: {new Date().toLocaleTimeString()}</span>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default PsicologoLayout;
+
+
+/frontend/src/pages/psicologo/DashboardPage.js:
+--------------------------------------------------------------------------------
+import React, { useState, useEffect } from 'react';
+import { 
+  FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
+  FiUserCheck, FiClock, FiRefreshCw
+} from 'react-icons/fi';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
+
+const PsicologoDashboard = () => {
+  const [estadisticas, setEstadisticas] = useState({
+    pacientesActivos: 0,
+    citasHoy: 0,
+    citasSemana: 0,
+    becariosAsignados: 0,
+    sesionesMes: 0,
+    altasMes: 0
+  });
+  const [citasHoy, setCitasHoy] = useState([]);
+  const [becarios, setBecarios] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      // Simulación de datos
+      setTimeout(() => {
+        setEstadisticas({
+          pacientesActivos: 12,
+          citasHoy: 4,
+          citasSemana: 15,
+          becariosAsignados: 2,
+          sesionesMes: 48,
+          altasMes: 2
+        });
+        
+        setCitasHoy([
+          { id: 1, paciente: 'Carlos Gómez', hora: '10:00 AM', tipo: 'presencial' },
+          { id: 2, paciente: 'Mariana López', hora: '11:30 AM', tipo: 'virtual' },
+          { id: 3, paciente: 'Roberto Sánchez', hora: '02:00 PM', tipo: 'presencial' },
+          { id: 4, paciente: 'Ana Rodríguez', hora: '04:30 PM', tipo: 'virtual' }
+        ]);
+        
+        setBecarios([
+          { id: 1, nombre: 'Juan Pérez', pacientes: 3, observaciones: 5 },
+          { id: 2, nombre: 'Sofía Ramírez', pacientes: 2, observaciones: 3 }
+        ]);
+        
+        setLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error('Error cargando dashboard:', error);
+      setLoading(false);
+    }
+  };
+
+  const statCards = [
+    {
+      title: 'Pacientes Activos',
+      value: estadisticas.pacientesActivos,
+      icon: <FiUsers />,
+      color: 'var(--grnb)',
+      change: 'En tratamiento'
+    },
+    {
+      title: 'Citas Hoy',
+      value: estadisticas.citasHoy,
+      icon: <FiCalendar />,
+      color: 'var(--blu)',
+      change: 'Programadas'
+    },
+    {
+      title: 'Citas Esta Semana',
+      value: estadisticas.citasSemana,
+      icon: <FiClock />,
+      color: 'var(--yy)',
+      change: 'Próximos 7 días'
+    },
+    {
+      title: 'Becarios Asignados',
+      value: estadisticas.becariosAsignados,
+      icon: <FiUserCheck />,
+      color: 'var(--grnd)',
+      change: 'En supervisión'
+    },
+    {
+      title: 'Sesiones Mes',
+      value: estadisticas.sesionesMes,
+      icon: <FiTrendingUp />,
+      color: 'var(--grnl)',
+      change: 'Realizadas'
+    },
+    {
+      title: 'Altas Este Mes',
+      value: estadisticas.altasMes,
+      icon: <FiBarChart2 />,
+      color: 'var(--rr)',
+      change: 'Pacientes dados de alta'
+    }
+  ];
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <div className="loading-text">Cargando panel del psicólogo...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dashboard-page">
+      <div className="page-header">
+        <div>
+          <h1>Panel del Psicólogo</h1>
+          <p>Supervisión y gestión de pacientes</p>
+        </div>
+        <button className="btn-secondary" onClick={fetchDashboardData}>
+          <FiRefreshCw /> Actualizar
+        </button>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="stats-grid">
+        {statCards.map((stat, index) => (
+          <div key={index} className="stat-card">
+            <div className="stat-header">
+              <div className="stat-icon" style={{ color: stat.color }}>
+                {stat.icon}
+              </div>
+              <h3>{stat.title}</h3>
+            </div>
+            <div className="stat-value">{stat.value}</div>
+            <div className="stat-change">{stat.change}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="dashboard-content-grid">
+        {/* Citas de Hoy */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            <h3>Citas de Hoy</h3>
+            <button className="btn-text">Ver Agenda</button>
+          </div>
+          
+          <div className="citas-list">
+            {citasHoy.map((cita) => (
+              <div key={cita.id} className="cita-item">
+                <div className="cita-info">
+                  <div className="cita-paciente">{cita.paciente}</div>
+                  <div className="cita-hora">{cita.hora} • {cita.tipo === 'presencial' ? 'Presencial' : 'Virtual'}</div>
+                </div>
+                <button className="btn-text">Ver</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Becarios Asignados */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            <h3>Becarios en Supervisión</h3>
+            <button className="btn-text">Ver todos</button>
+          </div>
+          
+          <div className="pacientes-list">
+            {becarios.map((becario) => (
+              <div key={becario.id} className="paciente-item">
+                <div className="paciente-info">
+                  <div className="paciente-nombre">{becario.nombre}</div>
+                  <div className="paciente-fecha">
+                    {becario.pacientes} pacientes • {becario.observaciones} observaciones
+                  </div>
+                </div>
+                <div className="paciente-progreso">
+                  <div className="progress-container">
+                    <div 
+                      className="progress-bar"
+                      style={{ width: `${(becario.observaciones / 10) * 100}%` }}
+                    ></div>
+                  </div>
+                  <span className="progreso-text">
+                    {Math.round((becario.observaciones / 10) * 100)}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Estadísticas Mensuales */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            <h3>Estadísticas del Mes</h3>
+          </div>
+          
+          <div className="activity-chart">
+            <div className="chart-placeholder">
+              <div className="chart-bars">
+                {[65, 80, 45, 90, 75, 60, 85, 70, 95, 50, 65, 80].map((height, index) => (
+                  <div key={index} className="chart-bar">
+                    <div 
+                      className="bar-fill"
+                      style={{ height: `${height}%` }}
+                    ></div>
+                    <div className="bar-label">
+                      {['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][index]}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            <h3>Acciones Rápidas</h3>
+          </div>
+          
+          <div className="quick-actions">
+            <button className="btn-primary w-100 mb-10">
+              Ver Mis Pacientes
+            </button>
+            <button className="btn-secondary w-100 mb-10">
+              Registrar Sesión
+            </button>
+            <button className="btn-warning w-100 mb-10">
+              Revisar Observaciones
+            </button>
+            <button className="btn-text w-100">
+              Generar Reporte Mensual
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PsicologoDashboard;
+
+
+/frontend/src/pages/psicologo/psicologo.css:
+--------------------------------------------------------------------------------
+ARCHIVO NO ENCONTRADO
+
+
+/frontend/src/App.js:
+--------------------------------------------------------------------------------
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Login from './components/Auth/Login';
+import RoleRouter from './components/Auth/RoleRouter';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
+
+// Importa los modales
+import ConfirmModal from './components/Common/ConfirmModal';
+import NotificationModal from './components/Common/NotificationModal';
+
+// Páginas para Becarios
+import BecarioDashboard from './pages/becario/DashboardPage';
+import BecarioCitas from './pages/becario/CitasPage';
+import BecarioPacientes from './pages/becario/PacientesPage';
+import BecarioNotificaciones from './pages/becario/NotificacionesPage';
+import BecarioObservaciones from './pages/becario/ObservacionesPage';
+
+// Páginas para Psicólogos
+import PsicologoDashboard from './pages/psicologo/DashboardPage';
+import PsicologoPacientes from './pages/psicologo/PacientesPage';
+import PsicologoCitas from './pages/psicologo/CitasPage';
+import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
+import PsicologoSesiones from './pages/psicologo/SesionesPage';
+import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+
+// Páginas para Coordinadores
+import CoordinadorDashboard from './pages/coordinador/DashboardPage';
+import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
+import CoordinadorPacientes from './pages/coordinador/PacientesPage';
+import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
+import CoordinadorAgenda from './pages/coordinador/AgendaPage';
+import CoordinadorReportes from './pages/coordinador/ReportesPage';
+import CoordinadorAltas from './pages/coordinador/AltasPage';
+import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        {/* Agrega los modales aquí */}
+        <ConfirmModal />
+        <NotificationModal />
+        
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          {/* Rutas de Becario */}
+          <Route path="/" element={<RoleRouter />}>
+            <Route index element={<BecarioDashboard />} />
+            
+            {/* Becario */}
+            <Route path="becario/dashboard" element={<BecarioDashboard />} />
+            <Route path="becario/citas" element={<BecarioCitas />} />
+            <Route path="becario/pacientes" element={<BecarioPacientes />} />
+            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
+            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
+            
+            {/* Psicólogo */}
+            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
+            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
+            <Route path="psicologo/citas" element={<PsicologoCitas />} />
+            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
+            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
+            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
+            
+            {/* Coordinador */}
+            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
+            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
+            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
+            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
+            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
+            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
+            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
+            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
+          </Route>
+          
+          {/* Redirección por defecto */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </AuthProvider>
+    </Router>
+  );
+}
+
+export default App;
+
+
+/frontend/src/utils/confirmations.js:
+--------------------------------------------------------------------------------
+import { showConfirm } from '../components/Common/ConfirmModal'
+
+// Función para confirmaciones de peligro (rojo - para eliminar)
+export const confirmDanger = (message) => {
+  return showConfirm(message, 'danger')
+}
+
+// Función para confirmaciones de advertencia (amarillo - estándar)
+export const confirmWarning = (message) => {
+  return showConfirm(message, 'warning')
+}
+
+// Función para confirmaciones de información (azul - neutral)
+export const confirmInfo = (message) => {
+  return showConfirm(message, 'info')
+}
+
+// Alias para la función principal
+export const confirm = showConfirm
+
+// Exporta como objeto global
+export default {
+  danger: confirmDanger,
+  warning: confirmWarning,
+  info: confirmInfo,
+  show: confirm
+}
+
+
+/frontend/src/utils/notifications.js:
+--------------------------------------------------------------------------------
+import { showNotification } from '../components/Common/NotificationModal'
+
+// Función para notificaciones de éxito (verde)
+export const notifySuccess = (message) => {
+  showNotification(message, 'success')
+}
+
+// Función para notificaciones de error (rojo)
+export const notifyError = (message) => {
+  showNotification(message, 'error')
+}
+
+// Función para notificaciones de advertencia (amarillo)
+export const notifyWarning = (message) => {
+  showNotification(message, 'warning')
+}
+
+// Función para notificaciones de información (azul)
+export const notifyInfo = (message) => {
+  showNotification(message, 'info')
+}
+
+// Alias para la función principal
+export const notify = showNotification
+
+// Exporta como objeto global
+export default {
+  success: notifySuccess,
+  error: notifyError,
+  warning: notifyWarning,
+  info: notifyInfo,
+  show: notify
+}
+
+
+/backend/src/services/api.js:
+--------------------------------------------------------------------------------
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  static async get(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async post(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async put(url, data) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async delete(url) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  static async handleResponse(response) {
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error en la petición');
+    }
+    return response.json();
+  }
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+}
+
+export default ApiService;
+
+
+/frontend/src/services/api.js:
+--------------------------------------------------------------------------------
+// frontend/src/services/api.js
+const API_BASE_URL = 'http://localhost:3000/api';
+
+class ApiService {
+  static getToken() {
+    return localStorage.getItem('token');
+  }
+
+  static getHeaders() {
+    const token = this.getToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  static async request(url, options = {}) {
+    const { method = 'GET', data } = options;
+    
+    const config = {
+      method,
+      headers: this.getHeaders(),
+      credentials: 'include' // Importante para cookies si las usas
+    };
+    
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}${url}`, config);
+      return this.handleResponse(response);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
+  }
+
+  static async get(url) {
+    return this.request(url);
+  }
+
+  static async post(url, data) {
+    return this.request(url, { method: 'POST', data });
+  }
+
+  static async put(url, data) {
+    return this.request(url, { method: 'PUT', data });
+  }
+
+  static async delete(url) {
+    return this.request(url, { method: 'DELETE' });
+  }
+
+  static async handleResponse(response) {
+      // Primero verificar si hay contenido
+      if (response.status === 204 || response.status === 205) {
+          return {};
+      }
+      
+      const contentType = response.headers.get('content-type');
+      
+      // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
+      if (contentType && contentType.includes('text/csv')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Para CSV, devolvemos el texto directamente
+          return text;
+      }
+      
+      // Si no es CSV, verificar si es JSON
+      if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          
+          if (!response.ok) {
+              throw new Error(text || `HTTP error! status: ${response.status}`);
+          }
+          
+          // Intentar parsear como JSON si es posible
+          try {
+              return text ? JSON.parse(text) : {};
+          } catch {
+              return text;
+          }
+      }
+      
+      // Si es JSON, parsearlo normalmente
+      const data = await response.json();
+      
+      if (!response.ok) {
+          const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          const error = new Error(errorMessage);
+          error.status = response.status;
+          error.data = data;
+          throw error;
+      }
+      
+      return data;
+  }
+
+  // Métodos específicos para el dashboard
+  static async getDashboardCoordinador() {
+    return this.get('/dashboard/coordinador');
+  }
+
+  static async getMetricasGlobales(periodo = 'mes') {
+    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  static async getEstadisticas() {
+    return this.get('/estadisticas/generales');
+  }
+
+  // Método para obtener información del usuario actual
+  static async getCurrentUser() {
+    return this.get('/auth/me');
+  }
+}
+
+export default ApiService;
 
 
 /frontend/src/global.css:
@@ -1640,7 +2175,6 @@ body {
   border-radius: 10px;
   padding: 20px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 .card-primary {
@@ -1688,7 +2222,6 @@ body {
   border-radius: 10px;
   padding: 30px;
   color: var(--white);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
   max-width: 500px;
   width: 90%;
@@ -2353,7 +2886,6 @@ body {
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   border-color: var(--blu);
 }
 
@@ -2572,7 +3104,6 @@ body {
 
 .event-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
 .event-confirmed {
@@ -2987,7 +3518,6 @@ input:checked + .slider:before {
   max-width: 90%;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease;
   border: 2px solid var(--blu);
 }
@@ -3577,1013 +4107,12 @@ input:checked + .slider:before {
 
 
 
-/backend/src/models/pacienteModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-const Paciente = sequelize.define('Paciente', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    nombre: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    apellido: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    email: {
-        type: DataTypes.STRING(255),
-        allowNull: true,
-        validate: {
-            isEmail: true
-        }
-    },
-    telefono: {
-        type: DataTypes.STRING(20),
-        allowNull: true
-    },
-    fecha_nacimiento: {
-        type: DataTypes.DATEONLY,
-        allowNull: true
-    },
-    genero: {
-        type: DataTypes.ENUM('masculino', 'femenino', 'otro', 'prefiero_no_decir'),
-        allowNull: true
-    },
-    direccion: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    estado: {
-        type: DataTypes.STRING(50),
-        allowNull: false,
-        defaultValue: 'activo'
-    },
-    activo: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: true
-    },
-    notas: {
-        type: DataTypes.TEXT,
-        allowNull: true
-    },
-    fundacion_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true
-    }
-}, {
-    tableName: 'pacientes',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true,
-    indexes: [
-        {
-            fields: ['activo']
-        },
-        {
-            fields: ['apellido', 'nombre']
-        }
-    ]
-});
-
-module.exports = Paciente;
-
-
-/frontend/src/index.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './global.css';
-import './App.css';
-
-// Importa los estilos de los modales
-import './components/Common/ConfirmModal.css';
-import './components/Common/NotificationModal.css';
-
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-
-
-/backend/server.js:
---------------------------------------------------------------------------------
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-
-const express = require('express');
-const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./src/doc/swagger.json');
-const cors = require('cors');
-
-const sequelize = require('./src/config/db');
-
-// Importar modelos
-require('./src/models/userModel');
-require('./src/models/pacienteModel');
-require('./src/models/citaModel');
-// Importar otros modelos según necesites
-
-const authRoutes = require('./src/routes/authRoutes');
-const citaRoutes = require('./src/routes/citaRoutes');
-const roleRoutes = require('./src/routes/roleRoutes');
-const fundacionRoutes = require('./src/routes/fundacionRoutes');
-const asignacionRoutes = require('./src/routes/asignacionRoutes');
-const sesionRoutes = require('./src/routes/sesionRoutes');
-const notificacionRoutes = require('./src/routes/notificacionRoutes');
-const altaRoutes = require('./src/routes/altaRoutes');
-const reporteRoutes = require('./src/routes/reporteRoutes');
-const observacionRoutes = require('./src/routes/observacionRoutes');
-const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
-const expedienteRoutes = require('./src/routes/expedienteRoutes');
-const dashboardRoutes = require('./src/routes/dashboardRoutes');
-const agendaRoutes = require('./src/routes/agendaRoutes');
-const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
-const pacienteRoutes = require('./src/routes/pacienteRoutes');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-
-
-app.use(cors({
-  origin: 'http://localhost:3001',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
-}));
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-
-app.get('/', (req, res) => {
-  res.send('Server is running! Check /api-docs for documentation.');
-});
-
-app.use('/api/auth', authRoutes);
-app.use('/api/citas', citaRoutes);
-app.use('/api/fundaciones', fundacionRoutes);
-app.use('/api/asignaciones', asignacionRoutes);
-app.use('/api/sesiones', sesionRoutes);
-app.use('/api/notificaciones', notificacionRoutes);
-app.use('/api/altas', altaRoutes);
-app.use('/api/reportes', reporteRoutes);
-app.use('/api/observaciones', observacionRoutes);
-app.use('/api/disponibilidad', disponibilidadRoutes);
-app.use('/api/expedientes', expedienteRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/agenda', agendaRoutes);
-app.use('/api/estadisticas', estadisticaRoutes);
-const userRoutes = require('./src/routes/userRoutes');
-app.use('/api/users', userRoutes);
-app.use('/api/roles', roleRoutes);
-app.use('/api/pacientes', pacienteRoutes);
-// Sincronizar modelos
-sequelize.sync({ force: false, alter: false })
-    .then(() => {
-        console.log("✅ Tablas sincronizadas (base de datos lista)");
-        app.listen(PORT, () => {
-          console.log(`Backend running on http://localhost:${PORT}`);
-          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
-          console.log(`CORS permitido para: http://localhost:3001`);
-          console.log(`Endpoints disponibles:`);
-          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
-          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
-          console.log(`  POST /api/citas/alta-paciente`);
-          console.log(`  PUT  /api/citas/cita/:id`);
-        });
-    })
-    .catch((error) => {
-        console.error("❌ Error al sincronizar la base de datos:", error.message);
-    });
-
-
-/backend/src/controllers/dashboardController.js:
---------------------------------------------------------------------------------
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-class DashboardController {
-    
-    static async obtenerDashboardCoordinador(req, res) {
-        try {
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
-            
-            // Estadísticas generales
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes
-                    (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) as pacientes_activos,
-                    (SELECT COUNT(*) FROM pacientes WHERE activo = FALSE) as pacientes_inactivos,
-                    (SELECT COUNT(*) FROM pacientes WHERE DATE(created_at) = CURDATE()) as pacientes_nuevos_hoy,
-                    
-                    -- Citas
-                    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado IN ('programada', 'confirmada')) as citas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') as citas_completadas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'cancelada') as citas_canceladas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE fecha BETWEEN DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND CURDATE()) as citas_semana,
-                    
-                    -- Profesionales
-                    (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) as psicologos_activos,
-                    (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) as becarios_activos,
-                    (SELECT COUNT(*) FROM users WHERE rol = 'coordinador' AND activo = TRUE) as coordinadores_activos,
-                    
-                    -- Asignaciones
-                    (SELECT COUNT(*) FROM asignaciones WHERE estado = 'activa') as asignaciones_activas,
-                    (SELECT COUNT(*) FROM asignaciones WHERE estado = 'finalizada' AND fecha_fin >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as asignaciones_finalizadas_mes,
-                    
-                    -- Altas
-                    (SELECT COUNT(*) FROM altas WHERE fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as altas_mes,
-                    (SELECT COUNT(*) FROM altas WHERE fecha_alta = CURDATE()) as altas_hoy
-            `, { type: QueryTypes.SELECT });
-            
-            // Citas por día de la semana actual
-            const citasPorDia = await sequelize.query(`
-                SELECT 
-                    DAYNAME(fecha) as dia,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-                    SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas
-                FROM citas
-                WHERE YEARWEEK(fecha, 1) = YEARWEEK(CURDATE(), 1)
-                GROUP BY DAYNAME(fecha), DAYOFWEEK(fecha)
-                ORDER BY DAYOFWEEK(fecha)
-            `, { type: QueryTypes.SELECT });
-            
-            // Top psicólogos por citas completadas
-            const topPsicologos = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as nombre_completo,
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completadas
-                FROM users u
-                LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                WHERE u.rol = 'psicologo' AND u.activo = TRUE
-                GROUP BY u.id, u.nombre, u.apellido
-                ORDER BY citas_completadas DESC
-                LIMIT 10
-            `, { type: QueryTypes.SELECT });
-            
-            // Alertas y pendientes
-            const alertas = await sequelize.query(`
-                SELECT 
-                    'citas_sin_confirmar' as tipo,
-                    COUNT(*) as cantidad,
-                    'Citas programadas sin confirmar' as descripcion
-                FROM citas
-                WHERE estado = 'programada' AND fecha = CURDATE()
-                
-                UNION ALL
-                
-                SELECT 
-                    'observaciones_pendientes' as tipo,
-                    COUNT(*) as cantidad,
-                    'Observaciones de becarios pendientes de revisión' as descripcion
-                FROM observaciones_becarios
-                WHERE fecha_seguimiento <= CURDATE() AND fecha_seguimiento IS NOT NULL
-                
-                UNION ALL
-                
-                SELECT 
-                    'altas_pendientes' as tipo,
-                    COUNT(*) as cantidad,
-                    'Pacientes pendientes de revisión para alta' as descripcion
-                FROM pacientes p
-                WHERE p.activo = TRUE 
-                AND NOT EXISTS (SELECT 1 FROM altas a WHERE a.paciente_id = p.id)
-                AND (SELECT COUNT(*) FROM citas c WHERE c.paciente_id = p.id AND c.estado = 'completada') >= 4
-            `, { type: QueryTypes.SELECT });
-            
-            // Evolución mensual de pacientes
-            const evolucionMensual = await sequelize.query(`
-                SELECT 
-                    DATE_FORMAT(fecha_alta, '%Y-%m') as mes,
-                    COUNT(*) as altas,
-                    SUM(CASE WHEN tipo_alta = 'terapeutica' THEN 1 ELSE 0 END) as altas_terapeuticas,
-                    SUM(CASE WHEN tipo_alta = 'abandono' THEN 1 ELSE 0 END) as abandonos
-                FROM altas
-                WHERE fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-                GROUP BY DATE_FORMAT(fecha_alta, '%Y-%m')
-                ORDER BY mes DESC
-                LIMIT 6
-            `, { type: QueryTypes.SELECT });
-            
-            res.json({
-                success: true,
-                data: {
-                    estadisticas,
-                    citas_por_dia: citasPorDia,
-                    top_psicologos: topPsicologos,
-                    alertas,
-                    evolucion_mensual: evolucionMensual.reverse(), // Orden ascendente
-                    ultima_actualizacion: new Date().toISOString()
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerDashboardCoordinador:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener dashboard de coordinador'
-            });
-        }
-    }
-    
-    static async obtenerDashboardPsicologo(req, res) {
-        try {
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
-            
-            // Estadísticas del psicólogo
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes asignados
-                    (SELECT COUNT(DISTINCT paciente_id) FROM asignaciones WHERE psicologo_id = ? AND estado = 'activa') as pacientes_asignados,
-                    
-                    -- Becarios supervisados
-                    (SELECT COUNT(DISTINCT becario_id) FROM asignaciones WHERE psicologo_id = ? AND becario_id IS NOT NULL AND estado = 'activa') as becarios_supervisados,
-                    
-                    -- Citas
-                    (SELECT COUNT(*) FROM citas WHERE psicologo_id = ? AND fecha = CURDATE() AND estado IN ('programada', 'confirmada')) as citas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE psicologo_id = ? AND fecha = CURDATE() AND estado = 'completada') as citas_completadas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE psicologo_id = ? AND fecha BETWEEN DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND CURDATE()) as citas_semana,
-                    
-                    -- Sesiones registradas
-                    (SELECT COUNT(*) FROM sesiones WHERE psicologo_id = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as sesiones_mes,
-                    
-                    -- Observaciones realizadas
-                    (SELECT COUNT(*) FROM observaciones_becarios WHERE supervisor_id = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as observaciones_mes,
-                    
-                    -- Altas realizadas
-                    (SELECT COUNT(*) FROM altas WHERE usuario_id = ? AND fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as altas_mes
-            `, {
-                replacements: [usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Próximas citas
-            const proximasCitas = await sequelize.query(`
-                SELECT 
-                    c.id,
-                    c.fecha,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    c.estado,
-                    c.tipo_consulta,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    p.telefono as paciente_telefono,
-                    u_bec.nombre as becario_nombre
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-                WHERE c.psicologo_id = ?
-                AND c.fecha >= CURDATE()
-                AND c.estado IN ('programada', 'confirmada')
-                ORDER BY c.fecha, c.hora
-                LIMIT 10
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Pacientes con seguimiento pendiente
-            const pacientesSeguimiento = await sequelize.query(`
-                SELECT 
-                    p.id,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    MAX(c.fecha) as ultima_sesion,
-                    DATEDIFF(CURDATE(), MAX(c.fecha)) as dias_desde_ultima,
-                    COUNT(c.id) as total_sesiones
-                FROM asignaciones a
-                JOIN pacientes p ON a.paciente_id = p.id
-                LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
-                WHERE a.psicologo_id = ?
-                AND a.estado = 'activa'
-                AND p.activo = TRUE
-                GROUP BY p.id, p.nombre, p.apellido
-                HAVING DATEDIFF(CURDATE(), MAX(c.fecha)) > 14 OR MAX(c.fecha) IS NULL
-                ORDER BY dias_desde_ultima DESC
-                LIMIT 5
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Observaciones recientes de becarios
-            const observacionesRecientes = await sequelize.query(`
-                SELECT 
-                    ob.id,
-                    ob.fecha,
-                    ob.aspecto_evaluado,
-                    ob.calificacion,
-                    CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario,
-                    ob.plan_accion,
-                    ob.fecha_seguimiento
-                FROM observaciones_becarios ob
-                JOIN users u_bec ON ob.becario_id = u_bec.id
-                WHERE ob.supervisor_id = ?
-                ORDER BY ob.fecha DESC, ob.created_at DESC
-                LIMIT 5
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Disponibilidad para la semana
-            const disponibilidadSemana = await sequelize.query(`
-                SELECT 
-                    d.dia_semana,
-                    TIME_FORMAT(d.hora_inicio, '%H:%i') as hora_inicio,
-                    TIME_FORMAT(d.hora_fin, '%H:%i') as hora_fin,
-                    COUNT(c.id) as citas_programadas
-                FROM disponibilidades d
-                LEFT JOIN citas c ON d.usuario_id = c.psicologo_id 
-                    AND c.fecha BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-                    AND c.estado IN ('programada', 'confirmada')
-                    AND DAYNAME(c.fecha) = d.dia_semana
-                    AND TIME(c.hora) BETWEEN d.hora_inicio AND d.hora_fin
-                WHERE d.usuario_id = ?
-                AND d.activo = TRUE
-                GROUP BY d.dia_semana, d.hora_inicio, d.hora_fin
-                ORDER BY FIELD(d.dia_semana, 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo')
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: {
-                    estadisticas,
-                    proximas_citas: proximasCitas,
-                    pacientes_seguimiento: pacientesSeguimiento,
-                    observaciones_recientes: observacionesRecientes,
-                    disponibilidad_semana: disponibilidadSemana,
-                    ultima_actualizacion: new Date().toISOString()
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerDashboardPsicologo:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener dashboard de psicólogo'
-            });
-        }
-    }
-    
-    static async obtenerDashboardBecario(req, res) {
-        try {
-            const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
-            
-            
-            // Estadísticas del becario
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes asignados
-                    (SELECT COUNT(DISTINCT paciente_id) FROM asignaciones WHERE becario_id = ? AND estado = 'activa') as pacientes_asignados,
-                    
-                    -- Citas de hoy
-                    (SELECT COUNT(*) FROM citas WHERE becario_id = ? AND fecha = CURDATE() AND estado IN ('programada', 'confirmada')) as citas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE becario_id = ? AND fecha = CURDATE() AND estado = 'completada') as citas_completadas_hoy,
-                    
-                    -- Citas totales
-                    (SELECT COUNT(*) FROM citas WHERE becario_id = ? AND fecha BETWEEN DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND CURDATE()) as citas_mes,
-                    (SELECT COUNT(*) FROM citas WHERE becario_id = ? AND estado = 'completada') as citas_completadas_total,
-                    
-                    -- Observaciones recibidas
-                    (SELECT COUNT(*) FROM observaciones_becarios WHERE becario_id = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as observaciones_mes,
-                    (SELECT AVG(calificacion) FROM observaciones_becarios WHERE becario_id = ?) as promedio_calificacion,
-                    
-                    -- Supervisor
-                    (SELECT CONCAT(u.nombre, ' ', u.apellido) FROM asignaciones a 
-                     JOIN users u ON a.psicologo_id = u.id 
-                     WHERE a.becario_id = ? AND a.estado = 'activa' LIMIT 1) as supervisor
-            `, {
-                replacements: [usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Citas de hoy
-            const citasHoy = await sequelize.query(`
-                SELECT 
-                    c.id,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    c.estado,
-                    c.tipo_consulta,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    p.telefono as paciente_telefono,
-                    u_psi.nombre as psicologo_nombre
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
-                WHERE c.becario_id = ?
-                AND c.fecha = CURDATE()
-                AND c.estado IN ('programada', 'confirmada', 'completada')
-                ORDER BY c.hora
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Próximas citas
-            const proximasCitas = await sequelize.query(`
-                SELECT 
-                    c.id,
-                    c.fecha,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    c.estado,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    p.telefono as paciente_telefono
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                WHERE c.becario_id = ?
-                AND c.fecha > CURDATE()
-                AND c.estado IN ('programada', 'confirmada')
-                ORDER BY c.fecha, c.hora
-                LIMIT 10
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Observaciones recientes
-            const observacionesRecientes = await sequelize.query(`
-                SELECT 
-                    ob.id,
-                    ob.fecha,
-                    ob.aspecto_evaluado,
-                    ob.calificacion,
-                    ob.fortalezas,
-                    ob.areas_mejora,
-                    CONCAT(u_sup.nombre, ' ', u_sup.apellido) as supervisor,
-                    ob.fecha_seguimiento
-                FROM observaciones_becarios ob
-                JOIN users u_sup ON ob.supervisor_id = u_sup.id
-                WHERE ob.becario_id = ?
-                ORDER BY ob.fecha DESC
-                LIMIT 5
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Tareas pendientes (sesiones sin registro)
-            const tareasPendientes = await sequelize.query(`
-                SELECT 
-                    c.id as cita_id,
-                    c.fecha,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    DATEDIFF(CURDATE(), c.fecha) as dias_pasados
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                WHERE c.becario_id = ?
-                AND c.estado = 'completada'
-                AND NOT EXISTS (SELECT 1 FROM sesiones s WHERE s.cita_id = c.id)
-                AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                ORDER BY c.fecha DESC
-                LIMIT 5
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            // Disponibilidad
-            const disponibilidad = await sequelize.query(`
-                SELECT 
-                    dia_semana,
-                    TIME_FORMAT(hora_inicio, '%H:%i') as hora_inicio,
-                    TIME_FORMAT(hora_fin, '%H:%i') as hora_fin
-                FROM disponibilidades
-                WHERE usuario_id = ?
-                AND activo = TRUE
-                ORDER BY FIELD(dia_semana, 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo')
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
-            });
-            
-            res.json({
-                success: true,
-                data: {
-                    estadisticas,
-                    citas_hoy,
-                    proximas_citas,
-                    observaciones_recientes,
-                    tareas_pendientes,
-                    disponibilidad,
-                    ultima_actualizacion: new Date().toISOString()
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerDashboardBecario:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener dashboard de becario'
-            });
-        }
-    }
-    
-    static async obtenerMetricasGlobales(req, res) {
-        try {
-            const { periodo = 'mes' } = req.query; // mes, trimestre, semestre, año
-            
-            let intervalo;
-            switch (periodo) {
-                case 'mes':
-                    intervalo = 'INTERVAL 30 DAY';
-                    break;
-                case 'trimestre':
-                    intervalo = 'INTERVAL 90 DAY';
-                    break;
-                case 'semestre':
-                    intervalo = 'INTERVAL 180 DAY';
-                    break;
-                case 'año':
-                    intervalo = 'INTERVAL 365 DAY';
-                    break;
-                default:
-                    intervalo = 'INTERVAL 30 DAY';
-            }
-            
-            // Métricas principales
-            const [metricas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes
-                    COUNT(DISTINCT p.id) as total_pacientes,
-                    COUNT(DISTINCT CASE WHEN p.activo = TRUE THEN p.id END) as pacientes_activos,
-                    COUNT(DISTINCT CASE WHEN p.activo = FALSE THEN p.id END) as pacientes_inactivos,
-                    
-                    -- Citas
-                    COUNT(DISTINCT c.id) as total_citas,
-                    COUNT(DISTINCT CASE WHEN c.estado = 'completada' THEN c.id END) as citas_completadas,
-                    COUNT(DISTINCT CASE WHEN c.estado = 'cancelada' THEN c.id END) as citas_canceladas,
-                    
-                    -- Sesiones
-                    COUNT(DISTINCT s.id) as sesiones_registradas,
-                    
-                    -- Altas
-                    COUNT(DISTINCT a.id) as altas_realizadas,
-                    COUNT(DISTINCT CASE WHEN a.tipo_alta = 'terapeutica' THEN a.id END) as altas_terapeuticas,
-                    
-                    -- Tasa de completitud
-                    ROUND(COUNT(DISTINCT CASE WHEN c.estado = 'completada' THEN c.id END) * 100.0 / 
-                          NULLIF(COUNT(DISTINCT c.id), 0), 2) as tasa_completitud_citas,
-                    
-                    -- Tasa de abandono
-                    ROUND(COUNT(DISTINCT CASE WHEN a.tipo_alta = 'abandono' THEN a.id END) * 100.0 / 
-                          NULLIF(COUNT(DISTINCT a.id), 0), 2) as tasa_abandono
-                    
-                FROM pacientes p
-                LEFT JOIN citas c ON p.id = c.paciente_id AND c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-                LEFT JOIN sesiones s ON c.id = s.cita_id
-                LEFT JOIN altas a ON p.id = a.paciente_id AND a.fecha_alta >= DATE_SUB(CURDATE(), ${intervalo})
-                WHERE p.created_at >= DATE_SUB(CURDATE(), ${intervalo})
-            `, { type: QueryTypes.SELECT });
-            
-            // Evolución semanal
-            const evolucionSemanal = await sequelize.query(`
-                SELECT 
-                    YEARWEEK(c.fecha, 1) as semana,
-                    COUNT(DISTINCT c.id) as total_citas,
-                    COUNT(DISTINCT CASE WHEN c.estado = 'completada' THEN c.id END) as citas_completadas,
-                    COUNT(DISTINCT p.id) as pacientes_atendidos,
-                    COUNT(DISTINCT a.id) as altas_realizadas
-                FROM citas c
-                LEFT JOIN pacientes p ON c.paciente_id = p.id
-                LEFT JOIN altas a ON p.id = a.paciente_id AND YEARWEEK(a.fecha_alta, 1) = YEARWEEK(c.fecha, 1)
-                WHERE c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-                GROUP BY YEARWEEK(c.fecha, 1)
-                ORDER BY semana DESC
-                LIMIT 12
-            `, { type: QueryTypes.SELECT });
-            
-            // Distribución por tipo de consulta
-            const distribucionConsulta = await sequelize.query(`
-                SELECT 
-                    c.tipo_consulta,
-                    COUNT(*) as cantidad,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM citas c
-                WHERE c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-                GROUP BY c.tipo_consulta
-            `, { type: QueryTypes.SELECT });
-            
-            // Distribución por motivo de alta
-            const distribucionAlta = await sequelize.query(`
-                SELECT 
-                    a.tipo_alta,
-                    COUNT(*) as cantidad,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM altas a
-                WHERE a.fecha_alta >= DATE_SUB(CURDATE(), ${intervalo})
-                GROUP BY a.tipo_alta
-            `, { type: QueryTypes.SELECT });
-            
-            res.json({
-                success: true,
-                data: {
-                    periodo,
-                    metricas,
-                    evolucion_semanal: evolucionSemanal.reverse(),
-                    distribucion_consulta: distribucionConsulta,
-                    distribucion_alta: distribucionAlta,
-                    fecha_consulta: new Date().toISOString()
-                }
-            });
-            
-        } catch (error) {
-            console.error('Error en obtenerMetricasGlobales:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener métricas globales'
-            });
-        }
-    }
-}
-
-module.exports = DashboardController;
-
-
-/backend/src/services/api.js:
---------------------------------------------------------------------------------
-const API_BASE_URL = 'http://localhost:3000/api';
-
-class ApiService {
-  static getToken() {
-    return localStorage.getItem('token');
-  }
-
-  static getHeaders() {
-    const token = this.getToken();
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-  }
-
-  static async get(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async post(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async put(url, data) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'PUT',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async delete(url) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(response);
-  }
-
-  static async handleResponse(response) {
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error en la petición');
-    }
-    return response.json();
-  }
-  static async getDashboardCoordinador() {
-    return this.get('/dashboard/coordinador');
-  }
-
-  static async getMetricasGlobales(periodo = 'mes') {
-    return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
-  }
-
-  static async getEstadisticas() {
-    return this.get('/estadisticas/generales');
-  }
-}
-
-export default ApiService;
-
-
-/backend/src/models/userModel.js:
---------------------------------------------------------------------------------
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
-
-const User = sequelize.define('User', {
-    id: {
-        type: DataTypes.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
-    },
-    email: {
-        type: DataTypes.STRING(255),
-        allowNull: false,
-        unique: {
-            msg: 'El correo electrónico ya está registrado'
-        },
-        validate: {
-            isEmail: {
-                msg: 'Debe proporcionar un correo electrónico válido'
-            },
-            notEmpty: true
-        }
-    },
-    password: {
-        type: DataTypes.STRING(255),
-        allowNull: false,
-        validate: {
-            notEmpty: true
-        }
-    },
-    nombre: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    apellido: {
-        type: DataTypes.STRING(100),
-        allowNull: false
-    },
-    telefono: {
-        type: DataTypes.STRING(20),
-        allowNull: true
-    },
-    rol: {
-        type: DataTypes.ENUM('coordinador', 'psicologo', 'becario'),
-        allowNull: false,
-        defaultValue: 'becario'
-    },
-    especialidad: {
-        type: DataTypes.STRING(100),
-        allowNull: true
-    },
-    fundacion_id: {
-        type: DataTypes.INTEGER,
-        allowNull: true
-    },
-    activo: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: true
-    }
-}, {
-    tableName: 'users',
-    timestamps: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at',
-    underscored: true
-});
-
-module.exports = User;
-
-
-/frontend/src/App.js:
---------------------------------------------------------------------------------
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import Login from './components/Auth/Login';
-import RoleRouter from './components/Auth/RoleRouter';
-import ProtectedRoute from './components/Auth/ProtectedRoute';
-
-// Importa los modales
-import ConfirmModal from './components/Common/ConfirmModal';
-import NotificationModal from './components/Common/NotificationModal';
-
-// Páginas para Becarios
-import BecarioDashboard from './pages/becario/DashboardPage';
-import BecarioCitas from './pages/becario/CitasPage';
-import BecarioPacientes from './pages/becario/PacientesPage';
-import BecarioNotificaciones from './pages/becario/NotificacionesPage';
-import BecarioObservaciones from './pages/becario/ObservacionesPage';
-
-// Páginas para Psicólogos
-import PsicologoDashboard from './pages/psicologo/DashboardPage';
-import PsicologoPacientes from './pages/psicologo/PacientesPage';
-import PsicologoCitas from './pages/psicologo/CitasPage';
-import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
-import PsicologoSesiones from './pages/psicologo/SesionesPage';
-import PsicologoSupervision from './pages/psicologo/SupervisionPage';
-
-// Páginas para Coordinadores
-import CoordinadorDashboard from './pages/coordinador/DashboardPage';
-import CoordinadorUsuarios from './pages/coordinador/UsuariosPage';
-import CoordinadorPacientes from './pages/coordinador/PacientesPage';
-import CoordinadorAsignaciones from './pages/coordinador/AsignacionesPage';
-import CoordinadorAgenda from './pages/coordinador/AgendaPage';
-import CoordinadorReportes from './pages/coordinador/ReportesPage';
-import CoordinadorAltas from './pages/coordinador/AltasPage';
-import CoordinadorConfiguracion from './pages/coordinador/ConfiguracionPage';
-
-function App() {
-  return (
-    <Router>
-      <AuthProvider>
-        {/* Agrega los modales aquí */}
-        <ConfirmModal />
-        <NotificationModal />
-        
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          {/* Rutas de Becario */}
-          <Route path="/" element={<RoleRouter />}>
-            <Route index element={<BecarioDashboard />} />
-            
-            {/* Becario */}
-            <Route path="becario/dashboard" element={<BecarioDashboard />} />
-            <Route path="becario/citas" element={<BecarioCitas />} />
-            <Route path="becario/pacientes" element={<BecarioPacientes />} />
-            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
-            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
-            
-            {/* Psicólogo */}
-            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
-            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
-            <Route path="psicologo/citas" element={<PsicologoCitas />} />
-            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
-            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
-            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
-            
-            {/* Coordinador */}
-            <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
-            <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
-            <Route path="coordinador/pacientes" element={<CoordinadorPacientes />} />
-            <Route path="coordinador/asignaciones" element={<CoordinadorAsignaciones />} />
-            <Route path="coordinador/agenda" element={<CoordinadorAgenda />} />
-            <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
-            <Route path="coordinador/altas" element={<CoordinadorAltas />} />
-            <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
-          </Route>
-          
-          {/* Redirección por defecto */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </AuthProvider>
-    </Router>
-  );
-}
-
-export default App;
-
-
-/backend/src/routes/dashboardRoutes.js:
---------------------------------------------------------------------------------
-const express = require('express');
-const router = express.Router();
-const DashboardController = require('../controllers/dashboardController');
-const verifyToken = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
-
-// Todas las rutas requieren autenticación
-router.use(verifyToken);
-
-// Dashboards por rol
-router.get('/coordinador', requireRole(['coordinador']), DashboardController.obtenerDashboardCoordinador);
-router.get('/psicologo', requireRole(['psicologo']), DashboardController.obtenerDashboardPsicologo);
-router.get('/becario', requireRole(['becario']), DashboardController.obtenerDashboardBecario);
-
-// Métricas globales
-router.get('/metricas-globales', requireRole(['coordinador']), DashboardController.obtenerMetricasGlobales);
-
-module.exports = router;
-
-
 ================================================================================
 RESUMEN PARA PSICOLOGO_DASHBOARD:
 ----------------------------------------
-Archivos necesarios: 14
-Archivos encontrados: 14
-Archivos no encontrados: 0
+Archivos necesarios: 13
+Archivos encontrados: 12
+Archivos no encontrados: 1
+
+Archivos faltantes:
+  - frontend/src/pages/psicologo/psicologo.css

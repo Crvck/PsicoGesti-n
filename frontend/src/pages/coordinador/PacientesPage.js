@@ -104,6 +104,8 @@ const CoordinadorPacientes = () => {
 
         const created = await res.json();
         setPacientes(prev => [...prev, created]);
+        // Emitir evento para notificar a otras vistas (ej. Asignaciones) que un paciente fue creado
+        window.dispatchEvent(new CustomEvent('pacienteCreado', { detail: created }));
         notifications.success('Paciente creado exitosamente');
       } catch (error) {
         console.error('Error creando paciente:', error);

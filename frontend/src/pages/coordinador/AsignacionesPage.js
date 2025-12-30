@@ -24,6 +24,17 @@ const CoordinadorAsignaciones = () => {
     fetchData();
   }, []);
 
+  // Escuchar evento global cuando se crea un paciente para refrescar listas
+  useEffect(() => {
+    const onPacienteCreado = (e) => {
+      // opcional: podríamos usar e.detail si necesitamos datos del paciente
+      fetchData();
+    };
+
+    window.addEventListener('pacienteCreado', onPacienteCreado);
+    return () => window.removeEventListener('pacienteCreado', onPacienteCreado);
+  }, []);
+
   const fetchData = async () => {
     try {
       setLoading(true);

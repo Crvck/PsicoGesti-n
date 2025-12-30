@@ -3,6 +3,7 @@ const router = express.Router();
 const verifyToken = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
 const Paciente = require('../models/pacienteModel');
+const Expediente = require('../models/expedienteModel');
 const { QueryTypes } = require('sequelize');
 const sequelize = require('../config/db'); // AÑADE ESTA IMPORTACIÓN
 
@@ -59,6 +60,20 @@ router.post('/', verifyToken, requireRole(['coordinador']), async (req, res) => 
       fundacion_id: data.fundacion_id || null
     });
 
+    // Crear expediente inicial si se proporcionó motivo_consulta
+    if (data.motivo_consulta) {
+      try {
+        await Expediente.create({
+          paciente_id: paciente.id,
+          motivo_consulta: data.motivo_consulta,
+          psicologo_id: data.psicologo_id || null
+        });
+      } catch (err) {
+        // No bloquear la creación del paciente por error al crear expediente
+        console.warn('No se pudo crear expediente inicial:', err.message);
+      }
+    }
+
     res.status(201).json({
       id: paciente.id,
       nombre: paciente.nombre,
@@ -71,7 +86,8 @@ router.post('/', verifyToken, requireRole(['coordinador']), async (req, res) => 
       estado: paciente.estado,
       activo: paciente.activo,
       fecha_ingreso: paciente.created_at,
-      sesiones_completadas: 0
+      sesiones_completadas: 0,
+      motivo_consulta: data.motivo_consulta || null
     });
   } catch (error) {
     console.error('Error al crear paciente:', error);
@@ -198,8 +214,9 @@ router.get('/activos', verifyToken, requireRole(['coordinador', 'psicologo', 'be
 router.get('/sin-asignar', verifyToken, requireRole(['coordinador']), async (req, res) => {
   try {
     const query = `
-      SELECT p.id, p.nombre, p.apellido, p.motivo_consulta, p.created_at as fecha_ingreso
+      SELECT p.id, p.nombre, p.apellido, COALESCE(e.motivo_consulta, '') as motivo_consulta, p.created_at as fecha_ingreso
       FROM pacientes p
+      LEFT JOIN expedientes e ON p.id = e.paciente_id
       LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
       WHERE p.activo = true
       AND a.id IS NULL

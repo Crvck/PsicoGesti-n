@@ -172,7 +172,15 @@ const PsicologoPacientes = () => {
                     <div className="text-small">{paciente.telefono}</div>
                   </td>
                   <td>
-                    <div className="diagnostico-tag">{paciente.diagnostico}</div>
+                    <div className="diagnostico-tag">
+                      <div className="font-bold">{paciente.diagnostico || paciente.motivo_consulta || 'Sin diagnóstico'}</div>
+                      {paciente.motivo_consulta && paciente.diagnostico && (
+                        <div className="text-small">Motivo: {paciente.motivo_consulta}</div>
+                      )}
+                      {!paciente.diagnostico && paciente.motivo_consulta && (
+                        <div className="text-small">{paciente.motivo_consulta}</div>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div className="font-bold">{paciente.sesiones_completadas}</div>

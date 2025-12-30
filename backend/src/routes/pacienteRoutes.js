@@ -136,9 +136,22 @@ router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res
   }
 });
 
-// Obtener pacientes activos
-router.get('/activos', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+// Obtener pacientes activos (coordinador -> todos, psicologo/becario -> solo asignados a él/ella)
+router.get('/activos', verifyToken, requireRole(['coordinador', 'psicologo', 'becario']), async (req, res) => {
     try {
+        const userId = req.user.id;
+        const [userRow] = await sequelize.query('SELECT rol FROM users WHERE id = ?', { replacements: [userId], type: QueryTypes.SELECT });
+        const role = userRow && userRow.rol;
+        const isAssignedRole = role === 'psicologo' || role === 'becario';
+
+        let whereAdditional = '';
+        const replacements = {};
+        if (isAssignedRole) {
+            // Si es psicólogo o becario, mostrar solo pacientes con asignación activa donde sea psicólogo O becario
+            whereAdditional = ' AND (a.psicologo_id = :userId OR a.becario_id = :userId)';
+            replacements.userId = userId;
+        }
+
         const query = `
             SELECT 
                 p.*,
@@ -156,12 +169,14 @@ router.get('/activos', verifyToken, requireRole(['coordinador', 'psicologo']), a
             LEFT JOIN users u_bec ON a.becario_id = u_bec.id
             LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
             WHERE p.activo = true
+            ${whereAdditional}
             GROUP BY p.id, e.id, u_psi.id, u_bec.id, a.id
             ORDER BY p.apellido, p.nombre
         `;
         
         const pacientes = await sequelize.query(query, {
-            type: QueryTypes.SELECT
+            type: QueryTypes.SELECT,
+            replacements
         });
         
         res.json({
@@ -177,6 +192,27 @@ router.get('/activos', verifyToken, requireRole(['coordinador', 'psicologo']), a
             error: error.message
         });
     }
+});
+
+// Obtener pacientes sin asignar (solo coordinador)
+router.get('/sin-asignar', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const query = `
+      SELECT p.id, p.nombre, p.apellido, p.motivo_consulta, p.created_at as fecha_ingreso
+      FROM pacientes p
+      LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+      WHERE p.activo = true
+      AND a.id IS NULL
+      ORDER BY p.apellido, p.nombre
+    `;
+
+    const pacientes = await sequelize.query(query, { type: QueryTypes.SELECT });
+
+    res.json({ success: true, data: pacientes });
+  } catch (error) {
+    console.error('Error al obtener pacientes sin asignar:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener pacientes sin asignar', error: error.message });
+  }
 });
 
 router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {

@@ -17,70 +17,45 @@ const PsicologoPacientes = () => {
 
   const fetchPacientes = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setPacientes([
-          {
-            id: 1,
-            nombre: 'Carlos Gómez',
-            edad: 25,
-            telefono: '555-1234',
-            email: 'carlos@email.com',
-            motivo_consulta: 'Ansiedad académica',
-            diagnostico: 'Trastorno de ansiedad generalizada',
-            ultima_sesion: '2024-01-10',
-            proxima_cita: '2024-01-17',
-            sesiones_completadas: 8,
-            estado: 'activo',
-            becario: 'Juan Pérez'
-          },
-          {
-            id: 2,
-            nombre: 'Mariana López',
-            edad: 28,
-            telefono: '555-5678',
-            email: 'mariana@email.com',
-            motivo_consulta: 'Estrés laboral',
-            diagnostico: 'Síndrome de burnout',
-            ultima_sesion: '2024-01-09',
-            proxima_cita: '2024-01-16',
-            sesiones_completadas: 12,
-            estado: 'activo',
-            becario: 'Sofía Ramírez'
-          },
-          {
-            id: 3,
-            nombre: 'Roberto Sánchez',
-            edad: 22,
-            telefono: '555-9012',
-            email: 'roberto@email.com',
-            motivo_consulta: 'Problemas de adaptación',
-            diagnostico: 'Trastorno adaptativo',
-            ultima_sesion: '2024-01-08',
-            proxima_cita: '2024-01-15',
-            sesiones_completadas: 5,
-            estado: 'activo',
-            becario: null
-          },
-          {
-            id: 4,
-            nombre: 'Ana Rodríguez',
-            edad: 35,
-            telefono: '555-3456',
-            email: 'ana@email.com',
-            motivo_consulta: 'Depresión',
-            diagnostico: 'Episodio depresivo moderado',
-            ultima_sesion: '2024-01-05',
-            proxima_cita: null,
-            sesiones_completadas: 20,
-            estado: 'alta_terapeutica',
-            becario: 'Juan Pérez'
-          }
-        ]);
-        setLoading(false);
-      }, 1000);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        console.error('Error fetching pacientes activos:', res.status);
+        return;
+      }
+
+      const json = await res.json();
+      // El endpoint puede devolver { success: true, data: [...] } o directamente un array
+      const data = Array.isArray(json) ? json : (json.data || []);
+
+      const mapped = data.map(p => ({
+        id: p.id,
+        nombre: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim(),
+        apellido: p.apellido,
+        edad: p.edad,
+        telefono: p.telefono,
+        email: p.email,
+        motivo_consulta: p.motivo_consulta || p.motivo || '',
+        diagnostico: p.diagnostico_presuntivo || p.diagnostico || '',
+        ultima_sesion: p.ultima_sesion || null,
+        proxima_cita: p.proxima_cita || null,
+        sesiones_completadas: p.sesiones_completadas || 0,
+        estado: p.estado,
+        becario: p.becario_nombre || p.becario || null,
+        activo: p.activo !== undefined ? p.activo : true
+      }));
+
+      setPacientes(mapped);
     } catch (error) {
       console.error('Error al obtener pacientes:', error);
+    } finally {
       setLoading(false);
     }
   };

@@ -16,6 +16,9 @@ const CoordinadorAsignaciones = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedBecario, setSelectedBecario] = useState(null);
   const [selectedPaciente, setSelectedPaciente] = useState(null);
+  const [selectedPsicologo, setSelectedPsicologo] = useState(null);
+  const [assignNotes, setAssignNotes] = useState('');
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -24,50 +27,102 @@ const CoordinadorAsignaciones = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      
-      // Simulación de datos
-      setTimeout(() => {
-        setBecarios([
-          { id: 1, nombre: 'Juan Pérez', especialidad: 'Practicante', pacientes_asignados: 3, capacidad: 5, activo: true },
-          { id: 2, nombre: 'Sofía Ramírez', especialidad: 'Practicante', pacientes_asignados: 2, capacidad: 4, activo: true },
-          { id: 3, nombre: 'Pedro Hernández', especialidad: 'Practicante', pacientes_asignados: 1, capacidad: 3, activo: true },
-          { id: 4, nombre: 'Nuevo Becario', especialidad: 'Practicante', pacientes_asignados: 0, capacidad: 3, activo: false }
-        ]);
 
-        setPsicologos([
-          { id: 1, nombre: 'Lic. Luis Fernández', especialidad: 'TCC', pacientes_total: 12 },
-          { id: 2, nombre: 'Lic. Laura Gutiérrez', especialidad: 'Terapia Familiar', pacientes_total: 8 }
-        ]);
+      const token = localStorage.getItem('token');
 
-        setPacientesSinAsignar([
-          { id: 1, nombre: 'Ana Rodríguez', motivo: 'Depresión', fecha_ingreso: '2024-01-05' },
-          { id: 2, nombre: 'Carlos Martínez', motivo: 'Ansiedad social', fecha_ingreso: '2024-01-08' },
-          { id: 3, nombre: 'María González', motivo: 'Estrés postraumático', fecha_ingreso: '2024-01-10' }
-        ]);
+      // Fetch becarios
+      const resBec = await fetch('http://localhost:3000/api/users/becarios', {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      const becariosData = await resBec.json();
+      setBecarios(becariosData || []);
 
-        setAsignaciones([
-          { id: 1, paciente: 'Carlos Gómez', becario: 'Juan Pérez', psicologo: 'Lic. Luis Fernández', fecha_asignacion: '2023-10-15', estado: 'activa' },
-          { id: 2, paciente: 'Mariana López', becario: 'Sofía Ramírez', psicologo: 'Lic. Luis Fernández', fecha_asignacion: '2023-11-20', estado: 'activa' },
-          { id: 3, paciente: 'Roberto Sánchez', becario: 'Pedro Hernández', psicologo: 'Lic. Luis Fernández', fecha_asignacion: '2023-12-05', estado: 'activa' },
-          { id: 4, paciente: 'Antonio Silva', becario: 'Juan Pérez', psicologo: 'Lic. Laura Gutiérrez', fecha_asignacion: '2024-01-03', estado: 'finalizada' }
-        ]);
+      // Fetch all users and filter psicologos
+      const resUsers = await fetch('http://localhost:3000/api/users', {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      const usersData = await resUsers.json();
+      const psicologosList = (usersData || []).filter(u => u.rol === 'psicologo');
+      setPsicologos(psicologosList);
 
-        setLoading(false);
-      }, 1000);
+      // Fetch pacientes sin asignar
+      const resPacSin = await fetch('http://localhost:3000/api/pacientes/sin-asignar', {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      const pacSinJson = await resPacSin.json();
+      const pacSinData = Array.isArray(pacSinJson) ? pacSinJson : (pacSinJson.data || []);
+      setPacientesSinAsignar(pacSinData.map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}`, motivo: p.motivo_consulta || '', fecha_ingreso: p.fecha_ingreso })));
+
+      // Fetch asignaciones activas
+      const resAsig = await fetch('http://localhost:3000/api/asignaciones', {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      const asigJson = await resAsig.json();
+      const asigData = Array.isArray(asigJson) ? asigJson : (asigJson.data || []);
+      setAsignaciones(asigData.map(a => ({
+        id: a.id,
+        paciente: a.Paciente ? `${a.Paciente.nombre} ${a.Paciente.apellido}` : (a.paciente || ''),
+        becario: a.Becario ? `${a.Becario.nombre} ${a.Becario.apellido}` : (a.becario || ''),
+        psicologo: a.Psicologo ? `${a.Psicologo.nombre} ${a.Psicologo.apellido}` : (a.psicologo || ''),
+        fecha_asignacion: a.fecha_inicio || a.created_at,
+        estado: a.estado
+      })));
+
+      setLoading(false);
     } catch (error) {
       console.error('Error cargando asignaciones:', error);
       setLoading(false);
     }
   };
 
-  const handleAsignarPaciente = (pacienteId, becarioId) => {
-    // Lógica para asignar paciente
-    notifications.success(`Paciente asignado exitosamente al becario`);
-    setShowModal(false);
+  const handleAsignarPaciente = async () => {
+    if (!selectedPaciente || !selectedPsicologo) {
+      notifications.error('Seleccione paciente y psicólogo');
+      return;
+    }
+
+    try {
+      setAssigning(true);
+      const token = localStorage.getItem('token');
+      const body = {
+        paciente_id: selectedPaciente.id,
+        psicologo_id: selectedPsicologo.id,
+        becario_id: selectedBecario ? selectedBecario.id : null,
+        notas: assignNotes
+      };
+
+      const res = await fetch('http://localhost:3000/api/asignaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+        body: JSON.stringify(body)
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        notifications.error(json.message || 'Error creando asignación');
+        setAssigning(false);
+        return;
+      }
+
+      notifications.success('Asignación creada exitosamente');
+      setShowModal(false);
+      setSelectedPaciente(null);
+      setSelectedBecario(null);
+      setSelectedPsicologo(null);
+      setAssignNotes('');
+
+      // Refrescar datos
+      await fetchData();
+    } catch (error) {
+      console.error('Error al asignar paciente:', error);
+      notifications.error('Error al asignar paciente');
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const handleReasignar = (asignacionId, nuevoBecarioId) => {
-    // Lógica para reasignar
+    // Lógica para reasignar (por ahora simple placeholder)
     notifications.success(`Paciente reasignado exitosamente`);
   };
 
@@ -76,7 +131,20 @@ const CoordinadorAsignaciones = () => {
       const confirmado = await confirmations.warning('¿Estás seguro de finalizar esta asignación?');
       
       if (confirmado) {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`http://localhost:3000/api/asignaciones/${asignacionId}/finalizar`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+        });
+
+        const json = await res.json();
+        if (!res.ok) {
+          notifications.error(json.message || 'Error finalizando asignación');
+          return;
+        }
+
         notifications.success('Asignación finalizada exitosamente');
+        await fetchData();
       }
     } catch (error) {
       console.error('Error al finalizar asignación:', error);
@@ -328,7 +396,11 @@ const CoordinadorAsignaciones = () => {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Seleccionar Paciente</label>
-                  <select className="select-field">
+                  <select className="select-field" value={selectedPaciente?.id || ''} onChange={(e) => {
+                    const id = Number(e.target.value);
+                    const p = pacientesSinAsignar.find(x => x.id === id);
+                    setSelectedPaciente(p || null);
+                  }}>
                     <option value="">Seleccionar paciente...</option>
                     {pacientesSinAsignar.map(paciente => (
                       <option key={paciente.id} value={paciente.id}>
@@ -340,11 +412,15 @@ const CoordinadorAsignaciones = () => {
                 
                 <div className="form-group">
                   <label>Seleccionar Becario</label>
-                  <select className="select-field">
+                  <select className="select-field" value={selectedBecario?.id || ''} onChange={(e) => {
+                    const id = Number(e.target.value);
+                    const b = becarios.find(x => x.id === id);
+                    setSelectedBecario(b || null);
+                  }}>
                     <option value="">Seleccionar becario...</option>
                     {becarios.filter(b => b.activo).map(becario => (
                       <option key={becario.id} value={becario.id}>
-                        {becario.nombre} ({becario.pacientes_asignados}/{becario.capacidad})
+                        {becario.nombre} {becario.pacientes_asignados ? `(${becario.pacientes_asignados}/${becario.capacidad || '-'})` : ''}
                       </option>
                     ))}
                   </select>
@@ -352,7 +428,11 @@ const CoordinadorAsignaciones = () => {
                 
                 <div className="form-group">
                   <label>Psicólogo Supervisor</label>
-                  <select className="select-field">
+                  <select className="select-field" value={selectedPsicologo?.id || ''} onChange={(e) => {
+                    const id = Number(e.target.value);
+                    const p = psicologos.find(x => x.id === id);
+                    setSelectedPsicologo(p || null);
+                  }}>
                     <option value="">Seleccionar psicólogo...</option>
                     {psicologos.map(psicologo => (
                       <option key={psicologo.id} value={psicologo.id}>
@@ -368,16 +448,18 @@ const CoordinadorAsignaciones = () => {
                     className="textarea-field" 
                     placeholder="Observaciones especiales para esta asignación..."
                     rows="3"
+                    value={assignNotes}
+                    onChange={(e) => setAssignNotes(e.target.value)}
                   />
                 </div>
               </div>
             </div>
             
             <div className="modal-footer">
-              <button className="btn-primary">
-                <FiCheckCircle /> Confirmar Asignación
+              <button className="btn-primary" onClick={handleAsignarPaciente} disabled={assigning}>
+                <FiCheckCircle /> {assigning ? 'Asignando...' : 'Confirmar Asignación'}
               </button>
-              <button className="btn-danger" onClick={() => setShowModal(false)}>
+              <button className="btn-danger" onClick={() => setShowModal(false)} disabled={assigning}>
                 Cancelar
               </button>
             </div>

@@ -16,53 +16,43 @@ const BecarioPacientes = () => {
 
   const fetchPacientes = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      
-      // En un proyecto real, esto vendría de un endpoint específico
-      // Simulamos datos por ahora
-      setTimeout(() => {
-        setPacientes([
-          {
-            id: 1,
-            nombre: 'Carlos Gómez',
-            edad: 25,
-            telefono: '555-1234',
-            email: 'carlos@email.com',
-            motivo_consulta: 'Ansiedad académica',
-            ultima_sesion: '2024-01-10',
-            proxima_cita: '2024-01-17',
-            sesiones_completadas: 3,
-            psicologo: 'Lic. Luis Fernández'
-          },
-          {
-            id: 2,
-            nombre: 'Mariana López',
-            edad: 28,
-            telefono: '555-5678',
-            email: 'mariana@email.com',
-            motivo_consulta: 'Estrés laboral',
-            ultima_sesion: '2024-01-09',
-            proxima_cita: '2024-01-16',
-            sesiones_completadas: 5,
-            psicologo: 'Lic. Luis Fernández'
-          },
-          {
-            id: 3,
-            nombre: 'Roberto Sánchez',
-            edad: 22,
-            telefono: '555-9012',
-            email: 'roberto@email.com',
-            motivo_consulta: 'Problemas de adaptación',
-            ultima_sesion: '2024-01-08',
-            proxima_cita: '2024-01-15',
-            sesiones_completadas: 2,
-            psicologo: 'Lic. Luis Fernández'
-          }
-        ]);
-        setLoading(false);
-      }, 1000);
+      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        console.error('Error fetching pacientes activos:', res.status);
+        return;
+      }
+
+      const json = await res.json();
+      const data = Array.isArray(json) ? json : (json.data || []);
+
+      const mapped = data.map(p => ({
+        id: p.id,
+        nombre: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim(),
+        edad: p.edad,
+        telefono: p.telefono,
+        email: p.email,
+        motivo_consulta: p.motivo_consulta || p.motivo || '',
+        ultima_sesion: p.ultima_sesion || null,
+        proxima_cita: p.proxima_cita || null,
+        sesiones_completadas: p.sesiones_completadas || 0,
+        psicologo: p.psicologo_nombre || null,
+        becario: p.becario_nombre || null,
+        estado: p.estado,
+        activo: p.activo !== undefined ? p.activo : true
+      }));
+
+      setPacientes(mapped);
     } catch (error) {
       console.error('Error al obtener pacientes:', error);
+    } finally {
       setLoading(false);
     }
   };

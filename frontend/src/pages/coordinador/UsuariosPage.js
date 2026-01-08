@@ -3,6 +3,8 @@ import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPh
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, WidthType } from 'docx';
+import { saveAs } from 'file-saver';
 
 const CoordinadorUsuarios = () => {
   const [usuarios, setUsuarios] = useState([]);
@@ -228,6 +230,59 @@ const CoordinadorUsuarios = () => {
     });
   };
 
+  const exportarListado = async () => {
+    try {
+      
+      const titulo = filterRol ? `Listado de ${getRolLabel(filterRol).text}` : 'Listado de todos los usuarios';
+      const fecha = new Date().toLocaleString();
+      const rows = [];
+
+      // Header
+      rows.push(new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Nombre', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Email', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Teléfono', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Rol', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Especialidad', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Fecha Registro', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Estado', bold: true })] })] }),
+        ],
+      }));
+
+      filteredUsuarios.forEach(u => {
+        rows.push(new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph(`${u.nombre} ${u.apellido}`)] }),
+            new TableCell({ children: [new Paragraph(u.email || '')] }),
+            new TableCell({ children: [new Paragraph(u.telefono || '')] }),
+            new TableCell({ children: [new Paragraph(getRolLabel(u.rol).text)] }),
+            new TableCell({ children: [new Paragraph(u.especialidad || '')] }),
+            new TableCell({ children: [new Paragraph(u.fecha_registro ? new Date(u.fecha_registro).toLocaleDateString() : '')] }),
+            new TableCell({ children: [new Paragraph(u.activo ? 'Activo' : 'Inactivo')] }),
+          ],
+        }));
+      });
+
+      const doc = new Document({
+        sections: [{
+          children: [
+            new Paragraph({ text: titulo, heading: HeadingLevel.HEADING_1 }),
+            new Paragraph({ text: `Generado: ${fecha}`, spacing: { after: 200 } }),
+            new Table({ rows })
+          ]
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.docx`);
+      notifications.success('Descarga iniciada');
+    } catch (err) {
+      console.error('Error exportando listado:', err);
+      notifications.error('Error exportando listado');
+    }
+  };
+
   const getRolLabel = (rol) => {
     switch (rol) {
       case 'coordinador':
@@ -437,7 +492,7 @@ const CoordinadorUsuarios = () => {
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">
-            <button className="btn-primary w-100">
+            <button className="btn-primary w-100" onClick={exportarListado}>
               Exportar Listado
             </button>
             <button className="btn-secondary w-100">

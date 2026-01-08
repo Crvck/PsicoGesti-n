@@ -10,9 +10,25 @@ const sequelize = require('../config/db'); // AÑADE ESTA IMPORTACIÓN
 // Listar pacientes (solo coordinadores)
 router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
   try {
-    const pacientes = await Paciente.findAll({
-      order: [['apellido', 'ASC'], ['nombre', 'ASC']]
-    });
+    const query = `
+      SELECT p.*, COALESCE(e.motivo_consulta, '') as motivo_consulta
+      FROM pacientes p
+      LEFT JOIN expedientes e ON p.id = e.paciente_id
+      ORDER BY p.apellido, p.nombre
+    `;
+
+    const pacientes = await sequelize.query(query, { type: QueryTypes.SELECT });
+
+    // DEBUG: mostrar cantidad y algunas muestras
+    try {
+      console.log(`GET /api/pacientes -> encontrados ${pacientes.length} pacientes`);
+      if (pacientes.length > 0) {
+        const muestras = pacientes.slice(0, 5).map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}`, motivo: p.motivo_consulta }));
+        console.log('Muestras pacientes:', muestras);
+      }
+    } catch (logErr) {
+      console.warn('No fue posible loggear pacientes:', logErr.message);
+    }
 
     const mapped = pacientes.map(p => ({
       id: p.id,
@@ -26,6 +42,7 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
       estado: p.estado,
       activo: p.activo,
       notas: p.notas,
+      motivo_consulta: p.motivo_consulta || null,
       fundacion_id: p.fundacion_id,
       fecha_ingreso: p.created_at,
       fecha_alta: p.deleted_at || null
@@ -63,11 +80,12 @@ router.post('/', verifyToken, requireRole(['coordinador']), async (req, res) => 
     // Crear expediente inicial si se proporcionó motivo_consulta
     if (data.motivo_consulta) {
       try {
-        await Expediente.create({
+        const expediente = await Expediente.create({
           paciente_id: paciente.id,
           motivo_consulta: data.motivo_consulta,
           psicologo_id: data.psicologo_id || null
         });
+        console.log(`Se creó expediente inicial (paciente_id=${paciente.id}, expediente_id=${expediente.id})`);
       } catch (err) {
         // No bloquear la creación del paciente por error al crear expediente
         console.warn('No se pudo crear expediente inicial:', err.message);
@@ -224,6 +242,17 @@ router.get('/sin-asignar', verifyToken, requireRole(['coordinador']), async (req
     `;
 
     const pacientes = await sequelize.query(query, { type: QueryTypes.SELECT });
+
+    // DEBUG: mostrar algunos valores devueltos para verificar motivo_consulta
+    try {
+      console.log(`GET /api/pacientes/sin-asignar -> encontrados ${pacientes.length} pacientes`);
+      if (pacientes.length > 0) {
+        const muestras = pacientes.slice(0, 5).map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}`, motivo: p.motivo_consulta }));
+        console.log('Muestras:', muestras);
+      }
+    } catch (logErr) {
+      console.warn('No fue posible loggear pacientes sin asignar:', logErr.message);
+    }
 
     res.json({ success: true, data: pacientes });
   } catch (error) {

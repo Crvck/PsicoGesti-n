@@ -10,6 +10,7 @@ import confirmations from '../../utils/confirmations';
 const CoordinadorAsignaciones = () => {
   const [becarios, setBecarios] = useState([]);
   const [psicologos, setPsicologos] = useState([]);
+  const [showListType, setShowListType] = useState('becarios');
   const [pacientesSinAsignar, setPacientesSinAsignar] = useState([]);
   const [asignaciones, setAsignaciones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,6 +20,20 @@ const CoordinadorAsignaciones = () => {
   const [selectedPsicologo, setSelectedPsicologo] = useState(null);
   const [assignNotes, setAssignNotes] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [patientQuery, setPatientQuery] = useState('');
+  const [becarioQuery, setBecarioQuery] = useState('');
+  const [psicologoQuery, setPsicologoQuery] = useState('');
+  const [showPatientList, setShowPatientList] = useState(false);
+  const [showBecarioList, setShowBecarioList] = useState(false);
+  const [showPsicologoList, setShowPsicologoList] = useState(false);
+
+  useEffect(() => {
+    if (showModal) {
+      if (selectedPaciente) setPatientQuery(selectedPaciente.nombre || '');
+      if (selectedBecario) setBecarioQuery(selectedBecario.nombre || '');
+      if (selectedPsicologo) setPsicologoQuery(selectedPsicologo.nombre || '');
+    }
+  }, [showModal]);
 
   useEffect(() => {
     fetchData();
@@ -208,61 +223,102 @@ const CoordinadorAsignaciones = () => {
       {/* Becarios Disponibles */}
       <div className="dashboard-section mb-20">
         <div className="section-header">
-          <h3>Becarios Disponibles</h3>
-          <button 
-            className="btn-primary"
-            onClick={() => setShowModal(true)}
-          >
-            <FiUserPlus /> Asignar Paciente
-          </button>
+          <h3>{showListType === 'becarios' ? 'Becarios Disponibles' : 'Psicólogos Disponibles'}</h3>
+          <div className="flex-row gap-10">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowListType(prev => prev === 'becarios' ? 'psicologos' : 'becarios')}
+            >
+              {showListType === 'becarios' ? 'Mostrar Psicólogos' : 'Mostrar Becarios'}
+            </button>
+            <button 
+              className="btn-primary"
+              onClick={() => setShowModal(true)}
+            >
+              <FiUserPlus /> Asignar Paciente
+            </button>
+          </div>
         </div>
         
         <div className="grid-4">
-          {becarios.map((becario) => (
-            <div key={becario.id} className="card">
-              <div className="flex-row align-center justify-between mb-10">
-                <div className="flex-row align-center gap-10">
-                  <div className="avatar">
-                    {becario.nombre.split(' ').map(n => n[0]).join('')}
+          {showListType === 'becarios' ? (
+            becarios.map((becario) => (
+              <div key={becario.id} className="card">
+                <div className="flex-row align-center justify-between mb-10">
+                  <div className="flex-row align-center gap-10">
+                    <div className="avatar">
+                      {becario.nombre.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <div>
+                      <h4>{becario.nombre}</h4>
+                      <p className="text-small">{becario.especialidad}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4>{becario.nombre}</h4>
-                    <p className="text-small">{becario.especialidad}</p>
+                  {becario.activo ? (
+                    <span className="badge badge-success">Activo</span>
+                  ) : (
+                    <span className="badge badge-danger">Inactivo</span>
+                  )}
+                </div>
+                
+                <div className="card-progress">
+                  <div className="card-progress-label">
+                    <span>Capacidad</span>
+                    <span>{becario.pacientes_asignados}/{becario.capacidad}</span>
+                  </div>
+                  <div className="progress-container">
+                    <div 
+                      className="progress-bar"
+                      style={{ width: `${(becario.pacientes_asignados / Math.max(becario.capacidad || 1, 1)) * 100}%` }}
+                    ></div>
                   </div>
                 </div>
-                {becario.activo ? (
-                  <span className="badge badge-success">Activo</span>
-                ) : (
-                  <span className="badge badge-danger">Inactivo</span>
+                
+                {becario.activo && (
+                  <button 
+                    className="btn-text w-100 mt-10"
+                    onClick={() => {
+                      setSelectedBecario(becario);
+                      setShowModal(true);
+                    }}
+                  >
+                    Asignar paciente
+                  </button>
                 )}
               </div>
-              
-              <div className="card-progress">
-                <div className="card-progress-label">
-                  <span>Capacidad</span>
-                  <span>{becario.pacientes_asignados}/{becario.capacidad}</span>
+            ))
+          ) : (
+            psicologos.map((psicologo) => (
+              <div key={psicologo.id} className="card">
+                <div className="flex-row align-center justify-between mb-10">
+                  <div className="flex-row align-center gap-10">
+                    <div className="avatar">
+                      {psicologo.nombre.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <div>
+                      <h4>{psicologo.nombre}</h4>
+                      <p className="text-small">{psicologo.especialidad || ''}</p>
+                    </div>
+                  </div>
+                  {psicologo.activo ? (
+                    <span className="badge badge-success">Activo</span>
+                  ) : (
+                    <span className="badge badge-danger">Inactivo</span>
+                  )}
                 </div>
-                <div className="progress-container">
-                  <div 
-                    className="progress-bar"
-                    style={{ width: `${(becario.pacientes_asignados / becario.capacidad) * 100}%` }}
-                  ></div>
-                </div>
+
+                {psicologo.activo && (
+                  <button
+                    className="btn-text w-100 mt-10"
+                    onClick={() => { setSelectedPsicologo(psicologo); setShowModal(true); }}
+                  >
+                    Asignar paciente
+                  </button>
+                )}
               </div>
-              
-              {becario.activo && (
-                <button 
-                  className="btn-text w-100 mt-10"
-                  onClick={() => {
-                    setSelectedBecario(becario);
-                    setShowModal(true);
-                  }}
-                >
-                  Asignar paciente
-                </button>
-              )}
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -405,52 +461,79 @@ const CoordinadorAsignaciones = () => {
             
             <div className="modal-content">
               <div className="form-grid">
-                <div className="form-group">
+                <div className="form-group" style={{ position: 'relative' }}>
                   <label>Seleccionar Paciente</label>
-                  <select className="select-field" value={selectedPaciente?.id || ''} onChange={(e) => {
-                    const id = Number(e.target.value);
-                    const p = pacientesSinAsignar.find(x => x.id === id);
-                    setSelectedPaciente(p || null);
-                  }}>
-                    <option value="">Seleccionar paciente...</option>
-                    {pacientesSinAsignar.map(paciente => (
-                      <option key={paciente.id} value={paciente.id}>
-                        {paciente.nombre} - {paciente.motivo}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="Buscar paciente..."
+                    value={patientQuery}
+                    onChange={(e) => { setPatientQuery(e.target.value); setShowPatientList(true); }}
+                    onFocus={() => setShowPatientList(true)}
+                  />
+                  {showPatientList && (
+                    <div style={{ border: '1px solid #eee', maxHeight: '200px', overflowY: 'auto', background: '#fff', marginTop: '6px', padding: '6px', zIndex: 9999 }}>
+                      {pacientesSinAsignar.filter(p => (`${p.nombre}`.toLowerCase().includes(patientQuery.toLowerCase()) || (`${p.nombre} ${p.motivo}` || '').toLowerCase().includes(patientQuery.toLowerCase()))).slice(0,50).map(p => (
+                        <div key={p.id} style={{ padding: '6px', cursor: 'pointer', color: '#111', borderBottom: '1px solid #f0f0f0', background: '#fff' }} onClick={() => { setSelectedPaciente(p); setPatientQuery(p.nombre); setShowPatientList(false); }}>
+                          <div style={{ color: '#111', fontWeight: 600 }}>{p.nombre}</div>
+                          <div className="text-small" style={{ color: '#444' }}>{p.motivo}</div>
+                        </div>
+                      ))}
+                      {pacientesSinAsignar.filter(p => (`${p.nombre}`.toLowerCase().includes(patientQuery.toLowerCase()) || (`${p.nombre} ${p.motivo}` || '').toLowerCase().includes(patientQuery.toLowerCase()))).length === 0 && (
+                        <div className="text-small" style={{ color: '#666' }}>No se encontraron pacientes</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
-                <div className="form-group">
+                <div className="form-group" style={{ position: 'relative' }}>
                   <label>Seleccionar Becario</label>
-                  <select className="select-field" value={selectedBecario?.id || ''} onChange={(e) => {
-                    const id = Number(e.target.value);
-                    const b = becarios.find(x => x.id === id);
-                    setSelectedBecario(b || null);
-                  }}>
-                    <option value="">Seleccionar becario...</option>
-                    {becarios.filter(b => b.activo).map(becario => (
-                      <option key={becario.id} value={becario.id}>
-                        {becario.nombre} {becario.pacientes_asignados ? `(${becario.pacientes_asignados}/${becario.capacidad || '-'})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="Buscar becario..."
+                    value={becarioQuery}
+                    onChange={(e) => { setBecarioQuery(e.target.value); setShowBecarioList(true); }}
+                    onFocus={() => setShowBecarioList(true)}
+                  />
+                  {showBecarioList && (
+                    <div style={{ border: '1px solid #eee', maxHeight: '200px', overflowY: 'auto', background: '#fff', marginTop: '6px', padding: '6px', zIndex: 9999 }}>
+                      {becarios.filter(b => (`${b.nombre}`.toLowerCase().includes(becarioQuery.toLowerCase()) || (b.especialidad || '').toLowerCase().includes(becarioQuery.toLowerCase()))).slice(0,50).map(b => (
+                        <div key={b.id} style={{ padding: '6px', cursor: 'pointer', color: '#111', borderBottom: '1px solid #f0f0f0', background: '#fff' }} onClick={() => { setSelectedBecario(b); setBecarioQuery(b.nombre); setShowBecarioList(false); }}>
+                          <div style={{ color: '#111', fontWeight: 600 }}>{b.nombre}</div>
+                          <div className="text-small" style={{ color: '#444' }}>{b.pacientes_asignados}/{b.capacidad || '-'}</div>
+                        </div>
+                      ))}
+                      {becarios.filter(b => (`${b.nombre}`.toLowerCase().includes(becarioQuery.toLowerCase()) || (b.especialidad || '').toLowerCase().includes(becarioQuery.toLowerCase()))).length === 0 && (
+                        <div className="text-small" style={{ color: '#666' }}>No se encontraron becarios</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
-                <div className="form-group">
+                <div className="form-group" style={{ position: 'relative' }}>
                   <label>Psicólogo Supervisor</label>
-                  <select className="select-field" value={selectedPsicologo?.id || ''} onChange={(e) => {
-                    const id = Number(e.target.value);
-                    const p = psicologos.find(x => x.id === id);
-                    setSelectedPsicologo(p || null);
-                  }}>
-                    <option value="">Seleccionar psicólogo...</option>
-                    {psicologos.map(psicologo => (
-                      <option key={psicologo.id} value={psicologo.id}>
-                        {psicologo.nombre}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="Buscar psicólogo..."
+                    value={psicologoQuery}
+                    onChange={(e) => { setPsicologoQuery(e.target.value); setShowPsicologoList(true); }}
+                    onFocus={() => setShowPsicologoList(true)}
+                  />
+                  {showPsicologoList && (
+                    <div style={{ border: '1px solid #eee', maxHeight: '200px', overflowY: 'auto', background: '#fff', marginTop: '6px', padding: '6px', zIndex: 9999 }}>
+                      {psicologos.filter(p => (`${p.nombre}`.toLowerCase().includes(psicologoQuery.toLowerCase()) || (p.especialidad || '').toLowerCase().includes(psicologoQuery.toLowerCase()))).slice(0,50).map(p => (
+                        <div key={p.id} style={{ padding: '6px', cursor: 'pointer', color: '#111', borderBottom: '1px solid #f0f0f0', background: '#fff' }} onClick={() => { setSelectedPsicologo(p); setPsicologoQuery(p.nombre); setShowPsicologoList(false); }}>
+                          <div style={{ color: '#111', fontWeight: 600 }}>{p.nombre}</div>
+                          <div className="text-small" style={{ color: '#444' }}>{p.especialidad || ''}</div>
+                        </div>
+                      ))}
+                      {psicologos.filter(p => (`${p.nombre}`.toLowerCase().includes(psicologoQuery.toLowerCase()) || (p.especialidad || '').toLowerCase().includes(psicologoQuery.toLowerCase()))).length === 0 && (
+                        <div className="text-small" style={{ color: '#666' }}>No se encontraron psicólogos</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>

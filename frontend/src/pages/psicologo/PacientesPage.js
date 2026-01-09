@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiFilter } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } from 'docx';
+import { saveAs } from 'file-saver';
 
 const PsicologoPacientes = () => {
   const [pacientes, setPacientes] = useState([]);
@@ -86,6 +88,61 @@ const PsicologoPacientes = () => {
         return { text: 'Abandono', color: 'danger' };
       default:
         return { text: estado, color: 'warning' };
+    }
+  };
+
+  const exportarListadoPacientes = async () => {
+    try {
+      const titulo = filterEstado ? `Listado de ${getEstadoLabel(filterEstado).text}` : 'Listado de todos los pacientes';
+      const fecha = new Date().toLocaleString();
+      const rows = [];
+
+      rows.push(new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Nombre', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Email', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Teléfono', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Edad', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Diagnóstico', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Sesiones', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Última Sesión', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Becario', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Estado', bold: true })] })] }),
+        ],
+      }));
+
+      filteredPacientes.forEach(p => {
+        rows.push(new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph(p.nombre || '')] }),
+            new TableCell({ children: [new Paragraph(p.email || '')] }),
+            new TableCell({ children: [new Paragraph(p.telefono || '')] }),
+            new TableCell({ children: [new Paragraph(p.edad ? String(p.edad) : '')] }),
+            new TableCell({ children: [new Paragraph(p.diagnostico || p.motivo_consulta || '')] }),
+            new TableCell({ children: [new Paragraph(String(p.sesiones_completadas || 0))] }),
+            new TableCell({ children: [new Paragraph(p.ultima_sesion ? new Date(p.ultima_sesion).toLocaleDateString() : '')] }),
+            new TableCell({ children: [new Paragraph(p.becario || '')] }),
+            new TableCell({ children: [new Paragraph(getEstadoLabel(p.estado).text)] }),
+          ],
+        }));
+      });
+
+      const doc = new Document({
+        sections: [{
+          children: [
+            new Paragraph({ text: titulo, heading: HeadingLevel.HEADING_1 }),
+            new Paragraph({ text: `Generado: ${fecha}`, spacing: { after: 200 } }),
+            new Table({ rows })
+          ]
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.docx`);
+      notifications.success('Descarga iniciada');
+    } catch (err) {
+      console.error('Error exportando listado de pacientes:', err);
+      notifications.error('Error exportando listado');
     }
   };
 
@@ -248,6 +305,9 @@ const PsicologoPacientes = () => {
             </button>
             <button className="btn-secondary w-100">
               Generar Reporte
+            </button>
+            <button className="btn-primary w-100" onClick={exportarListadoPacientes}>
+              Exportar Listado
             </button>
           </div>
         </div>

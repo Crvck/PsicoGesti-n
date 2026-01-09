@@ -378,7 +378,7 @@ const CoordinadorUsuarios = () => {
       </div>
 
       {/* Tabla de Usuarios */}
-      <div className="table-container">
+      <div className="table-container" style={{ maxHeight: '480px', overflowY: 'auto' }}>
         <table className="data-table">
           <thead>
             <tr>

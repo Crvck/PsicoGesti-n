@@ -3,6 +3,8 @@ import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, 
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } from 'docx';
+import { saveAs } from 'file-saver';
 
 const CoordinadorPacientes = () => {
   const [pacientes, setPacientes] = useState([]);
@@ -253,6 +255,68 @@ const CoordinadorPacientes = () => {
     });
   };
 
+  const exportarListadoPacientes = async () => {
+    try {
+      console.log('exportarListadoPacientes called, pacientes filtrados:', filteredPacientes.length);
+      notifications.info('Iniciando exportación...');
+      const titulo = filterEstado ? `Listado de ${getEstadoLabel(filterEstado).text}` : 'Listado de todos los pacientes';
+      const fecha = new Date().toLocaleString();
+      const rows = [];
+
+      // Header
+      rows.push(new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Nombre', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Apellido', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Email', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Teléfono', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Edad', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Motivo', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Psicólogo', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Becario', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Sesiones', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Estado', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Activo', bold: true })] })] }),
+        ]
+      }));
+
+      filteredPacientes.forEach(p => {
+        rows.push(new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph(p.nombre || '')] }),
+            new TableCell({ children: [new Paragraph(p.apellido || '')] }),
+            new TableCell({ children: [new Paragraph(p.email || '')] }),
+            new TableCell({ children: [new Paragraph(p.telefono || '')] }),
+            new TableCell({ children: [new Paragraph(calcularEdad(p.fecha_nacimiento) || '')] }),
+            new TableCell({ children: [new Paragraph(p.motivo_consulta || '')] }),
+            new TableCell({ children: [new Paragraph(p.psicologo_asignado || '')] }),
+            new TableCell({ children: [new Paragraph(p.becario_asignado || '')] }),
+            new TableCell({ children: [new Paragraph(String(p.sesiones_completadas || 0))] }),
+            new TableCell({ children: [new Paragraph(getEstadoLabel(p.estado).text || '')] }),
+            new TableCell({ children: [new Paragraph(p.activo ? 'Sí' : 'No')] }),
+          ]
+        }));
+      });
+
+      const doc = new Document({
+        sections: [{
+          children: [
+            new Paragraph({ text: titulo, heading: HeadingLevel.HEADING_1 }),
+            new Paragraph({ text: `Generado: ${fecha}`, spacing: { after: 200 } }),
+            new Table({ rows })
+          ]
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.docx`);
+      notifications.success('Descarga iniciada');
+    } catch (err) {
+      console.error('Error exportando listado de pacientes (coordinador):', err);
+      notifications.error('Error exportando listado');
+    }
+  };
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -336,7 +400,7 @@ const CoordinadorPacientes = () => {
       </div>
 
       {/* Tabla de Pacientes */}
-      <div className="table-container">
+      <div className="table-container" style={{ maxHeight: '480px', overflowY: 'auto' }}>
         <table className="data-table">
           <thead>
             <tr>
@@ -383,7 +447,7 @@ const CoordinadorPacientes = () => {
                   <td>
                     <div className="text-small">{paciente.psicologo_asignado}</div>
                     <div className="text-small">
-                      {paciente.becario_asignado || 'Sin becario'}
+                      {paciente.becario_asignado || 'Sin asignar'}
                     </div>
                   </td>
                   <td>
@@ -462,10 +526,8 @@ const CoordinadorPacientes = () => {
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">
-            <button className="btn-primary w-100">
-              Asignar Pacientes
-            </button>
-            <button className="btn-secondary w-100">
+            
+            <button type="button" className="btn-secondary w-100" onClick={exportarListadoPacientes}>
               Exportar Listado
             </button>
             <button className="btn-warning w-100">

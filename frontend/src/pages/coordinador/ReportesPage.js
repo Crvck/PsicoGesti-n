@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { 
   FiBarChart2, FiDownload, FiCalendar, FiUsers, 
-  FiTrendingUp, FiFilter, FiRefreshCw, FiPrinter
+  FiTrendingUp, FiFilter, FiRefreshCw, FiEye
 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import ApiService from '../../services/api';
 
+// docx + file-saver for Word generation
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } from 'docx';
+import { saveAs } from 'file-saver';
 
 const CoordinadorReportes = () => {
   const [reportes, setReportes] = useState([]);
@@ -16,6 +20,9 @@ const CoordinadorReportes = () => {
   const [fechaFin, setFechaFin] = useState('');
   const [estadisticas, setEstadisticas] = useState({});
   const [reporteGenerado, setReporteGenerado] = useState(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewReport, setPreviewReport] = useState(null);
 
   useEffect(() => {
     fetchReportes();
@@ -25,75 +32,305 @@ const CoordinadorReportes = () => {
   const fetchReportes = async () => {
     try {
       setLoading(true);
-      
-      // Simulación de datos
-      setTimeout(() => {
-        setReportes([
-          { id: 1, nombre: 'Reporte Mensual Enero 2024', tipo: 'mensual', fecha: '2024-01-31', generado_por: 'Sistema', descargas: 12 },
-          { id: 2, nombre: 'Reporte de Altas Diciembre 2023', tipo: 'especial', fecha: '2023-12-31', generado_por: 'Coordinador', descargas: 8 },
-          { id: 3, nombre: 'Reporte de Actividad Becarios', tipo: 'becarios', fecha: '2024-01-15', generado_por: 'Sistema', descargas: 15 },
-          { id: 4, nombre: 'Reporte Financiero 2023', tipo: 'financiero', fecha: '2024-01-10', generado_por: 'Coordinador', descargas: 5 },
-          { id: 5, nombre: 'Reporte de Eficiencia Terapéutica', tipo: 'clinico', fecha: '2024-01-20', generado_por: 'Sistema', descargas: 7 }
-        ]);
-        setLoading(false);
-      }, 1000);
+      const resp = await ApiService.get('/reportes');
+      const data = resp.data || resp; // depending on APIService handler
+      // Map files returned by backend to report objects
+      const list = (data || []).map((r, idx) => ({
+        id: r.nombre || `${Date.now()}_${idx}`,
+        nombre: r.nombre || r.archivo_url?.split('/').pop() || `Reporte ${idx+1}`,
+        tipo: r.tipo || 'importado',
+        fecha: r.fecha || new Date().toISOString(),
+        generado_por: r.generado_por || 'Sistema',
+        descargas: r.descargas || 0,
+        archivo_url: r.archivo_url
+      }));
+      setReportes(list);
+      setLoading(false);
     } catch (error) {
       console.error('Error cargando reportes:', error);
       setLoading(false);
     }
   };
 
-  const generarEstadisticas = () => {
-    // Simulación de estadísticas
-    setEstadisticas({
-      pacientesActivos: 25,
-      pacientesNuevosMes: 8,
-      citasCompletadas: 120,
-      promedioSesiones: 8.5,
-      tasaRetencion: 85,
-      satisfaccionPacientes: 4.2
-    });
+  const generarEstadisticas = async () => {
+    try {
+      const resp = await ApiService.getEstadisticas();
+      const data = resp.data || resp;
+
+      // Mapear campos para la UI (usar valores por defecto cuando falten)
+      setEstadisticas({
+        pacientesActivos: data.pacientes?.pacientes_activos || data.pacientes?.total_pacientes || 0,
+        pacientesNuevosMes: data.pacientes?.altas_totales || 0,
+        citasCompletadas: data.citas?.completadas || 0,
+        promedioSesiones: data.citas?.duracion_promedio || 0,
+        tasaRetencion: data.citas?.tasa_completitud || 0,
+        // Si el backend no provee 'satisfaccion', dejar null para mostrar '-' en UI
+        satisfaccionPacientes: data.pacientes?.satisfaccionPromedio || data.satisfaccionPromedio || null
+      });
+    } catch (error) {
+      console.error('Error obteniendo estadísticas:', error);
+      // Mantener valores previos o limpiar
+      setEstadisticas({});
+    }
   };
 
-  const generarReporte = () => {
-    // Simulación de generación de reporte
+  // Helper: convertir Blob a base64
+  const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+  const generarReporte = async () => {
     setLoading(true);
-    setTimeout(() => {
-      const nuevoReporte = {
-        id: reportes.length + 1,
-        nombre: `Reporte ${tipoReporte} ${new Date().toLocaleDateString()}`,
-        tipo: tipoReporte,
-        fecha: new Date().toISOString().split('T')[0],
-        generado_por: 'Coordinador',
-        descargas: 0,
-        contenido: {
-          resumen: `Reporte generado el ${new Date().toLocaleDateString()}`,
-          estadisticas: estadisticas,
-          datos: 'Aquí irían los datos del reporte generado...'
+    try {
+      let nuevoReporte = null;
+      const fecha = new Date().toISOString().split('T')[0];
+
+      if (tipoReporte === 'conflictos') {
+        // Llamar al backend para obtener conflictos
+        const resp = await ApiService.post('/reportes/reporte-conflictos', { fecha_inicio: fechaInicio || null, fecha_fin: fechaFin || null });
+        const conflictos = resp.data?.conflictos || resp.conflictos || [];
+
+        // Generar documento Word con la tabla de conflictos
+        const rows = [
+          new TableRow({ children: [
+            new TableCell({ children: [new Paragraph('Fecha')] }),
+            new TableCell({ children: [new Paragraph('Hora Inicio')] }),
+            new TableCell({ children: [new Paragraph('Psicólogo 1')] }),
+            new TableCell({ children: [new Paragraph('Paciente 1')] }),
+            new TableCell({ children: [new Paragraph('Psicólogo 2')] }),
+            new TableCell({ children: [new Paragraph('Paciente 2')] })
+          ] })
+        ];
+
+        conflictos.forEach(c => {
+          rows.push(new TableRow({ children: [
+            new TableCell({ children: [new Paragraph(c.fecha || '')] }),
+            new TableCell({ children: [new Paragraph(c.hora_inicio1 || '')] }),
+            new TableCell({ children: [new Paragraph((c.psicologo1_nombre || '') + ' ' + (c.psicologo1_apellido || ''))] }),
+            new TableCell({ children: [new Paragraph((c.paciente1_nombre || '') + ' ' + (c.paciente1_apellido || ''))] }),
+            new TableCell({ children: [new Paragraph((c.psicologo2_nombre || '') + ' ' + (c.psicologo2_apellido || ''))] }),
+            new TableCell({ children: [new Paragraph((c.paciente2_nombre || '') + ' ' + (c.paciente2_apellido || ''))] })
+          ] }));
+        });
+
+        const doc = new Document({
+          sections: [{
+            properties: {},
+            children: [
+              new Paragraph({ text: `Reporte: Conflictos de Citas`, heading: HeadingLevel.HEADING_1 }),
+              new Paragraph({ text: `Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}` }),
+              new Paragraph({ text: `Generado: ${fecha}` }),
+              new Table({ rows })
+            ]
+          }]
+        });
+
+        const blob = await Packer.toBlob(doc);
+        const docUrl = URL.createObjectURL(blob);
+
+        // Crear preview HTML simple
+        const previewRows = conflictos.map(c => `
+          <tr>
+            <td>${c.fecha || ''}</td>
+            <td>${c.hora_inicio1 || ''}</td>
+            <td>${(c.psicologo1_nombre || '') + ' ' + (c.psicologo1_apellido || '')}</td>
+            <td>${(c.paciente1_nombre || '') + ' ' + (c.paciente1_apellido || '')}</td>
+            <td>${(c.psicologo2_nombre || '') + ' ' + (c.psicologo2_apellido || '')}</td>
+            <td>${(c.paciente2_nombre || '') + ' ' + (c.paciente2_apellido || '')}</td>
+          </tr>
+        `).join('\n');
+
+        const previewHtmlLocal = `
+          <h3>Conflictos de Citas</h3>
+          <p>Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}</p>
+          <table style="width:100%; border-collapse: collapse;">
+            <thead><tr><th>Fecha</th><th>Hora Inicio</th><th>Psicólogo 1</th><th>Paciente 1</th><th>Psicólogo 2</th><th>Paciente 2</th></tr></thead>
+            <tbody>
+              ${previewRows}
+            </tbody>
+          </table>
+        `;
+
+        // Convertir a base64 y guardar en backend
+        const archivo_base64 = await blobToBase64(blob);
+        try {
+          const saveResp = await ApiService.post('/reportes/generar', {
+            nombre: `Conflictos ${fecha}`,
+            tipo: tipoReporte,
+            fecha,
+            generado_por: 'Coordinador',
+            archivo_base64,
+            archivo_ext: 'docx'
+          });
+
+          const archivo_url = saveResp.data?.archivo_url || saveResp.archivo_url;
+
+          nuevoReporte = {
+            id: Date.now(),
+            nombre: `Conflictos ${fecha}`,
+            tipo: tipoReporte,
+            fecha,
+            generado_por: 'Coordinador',
+            descargas: 0,
+            docBlob: blob,
+            docUrl,
+            archivo_url,
+            previewHtml: previewHtmlLocal
+          };
+
+          // Actualizar lista y mostrar preview
+          setReportes([nuevoReporte, ...reportes]);
+          setReporteGenerado(nuevoReporte);
+          setPreviewHtml(previewHtmlLocal);
+          setPreviewVisible(true);
+
+          notifications.success('Reporte de conflictos generado y guardado en servidor');
+        } catch (err) {
+          // Falla en guardado: seguir con reporte local
+          nuevoReporte = {
+            id: Date.now(),
+            nombre: `Conflictos ${fecha}`,
+            tipo: tipoReporte,
+            fecha,
+            generado_por: 'Coordinador',
+            descargas: 0,
+            docBlob: blob,
+            docUrl,
+            previewHtml: previewHtmlLocal
+          };
+
+          setReportes([nuevoReporte, ...reportes]);
+          setReporteGenerado(nuevoReporte);
+          setPreviewHtml(previewHtmlLocal);
+          setPreviewVisible(true);
+          console.warn('No se pudo guardar el reporte en servidor, se mantiene local:', err);
+          notifications.warning('Reporte generado localmente, no fue guardado en servidor');
         }
-      };
-      
-      setReportes([nuevoReporte, ...reportes]);
-      setReporteGenerado(nuevoReporte);
+      } else {
+        // Generar un Word básico con estadísticas y un resumen
+        const doc = new Document({
+          sections: [{
+            properties: {},
+            children: [
+              new Paragraph({ text: `Reporte: ${tipoReporte}`, heading: HeadingLevel.HEADING_1 }),
+              new Paragraph({ text: `Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}` }),
+              new Paragraph({ text: `Generado: ${fecha}` }),
+              new Paragraph({ text: ` ` }),
+              new Paragraph({ text: `Resumen:` , heading: HeadingLevel.HEADING_2}),
+              new Paragraph({ text: `Pacientes activos: ${estadisticas.pacientesActivos || 0}` }),
+              new Paragraph({ text: `Pacientes nuevos mes: ${estadisticas.pacientesNuevosMes || 0}` }),
+              new Paragraph({ text: `Citas completadas: ${estadisticas.citasCompletadas || 0}` })
+            ]
+          }]
+        });
+
+        const blob = await Packer.toBlob(doc);
+        const docUrl = URL.createObjectURL(blob);
+
+        const previewHtmlLocal = `
+          <h3>Reporte: ${tipoReporte}</h3>
+          <p>Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}</p>
+          <ul>
+            <li>Pacientes activos: ${estadisticas.pacientesActivos || 0}</li>
+            <li>Pacientes nuevos mes: ${estadisticas.pacientesNuevosMes || 0}</li>
+            <li>Citas completadas: ${estadisticas.citasCompletadas || 0}</li>
+          </ul>
+        `;
+
+        // Intentar guardar en backend
+        const archivo_base64 = await blobToBase64(blob);
+        try {
+          const saveResp = await ApiService.post('/reportes/generar', {
+            nombre: `Reporte ${tipoReporte} ${fecha}`,
+            tipo: tipoReporte,
+            fecha,
+            generado_por: 'Coordinador',
+            archivo_base64,
+            archivo_ext: 'docx'
+          });
+
+          const archivo_url = saveResp.data?.archivo_url || saveResp.archivo_url;
+
+          nuevoReporte = {
+            id: Date.now(),
+            nombre: `Reporte ${tipoReporte} ${fecha}`,
+            tipo: tipoReporte,
+            fecha,
+            generado_por: 'Coordinador',
+            descargas: 0,
+            docBlob: blob,
+            docUrl,
+            archivo_url,
+            previewHtml: previewHtmlLocal
+          };
+
+          setReportes([nuevoReporte, ...reportes]);
+          setReporteGenerado(nuevoReporte);
+          setPreviewHtml(previewHtmlLocal);
+          setPreviewVisible(true);
+          notifications.success('Reporte generado y guardado en servidor');
+        } catch (err) {
+          // fallback local
+          nuevoReporte = {
+            id: Date.now(),
+            nombre: `Reporte ${tipoReporte} ${fecha}`,
+            tipo: tipoReporte,
+            fecha,
+            generado_por: 'Coordinador',
+            descargas: 0,
+            docBlob: blob,
+            docUrl,
+            previewHtml: previewHtmlLocal
+          };
+          setReportes([nuevoReporte, ...reportes]);
+          setReporteGenerado(nuevoReporte);
+          setPreviewHtml(previewHtmlLocal);
+          setPreviewVisible(true);
+          console.warn('No se pudo guardar el reporte en servidor, se mantiene local:', err);
+          notifications.warning('Reporte generado localmente, no fue guardado en servidor');
+        }
+      }
+    } catch (error) {
+      console.error('Error generando reporte:', error);
+      notifications.error('Error generando reporte');
+    } finally {
       setLoading(false);
-      notifications.success('Reporte generado exitosamente');
-    }, 1500);
+    }
   };
 
   const descargarReporte = (reporteId) => {
     const reporte = reportes.find(r => r.id === reporteId);
-    if (reporte) {
-      notifications.success(`Descargando reporte: ${reporte.nombre}`);
-      // En una implementación real, aquí se generaría y descargaría el archivo
+    if (!reporte) return;
+
+    try {
+      if (reporte.docBlob) {
+        saveAs(reporte.docBlob, `${reporte.nombre}.docx`);
+      } else if (reporte.archivo_url) {
+        // Si el backend devolvió una URL
+        window.open(reporte.archivo_url, '_blank');
+      } else {
+        notifications.error('No hay archivo disponible para descargar');
+        return;
+      }
+
+      // Actualizar contador de descargas en estado
+      setReportes(prev => prev.map(r => r.id === reporteId ? { ...r, descargas: (r.descargas || 0) + 1 } : r));
+      notifications.success(`Descarga iniciada: ${reporte.nombre}`);
+    } catch (error) {
+      console.error('Error descargando reporte:', error);
+      notifications.error('Error al descargar el reporte');
     }
   };
 
-  const imprimirReporte = (reporteId) => {
+  const abrirVistaPrevia = (reporteId) => {
     const reporte = reportes.find(r => r.id === reporteId);
-    if (reporte) {
-      notifications.success(`Imprimiendo reporte: ${reporte.nombre}`);
-      // En una implementación real, aquí se abriría el diálogo de impresión
-    }
+    if (!reporte) return;
+    setPreviewHtml(reporte.previewHtml || '<p>No hay vista previa disponible</p>');
+    setPreviewReport(reporte);
+    setPreviewVisible(true);
   };
 
   const getColorByTipo = (tipo) => {
@@ -178,15 +415,13 @@ const CoordinadorReportes = () => {
           </div>
           
           <div className="form-group">
-            <label>Formato</label>
-            <select className="select-field">
-              <option value="pdf">PDF</option>
-              <option value="excel">Excel</option>
-              <option value="html">HTML</option>
+            <label>Formato (solo Word)</label>
+            <select className="select-field" value="docx" disabled>
+              <option value="docx">Word (.docx)</option>
             </select>
           </div>
           
-          <div className="form-group" style={{ gridColumn: 'span 2' }}>
+          {/* <div className="form-group" style={{ gridColumn: 'span 2' }}>
             <label>Parámetros Adicionales</label>
             <div className="grid-2 gap-10">
               <label className="flex-row align-center gap-10">
@@ -206,7 +441,7 @@ const CoordinadorReportes = () => {
                 <span>Incluir comparativas</span>
               </label>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -311,13 +546,10 @@ const CoordinadorReportes = () => {
                       </button>
                       <button 
                         className="btn-text"
-                        onClick={() => imprimirReporte(reporte.id)}
-                        title="Imprimir"
+                        onClick={() => abrirVistaPrevia(reporte.id)}
+                        title="Vista previa"
                       >
-                        <FiPrinter />
-                      </button>
-                      <button className="btn-text">
-                        Ver Vista Previa
+                        <FiEye />
                       </button>
                     </div>
                   </td>
@@ -360,10 +592,34 @@ const CoordinadorReportes = () => {
             </button>
             <button 
               className="btn-secondary"
-              onClick={() => imprimirReporte(reporteGenerado.id)}
+              onClick={() => abrirVistaPrevia(reporteGenerado.id)}
             >
-              <FiPrinter /> Imprimir
+              <FiEye /> Vista previa
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Vista Previa Modal */}
+      {previewVisible && (
+        <div className="modal-overlay">
+              <div className="modal-container modal-large">
+            <div className="modal-header">
+              <h3>Vista previa: {previewReport ? previewReport.nombre : 'Reporte'}</h3>
+              <button className="btn-text" onClick={() => setPreviewVisible(false)}>×</button>
+            </div>
+            <div className="modal-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+            <div className="modal-footer">
+              <button className="btn-primary" onClick={() => {
+                if (previewReport && previewReport.docBlob) saveAs(previewReport.docBlob, `${previewReport.nombre}.docx`);
+                else if (previewReport && previewReport.archivo_url) window.open(previewReport.archivo_url, '_blank');
+              }}>
+                <FiDownload /> Descargar
+              </button>
+              <button className="btn-secondary" onClick={() => setPreviewVisible(false)}>Cerrar</button>
+            </div>
           </div>
         </div>
       )}

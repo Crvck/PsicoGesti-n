@@ -15,6 +15,12 @@ router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibil
 // Generar reporte de conflictos
 router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
 
+// Guardar (persistir) un reporte generado (recibe base64 y metadatos)
+router.post('/generar', verifyToken, requireRole(['coordinador']), ReporteController.guardarReporte);
+
+// Listar reportes guardados
+router.get('/', verifyToken, requireRole(['coordinador']), ReporteController.listarReportes);
+
 router.get('/altas', verifyToken, requireRole(['coordinador']), async (req, res) => {
     try {
         const { formato = 'excel', fecha_inicio, fecha_fin } = req.query;

@@ -231,6 +231,67 @@ class ReporteController {
             });
         }
     }
+
+    // Guardar un reporte generado (recibe base64 para el archivo y metadatos)
+    static async guardarReporte(req, res) {
+        try {
+            const { nombre, tipo, fecha, generado_por, archivo_base64, archivo_ext = 'docx' } = req.body;
+            if (!archivo_base64) {
+                return res.status(400).json({ success: false, message: 'No se recibió archivo' });
+            }
+
+            const buffer = Buffer.from(archivo_base64, 'base64');
+            const timestamp = Date.now();
+            const filename = `reporte_${timestamp}.${archivo_ext}`;
+            const dir = path.join(__dirname, '..', '..', 'public', 'temp', 'reportes');
+            fs.mkdirSync(dir, { recursive: true });
+            const filePath = path.join(dir, filename);
+            fs.writeFileSync(filePath, buffer);
+
+            const archivoUrl = `/temp/reportes/${filename}`;
+
+            // Responder con la URL y metadatos (no usamos BD por simplicidad)
+            res.json({
+                success: true,
+                data: {
+                    archivo_url: archivoUrl,
+                    nombre,
+                    tipo,
+                    fecha,
+                    generado_por
+                }
+            });
+        } catch (error) {
+            console.error('Error guardando reporte:', error);
+            res.status(500).json({ success: false, message: 'Error al guardar reporte', error: error.message });
+        }
+    }
+
+    // Listar reportes guardados en disco
+    static async listarReportes(req, res) {
+        try {
+            const dir = path.join(__dirname, '..', '..', 'public', 'temp', 'reportes');
+            if (!fs.existsSync(dir)) {
+                return res.json({ success: true, data: [] });
+            }
+
+            const files = fs.readdirSync(dir).filter(f => f.endsWith('.docx'));
+            const reportes = files.map(f => {
+                const stat = fs.statSync(path.join(dir, f));
+                return {
+                    nombre: f,
+                    archivo_url: `/temp/reportes/${f}`,
+                    fecha: new Date(stat.mtime).toISOString(),
+                    size: stat.size
+                };
+            });
+
+            res.json({ success: true, data: reportes });
+        } catch (error) {
+            console.error('Error listando reportes:', error);
+            res.status(500).json({ success: false, message: 'Error al listar reportes', error: error.message });
+        }
+    }
 }
 
 module.exports = ReporteController;

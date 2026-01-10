@@ -409,6 +409,10 @@ const CoordinadorAgenda = () => {
     loadData();
   }, [selectedDate, view, filterPsicologo, filterEstado, filtrosAvanzados]);
 
+  const [showDayModal, setShowDayModal] = useState(false);
+  const [dayModalDate, setDayModalDate] = useState(null);
+  const [dayModalCitas, setDayModalCitas] = useState([]);
+
   const weekDays = view === 'week' ? 
     eachDayOfInterval({ 
       start: startOfWeek(selectedDate, { weekStartsOn: 1 }), 
@@ -435,9 +439,9 @@ const CoordinadorAgenda = () => {
           <button className="btn-secondary" onClick={fetchAgenda}>
             <FiRefreshCw /> Actualizar
           </button>
-          <button className="btn-primary" onClick={exportarAgenda}>
+          {/* <button className="btn-primary" onClick={exportarAgenda}>
             <FiDownload /> Exportar Agenda
-          </button>
+          </button> */}
         </div>
       </div>
 
@@ -757,19 +761,34 @@ const CoordinadorAgenda = () => {
       <div className="calendar-week-view" style={{ minHeight: '600px' }}>
         <div className="week-header">
           <div className="time-header"></div>
-          {weekDays.map((day) => (
-            <div key={day.toISOString()} className="day-header">
-              <div className="day-name">
-                {format(day, 'EEE', { locale: es })}
-              </div>
-              <div className="day-number">
-                {format(day, 'd')}
-              </div>
-              <div className="text-small">
-                {filteredCitas.filter(c => c.fecha === format(day, 'yyyy-MM-dd')).length} citas
-              </div>
-            </div>
-          ))}
+          {weekDays.map((day) => {
+              const dayStr = format(day, 'yyyy-MM-dd');
+              const citasCount = filteredCitas.filter(c => c.fecha === dayStr).length;
+              return (
+                <div
+                  key={day.toISOString()}
+                  className={`day-header ${citasCount > 0 ? 'has-citas' : ''}`}
+                  style={{ backgroundColor: citasCount > 0 ? '#e6f7ff' : 'transparent', cursor: citasCount > 0 ? 'pointer' : 'default' }}
+                  onClick={() => {
+                    if (citasCount > 0) {
+                      setDayModalDate(dayStr);
+                      setDayModalCitas(filteredCitas.filter(c => c.fecha === dayStr));
+                      setShowDayModal(true);
+                    }
+                  }}
+                >
+                  <div className="day-name">
+                    {format(day, 'EEE', { locale: es })}
+                  </div>
+                  <div className="day-number">
+                    {format(day, 'd')}
+                  </div>
+                  <div className="text-small">
+                    {citasCount} citas
+                  </div>
+                </div>
+              );
+            })}
         </div>
         
         <div className="week-body">
@@ -792,7 +811,7 @@ const CoordinadorAgenda = () => {
                         className="week-event"
                         style={{ 
                           backgroundColor: cita.psicologo_color,
-                          opacity: 0.85,
+                          opacity: 0.95,
                           height: `${100 / (mostrarTodas ? Math.max(citasHora.length, 1) : 1)}%`,
                           top: `${(index / (mostrarTodas ? citasHora.length : 1)) * 100}%`
                         }}
@@ -866,6 +885,11 @@ const CoordinadorAgenda = () => {
                   <div className="text-small">Con becario</div>
                   <div className="font-bold">{citasPsicologo.filter(c => c.becario_nombre).length}</div>
                 </div>
+              </div>
+              <div className="mt-10">
+                <button className="btn-text" onClick={() => { setFilterPsicologo(psicologo.id); }}>
+                  Ver en calendario
+                </button>
               </div>
             </div>
           );
@@ -959,6 +983,55 @@ const CoordinadorAgenda = () => {
               <button className="btn-primary">
                 Ver Expediente
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: citas del día */}
+      {showDayModal && (
+        <div className="modal-overlay">
+          <div className="modal-container">
+            <div className="modal-header">
+              <h3>Citas del día {dayModalDate}</h3>
+              <button className="modal-close" onClick={() => setShowDayModal(false)}>×</button>
+            </div>
+            <div className="modal-content">
+              {dayModalCitas.length > 0 ? (
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Hora</th>
+                        <th>Paciente</th>
+                        <th>Psicólogo</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dayModalCitas.map(cita => (
+                        <tr key={cita.id}>
+                          <td>{cita.hora}</td>
+                          <td>{cita.paciente_nombre}</td>
+                          <td>{cita.psicologo_nombre}</td>
+                          <td><span className={`badge ${cita.estado === 'confirmada' ? 'badge-success' : cita.estado === 'completada' ? 'badge-primary' : cita.estado === 'programada' ? 'badge-warning' : 'badge-danger'}`}>{cita.estado}</span></td>
+                          <td>
+                            <button className="btn-text" onClick={() => { setShowDayModal(false); showCitaDetalles(cita); }}>
+                              Ver
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center">No hay citas en este día</div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowDayModal(false)}>Cerrar</button>
             </div>
           </div>
         </div>

@@ -113,10 +113,22 @@ class AsignacionController {
                 ]
             });
             
+            // Recuperar asignación creada con asociaciones para devolver datos completos al cliente
+            const asignacionCompleta = await Asignacion.findOne({
+                where: { id: asignacion.id },
+                include: [
+                    { model: Paciente, attributes: ['id', 'nombre', 'apellido'] },
+                    { model: User, as: 'Psicologo', attributes: ['id', 'nombre', 'apellido', 'email'] },
+                    { model: User, as: 'Becario', attributes: ['id', 'nombre', 'apellido', 'email'] }
+                ]
+            });
+
+            console.log('Asignacion creada (completa):', JSON.stringify(asignacionCompleta, null, 2));
+
             res.json({
                 success: true,
                 message: 'Asignación creada exitosamente',
-                data: asignacion
+                data: asignacionCompleta
             });
             
         } catch (error) {

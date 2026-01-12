@@ -300,9 +300,9 @@ const PsicologoPacientes = () => {
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">
-            <button className="btn-primary w-100">
+            {/* <button className="btn-primary w-100">
               Agendar Cita Grupal
-            </button>
+            </button> */}
             <button className="btn-secondary w-100">
               Generar Reporte
             </button>

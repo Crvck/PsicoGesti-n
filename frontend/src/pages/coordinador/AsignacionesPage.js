@@ -124,6 +124,7 @@ const CoordinadorAsignaciones = () => {
       });
 
       const json = await res.json();
+      console.log('AsignarPaciente response:', res.status, json);
       if (!res.ok) {
         notifications.error(json.message || 'Error creando asignación');
         setAssigning(false);
@@ -131,14 +132,57 @@ const CoordinadorAsignaciones = () => {
       }
 
       notifications.success('Asignación creada exitosamente');
+
+      // Emitir evento global para que otras vistas (p. ej. PacientesPage) actualicen la UI inmediatamente
+      try {
+        const psicologoName = (json && json.data && json.data.Psicologo) ? `${json.data.Psicologo.nombre} ${json.data.Psicologo.apellido || ''}`.trim() : (selectedPsicologo ? `${selectedPsicologo.nombre} ${selectedPsicologo.apellido || ''}`.trim() : null);
+        const becarioName = (json && json.data && json.data.Becario) ? `${json.data.Becario.nombre} ${json.data.Becario.apellido || ''}`.trim() : (selectedBecario ? `${selectedBecario.nombre} ${selectedBecario.apellido || ''}`.trim() : null);
+        const payload = {
+          paciente_id: selectedPaciente?.id,
+          psicologo: psicologoName,
+          becario: becarioName,
+          asignacion: json && json.data ? json.data : null
+        };
+        console.log('Emitiendo evento asignacionCreada con payload:', payload);
+        window.dispatchEvent(new CustomEvent('asignacionCreada', { detail: payload }));
+      } catch (e) {
+        console.warn('No se pudo emitir evento asignacionCreada:', e);
+      }
+
+      // Añadido: manejar la estructura { success, message, data } que retorna el backend
+      // Si el backend devuelve la asignación completa, usarla para actualizar UI optimista
+
+      // Actualizar UI localmente (optimista) usando la respuesta del servidor
+      if (json && json.data && json.data.id) {
+        const asignData = json.data;
+        const newAsignacion = {
+          id: asignData.id,
+          paciente: asignData.Paciente ? `${asignData.Paciente.nombre} ${asignData.Paciente.apellido}` : (selectedPaciente ? selectedPaciente.nombre : ''),
+          becario: asignData.Becario ? `${asignData.Becario.nombre} ${asignData.Becario.apellido}` : (selectedBecario ? selectedBecario.nombre : ''),
+          psicologo: asignData.Psicologo ? `${asignData.Psicologo.nombre} ${asignData.Psicologo.apellido}` : (selectedPsicologo ? selectedPsicologo.nombre : ''),
+          fecha_asignacion: asignData.fecha_inicio || asignData.created_at || new Date().toISOString(),
+          estado: asignData.estado || 'activa'
+        };
+
+        setAsignaciones(prev => [newAsignacion, ...prev]);
+        setPacientesSinAsignar(prev => prev.filter(p => p.id !== selectedPaciente?.id));
+
+        if (selectedBecario) {
+          setBecarios(prev => prev.map(b => b.id === selectedBecario.id ? { ...b, pacientes_asignados: (b.pacientes_asignados || 0) + 1 } : b));
+        }
+      } else {
+        // Si no vino la estructura esperada, reintentar un fetch para sincronizar
+        await fetchData();
+      }
+
       setShowModal(false);
       setSelectedPaciente(null);
       setSelectedBecario(null);
       setSelectedPsicologo(null);
       setAssignNotes('');
 
-      // Refrescar datos
-      await fetchData();
+      // Hacer un refresco en background (no bloqueante) para asegurar consistencia
+      fetchData().catch(err => console.warn('Refresco posterior falló:', err));
     } catch (error) {
       console.error('Error al asignar paciente:', error);
       notifications.error('Error al asignar paciente');

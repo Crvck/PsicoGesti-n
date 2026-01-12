@@ -35,13 +35,59 @@ const CoordinadorPacientes = () => {
 
   useEffect(() => {
     fetchPacientes();
+
+    // Escuchar asignaciones creadas para actualizar la UI inmediatamente
+    const onAsignacionCreada = (e) => {
+      const payload = e.detail || {};
+      console.log('onAsignacionCreada recibido:', payload);
+      const pacienteId = payload.paciente_id;
+      if (!pacienteId) return;
+
+      const psicologoFromPayload = payload.psicologo || (payload.asignacion && payload.asignacion.Psicologo ? `${payload.asignacion.Psicologo.nombre} ${payload.asignacion.Psicologo.apellido}` : null);
+      const becarioFromPayload = payload.becario || (payload.asignacion && payload.asignacion.Becario ? `${payload.asignacion.Becario.nombre} ${payload.asignacion.Becario.apellido}` : null);
+
+      setPacientes(prev => {
+        let found = false;
+        const next = prev.map(p => {
+          if (String(p.id) === String(pacienteId)) {
+            found = true;
+            const updated = {
+              ...p,
+              psicologo_asignado: psicologoFromPayload || p.psicologo_asignado || 'Asignado',
+              becario_asignado: becarioFromPayload || p.becario_asignado || 'Asignado'
+            };
+            console.log('Paciente actualizado localmente:', pacienteId, updated);
+            return updated;
+          }
+          return p;
+        });
+        if (!found) {
+          console.warn('onAsignacionCreada: paciente no encontrado localmente:', pacienteId);
+          // Sincronizar desde el servidor para asegurar que el paciente aparece con la nueva asignación
+          (async () => {
+            try {
+              console.log('Sincronizando pacientes tras asignación...');
+              await fetchPacientes();
+              notifications.info('Lista de pacientes sincronizada tras asignación');
+            } catch (err) {
+              console.warn('Error al sincronizar pacientes tras asignación:', err);
+            }
+          })();
+        }
+        return next;
+      });
+    };
+
+    window.addEventListener('asignacionCreada', onAsignacionCreada);
+    return () => window.removeEventListener('asignacionCreada', onAsignacionCreada);
   }, []);
 
   const fetchPacientes = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/pacientes', {
+      // Usar endpoint /activos que incluye información de asignaciones
+      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
@@ -49,15 +95,39 @@ const CoordinadorPacientes = () => {
       });
 
       if (!res.ok) {
-        console.error('Error fetching pacientes:', res.status);
+        console.error('Error fetching pacientes activos:', res.status);
         setLoading(false);
         return;
       }
 
-      const data = await res.json();
-      setPacientes(data);
+      const json = await res.json();
+      const data = json && json.success ? (json.data || []) : (json || []);
+
+      // Mapear para mantener compatibilidad con el resto del UI
+      const mapped = data.map(p => ({
+        id: p.id,
+        nombre: p.nombre,
+        apellido: p.apellido,
+        email: p.email,
+        telefono: p.telefono,
+        fecha_nacimiento: p.fecha_nacimiento,
+        genero: p.genero,
+        direccion: p.direccion,
+        estado: p.estado,
+        activo: p.activo,
+        notas: p.notas,
+        motivo_consulta: p.motivo_consulta || p.motivo || null,
+        fundacion_id: p.fundacion_id,
+        fecha_ingreso: p.fecha_ingreso || p.created_at,
+        fecha_alta: p.deleted_at || null,
+        sesiones_completadas: p.sesiones_completadas || 0,
+        psicologo_asignado: p.psicologo_nombre || null,
+        becario_asignado: p.becario_nombre || null
+      }));
+
+      setPacientes(mapped);
     } catch (error) {
-      console.error('Error al obtener pacientes:', error);
+      console.error('Error al obtener pacientes (activos):', error);
     } finally {
       setLoading(false);
     }
@@ -445,10 +515,18 @@ const CoordinadorPacientes = () => {
                     </div>
                   </td>
                   <td>
-                    <div className="text-small">{paciente.psicologo_asignado}</div>
-                    <div className="text-small">
-                      {paciente.becario_asignado || 'Sin asignar'}
-                    </div>
+                    {paciente.psicologo_asignado || paciente.becario_asignado ? (
+                      <>
+                        {paciente.psicologo_asignado && (
+                          <div className="text-small"><span className="badge badge-info">Psicólogo: {paciente.psicologo_asignado}</span></div>
+                        )}
+                        {(!paciente.psicologo_asignado && paciente.becario_asignado) && (
+                          <div className="text-small"><span className="badge badge-warning">Becario: {paciente.becario_asignado}</span></div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-small text-muted">Sin asignar</div>
+                    )}
                   </td>
                   <td>
                     <div className="font-bold">{paciente.sesiones_completadas}</div>
@@ -508,8 +586,7 @@ const CoordinadorPacientes = () => {
             <p>Total: {pacientes.length}</p>
             <p>Activos: {pacientes.filter(p => p.activo).length}</p>
             <p>Estudiantes: {pacientes.filter(p => p.es_estudiante).length}</p>
-            <p>Con becario: {pacientes.filter(p => p.becario_asignado).length}</p>
-          </div>
+            <p>Con becario: {pacientes.filter(p => p.becario_asignado).length}</p>            <p>Asignados: {pacientes.filter(p => p.psicologo_asignado || p.becario_asignado).length}</p>          </div>
         </div>
         
         <div className="card">

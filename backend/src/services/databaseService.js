@@ -13,8 +13,8 @@ class DatabaseService {
                     p.email AS paciente_email,
                     u_psi.nombre AS psicologo_nombre,
                     u_bec.nombre AS becario_nombre,
-                    c.duracion_minutos AS duracion,  -- Cambia duracion_minutos a duracion
-                    c.motivo AS notas,               -- Cambia motivo a notas
+                    c.duracion AS duracion,
+                    c.notas AS notas,
                     TIME_FORMAT(c.hora, '%H:%i') AS hora_formatted  -- Formatea la hora
                 FROM citas c
                 JOIN pacientes p ON c.paciente_id = p.id
@@ -151,10 +151,10 @@ class DatabaseService {
                     becario_id,
                     fecha,
                     hora,
-                    duracion_minutos,
+                    duracion,
                     tipo_consulta,
                     estado,
-                    motivo,
+                    notas,
                     created_at
                 ) VALUES (
                     :paciente_id,
@@ -162,10 +162,10 @@ class DatabaseService {
                     :becario_id,
                     :fecha,
                     :hora,
-                    :duracion_minutos,
+                    :duracion,
                     :tipo_consulta,
                     :estado,
-                    :motivo,
+                    :notas,
                     NOW()
                 )
             `, {
@@ -175,10 +175,10 @@ class DatabaseService {
                     becario_id: datosCita.becario_id || null,
                     fecha: datosCita.fecha,
                     hora: datosCita.hora,
-                    duracion_minutos: datosCita.duracion || 50,
+                    duracion: datosCita.duracion || 50,
                     tipo_consulta: datosCita.tipo_consulta,
                     estado: 'programada',
-                    motivo: datosCita.notas || null
+                    notas: datosCita.notas || null
                 },
                 transaction
             });
@@ -208,9 +208,9 @@ class DatabaseService {
             // 6. Registrar en logs
             await sequelize.query(`
                 INSERT INTO logs_sistema (
-                    tipo, usuario_id, descripcion, paciente_id, created_at
+                    usuario_id, tipo_log, modulo, accion, descripcion, datos_despues, created_at
                 ) VALUES (
-                    'nueva_cita', :usuarioId, :descripcion, :pacienteId, NOW()
+                    :usuarioId, 'creacion', 'citas', 'nueva_cita', :descripcion, JSON_OBJECT('paciente_id', :pacienteId), NOW()
                 )
             `, {
                 replacements: { 
@@ -229,6 +229,7 @@ class DatabaseService {
         } catch (error) {
             await transaction.rollback();
             console.error('❌ Error en crearNuevaCita:', error);
+            console.error('Stack trace:', error.stack);
             throw error;
         }
     }
@@ -327,9 +328,9 @@ class DatabaseService {
             // 4. Registrar en logs
             await sequelize.query(`
                 INSERT INTO logs_sistema (
-                    tipo, usuario_id, descripcion, paciente_id, created_at
+                    usuario_id, tipo_log, modulo, accion, descripcion, datos_despues, created_at
                 ) VALUES (
-                    'alta_paciente', :usuarioId, :descripcion, :pacienteId, NOW()
+                    :usuarioId, 'modificacion', 'pacientes', 'alta_paciente', :descripcion, JSON_OBJECT('paciente_id', :pacienteId), NOW()
                 )
             `, {
                 replacements: { 
@@ -443,8 +444,46 @@ class DatabaseService {
                 }
             }
             
+            // 6. Obtener la cita actualizada para devolverla y usar en logs
+            const [citaActualizadaArray] = await sequelize.query(`
+                SELECT 
+                    c.*,
+                    CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+                    p.telefono AS paciente_telefono,
+                    u_bec.nombre AS becario_nombre
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                WHERE c.id = :citaId
+            `, {
+                replacements: { citaId },
+                transaction,
+                type: sequelize.QueryTypes.SELECT
+            });
+
+            const citaActualizada = citaActualizadaArray && citaActualizadaArray.length ? citaActualizadaArray[0] : null;
+
+            // 7. Registrar en logs si la cita fue cancelada
+            if (updates.estado === 'cancelada') {
+                await sequelize.query(`
+                    INSERT INTO logs_sistema (
+                        usuario_id, tipo_log, modulo, accion, descripcion, datos_despues, created_at
+                    ) VALUES (
+                        :usuarioId, 'modificacion', 'citas', 'cancelar_cita', :descripcion, JSON_OBJECT('cita_id', :citaId, 'estado', 'cancelada', 'motivo', :motivo), NOW()
+                    )
+                `, {
+                    replacements: {
+                        usuarioId,
+                        citaId,
+                        descripcion: `Cita cancelada para ${citaActual.fecha} ${citaActual.hora}`,
+                        motivo: updates.motivo_cancelacion || null
+                    },
+                    transaction
+                });
+            }
+
             await transaction.commit();
-            return true;
+            return citaActualizada;
             
         } catch (error) {
             await transaction.rollback();

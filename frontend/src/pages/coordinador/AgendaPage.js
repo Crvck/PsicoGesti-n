@@ -52,6 +52,30 @@ const CoordinadorAgenda = () => {
     fetchAgenda();
   }, [selectedDate, view, filterPsicologo, filterEstado, filtrosAvanzados]);
 
+  // Escuchar cuando se crea una cita desde otras vistas para refrescar la agenda
+  useEffect(() => {
+    const onCitaCreada = (e) => {
+      try {
+        console.log('Evento citaCreada recibido (Agenda):', e.detail);
+        fetchAgenda();
+      } catch (err) { console.warn(err); }
+    };
+
+    const onCitaActualizada = (e) => {
+      try {
+        console.log('Evento citaActualizada recibido (Agenda):', e.detail);
+        fetchAgenda();
+      } catch (err) { console.warn(err); }
+    };
+
+    window.addEventListener('citaCreada', onCitaCreada);
+    window.addEventListener('citaActualizada', onCitaActualizada);
+    return () => {
+      window.removeEventListener('citaCreada', onCitaCreada);
+      window.removeEventListener('citaActualizada', onCitaActualizada);
+    };
+  }, [selectedDate, view, filterPsicologo, filterEstado, filtrosAvanzados]);
+
   const fetchPacientes = async () => {
     try {
       const response = await ApiService.get('/pacientes?activo=true&limit=100');

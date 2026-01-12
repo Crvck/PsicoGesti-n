@@ -13,9 +13,58 @@ const PsicologoPacientes = () => {
   const [showDetalles, setShowDetalles] = useState(false);
   const [filterEstado, setFilterEstado] = useState('');
 
+  // Estados para agendar cita
+  const [showAgendarModal, setShowAgendarModal] = useState(false);
+  const [becarios, setBecarios] = useState([]);
+  const [scheduleForm, setScheduleForm] = useState({
+    fecha: new Date().toISOString().slice(0,10),
+    hora: '10:00',
+    tipo_consulta: 'presencial',
+    duracion: 50,
+    becario_id: null,
+    notas: ''
+  });
+
   useEffect(() => {
     fetchPacientes();
+    fetchBecarios();
+
+    // Escuchar creación de citas para refrescar si es necesario
+    const onCitaCreada = (e) => {
+      try {
+        console.log('Evento citaCreada recibido (psicologo):', e.detail);
+        fetchPacientes();
+      } catch(e) { console.warn(e); }
+    };
+
+    const onCitaActualizada = (e) => {
+      try {
+        console.log('Evento citaActualizada recibido (psicologo):', e.detail);
+        fetchPacientes();
+      } catch (e) { console.warn(e); }
+    };
+
+    window.addEventListener('citaCreada', onCitaCreada);
+    window.addEventListener('citaActualizada', onCitaActualizada);
+    return () => {
+      window.removeEventListener('citaCreada', onCitaCreada);
+      window.removeEventListener('citaActualizada', onCitaActualizada);
+    };
   }, []);
+
+  const fetchBecarios = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/users/becarios', {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      const data = await res.json();
+      const normalized = (data || []).map(b => ({ ...b, nombre_completo: b.nombre + (b.apellido ? ` ${b.apellido}` : '') }));
+      setBecarios(normalized);
+    } catch (err) {
+      console.warn('No se pudieron obtener becarios:', err);
+    }
+  };
 
   const fetchPacientes = async () => {
     try {
@@ -266,6 +315,12 @@ const PsicologoPacientes = () => {
                       <button 
                         className="btn-text"
                         title="Agendar cita"
+                        onClick={() => {
+                          setSelectedPaciente(paciente);
+                          // rellenar fecha/hora por defecto
+                          setScheduleForm(prev => ({ ...prev, fecha: new Date().toISOString().slice(0,10), hora: '10:00', notas: '' }));
+                          setShowAgendarModal(true);
+                        }}
                       >
                         <FiCalendar />
                       </button>
@@ -395,7 +450,11 @@ const PsicologoPacientes = () => {
               <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
                 Cerrar
               </button>
-              <button className="btn-primary">
+              <button className="btn-primary" onClick={() => {
+                // Abrir modal de agendar desde detalles
+                setScheduleForm(prev => ({ ...prev, fecha: new Date().toISOString().slice(0,10), hora: '10:00', notas: '' }));
+                setShowAgendarModal(true);
+              }}>
                 Agendar Nueva Sesión
               </button>
               <button className="btn-warning">
@@ -405,6 +464,121 @@ const PsicologoPacientes = () => {
           </div>
         </div>
       )}
+
+      {/* Modal Agendar Cita */}
+      {showAgendarModal && selectedPaciente && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-medium">
+            <div className="modal-header">
+              <h3>Agendar cita para {selectedPaciente.nombre}</h3>
+              <button className="modal-close" onClick={() => setShowAgendarModal(false)}>×</button>
+            </div>
+
+            <div className="modal-content">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Fecha</label>
+                  <input type="date" className="input-field" value={scheduleForm.fecha} onChange={(e) => setScheduleForm({...scheduleForm, fecha: e.target.value})} />
+                </div>
+
+                <div className="form-group">
+                  <label>Hora</label>
+                  <input type="time" className="input-field" value={scheduleForm.hora} onChange={(e) => setScheduleForm({...scheduleForm, hora: e.target.value})} />
+                </div>
+
+                <div className="form-group">
+                  <label>Tipo</label>
+                  <select className="select-field" value={scheduleForm.tipo_consulta} onChange={(e) => setScheduleForm({...scheduleForm, tipo_consulta: e.target.value})}>
+                    <option value="presencial">Presencial</option>
+                    <option value="virtual">Virtual</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Duración (min)</label>
+                  <input type="number" className="input-field" value={scheduleForm.duracion} onChange={(e) => setScheduleForm({...scheduleForm, duracion: Number(e.target.value)})} />
+                </div>
+
+                <div className="form-group">
+                  <label>Becario (opcional)</label>
+                  <select className="select-field" value={scheduleForm.becario_id || ''} onChange={(e) => setScheduleForm({...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null})}>
+                    <option value="">Sin becario</option>
+                    {becarios.map(b => (
+                      <option key={b.id} value={b.id}>{b.nombre_completo}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Notas</label>
+                  <textarea rows="3" className="textarea-field" value={scheduleForm.notas} onChange={(e) => setScheduleForm({...scheduleForm, notas: e.target.value})} />
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-primary" onClick={async () => {
+                try {
+                  notifications.info('Creando cita...');
+                  const token = localStorage.getItem('token');
+                  const body = {
+                    paciente: { nombre: selectedPaciente.nombre, apellido: selectedPaciente.apellido, email: selectedPaciente.email || null, telefono: selectedPaciente.telefono || null },
+                    fecha: scheduleForm.fecha,
+                    hora: scheduleForm.hora,
+                    tipo_consulta: scheduleForm.tipo_consulta,
+                    duracion: scheduleForm.duracion,
+                    notas: scheduleForm.notas,
+                    becario_id: scheduleForm.becario_id || null
+                  };
+
+                  // Debug: registrar body que vamos a enviar
+                  console.log('🚀 Enviando request POST /api/citas/nueva con body:', body);
+
+                  const res = await fetch('http://localhost:3000/api/citas/nueva', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+                    body: JSON.stringify(body)
+                  });
+
+                  let json;
+                  try {
+                    json = await res.json();
+                  } catch (err) {
+                    console.error('Error parseando JSON de respuesta al crear cita:', err);
+                    notifications.error('Error procesando respuesta del servidor');
+                    return;
+                  }
+
+                  // Debug: ver respuesta del servidor
+                  console.log('📥 Respuesta POST /api/citas/nueva:', res.status, json);
+
+                  if (!res.ok) {
+                    notifications.error(json.message || 'Error creando cita');
+                    return;
+                  }
+
+                  notifications.success('Cita creada exitosamente');
+                  setShowAgendarModal(false);
+
+                  // Emitir evento para que calendario y otras vistas sincronicen
+                  try { window.dispatchEvent(new CustomEvent('citaCreada', { detail: { cita: json.data } })); } catch(e) { console.warn(e); }
+
+                } catch (err) {
+                  console.error('Error creando cita:', err);
+                  notifications.error('Error creando cita');
+                }
+              }}>
+                Guardar cita
+              </button>
+
+              <button className="btn-danger" onClick={() => setShowAgendarModal(false)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

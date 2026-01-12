@@ -47,6 +47,11 @@ class CitaController {
     static async crearNuevaCita(req, res) {
         try {
             const { paciente, fecha, hora, tipo_consulta, duracion, notas, becario_id } = req.body;
+
+            // Verificar que el usuario esté autenticado
+            if (!req.user || !req.user.id) {
+                return res.status(401).json({ success: false, message: 'No autorizado: falta token o sesión' });
+            }
             const usuarioId = req.user.id;
             
             console.log('📝 Datos recibidos para nueva cita:', {
@@ -182,7 +187,7 @@ class CitaController {
                 });
             }
             
-            await DatabaseService.actualizarCita(
+            const updatedCita = await DatabaseService.actualizarCita(
                 parseInt(id),
                 updatesFiltrados,
                 usuarioId
@@ -190,7 +195,8 @@ class CitaController {
             
             res.json({
                 success: true,
-                message: 'Cita actualizada exitosamente'
+                message: 'Cita actualizada exitosamente',
+                data: updatedCita
             });
             
         } catch (error) {

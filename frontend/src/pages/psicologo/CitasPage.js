@@ -24,57 +24,96 @@ const PsicologoCitas = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      
-      // Simulación de datos
-      setTimeout(() => {
-        setCitas([
-          {
-            id: 1,
-            paciente_nombre: 'Carlos Gómez',
-            fecha: format(new Date(), 'yyyy-MM-dd'),
-            hora: '10:00',
-            tipo_consulta: 'presencial',
-            estado: 'confirmada',
-            duracion: 50,
-            becario_nombre: 'Juan Pérez',
-            notas: 'Segunda sesión de exposición gradual'
-          },
-          {
-            id: 2,
-            paciente_nombre: 'Mariana López',
-            fecha: format(new Date(), 'yyyy-MM-dd'),
-            hora: '11:30',
-            tipo_consulta: 'virtual',
-            estado: 'programada',
-            duracion: 45,
-            becario_nombre: 'Sofía Ramírez',
-            notas: 'Seguimiento de tareas asignadas'
-          },
-          {
-            id: 3,
-            paciente_nombre: 'Roberto Sánchez',
-            fecha: format(new Date(), 'yyyy-MM-dd'),
-            hora: '14:00',
-            tipo_consulta: 'presencial',
-            estado: 'completada',
-            duracion: 60,
-            becario_nombre: null,
-            notas: 'Evaluación de progreso'
-          }
-        ]);
-        
-        setBecarios([
-          { id: 1, nombre: 'Juan Pérez', apellido: 'Pérez' },
-          { id: 2, nombre: 'Sofía', apellido: 'Ramírez' }
-        ]);
-        
-        setLoading(false);
-      }, 1000);
+      const token = localStorage.getItem('token');
+      const fechaStr = format(selectedDate, 'yyyy-MM-dd');
+
+      // Obtener citas del backend
+      const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${fechaStr}`, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Error en servidor' }));
+        console.error('Error fetching citas:', err);
+        notifications.error('No se pudieron obtener las citas');
+        setCitas([]);
+      } else {
+        const json = await res.json();
+        const data = Array.isArray(json) ? json : (json.data || []);
+        setCitas(data);
+      }
+
+      // Obtener lista de becarios para filtro
+      try {
+        const resB = await fetch('http://localhost:3000/api/users/becarios', {
+          headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+        });
+        const dataB = await resB.json();
+        const normalized = (dataB || []).map(b => ({
+          ...b,
+          nombre_completo: b.nombre + (b.apellido ? ` ${b.apellido}` : '')
+        }));
+        setBecarios(normalized);
+      } catch (err) {
+        console.warn('No se pudieron obtener becarios:', err);
+        setBecarios([]);
+      }
+
     } catch (error) {
       console.error('Error al cargar citas:', error);
+      notifications.error('Error al cargar citas');
+    } finally {
       setLoading(false);
     }
   };
+
+  // Escuchar eventos de creación o actualización de cita para refrescar sin recargar manualmente
+  React.useEffect(() => {
+    const onCitaCreada = (e) => {
+      try {
+        console.log('Evento citaCreada recibido (citas):', e.detail);
+        const nueva = e?.detail?.cita;
+        if (nueva) {
+          const nuevaFecha = nueva.fecha;
+          const fechaSeleccionada = format(selectedDate, 'yyyy-MM-dd');
+          if (nuevaFecha === fechaSeleccionada) {
+            // Insertar optimísticamente la nueva cita en la lista
+            setCitas(prev => [nueva, ...prev]);
+            return;
+          }
+        }
+        // Si no coincide la fecha, recargar datos
+        fetchData();
+      } catch (err) {
+        console.warn('Error manejando citaCreada:', err);
+      }
+    };
+
+    const onCitaActualizada = (e) => {
+      try {
+        console.log('Evento citaActualizada recibido (citas):', e.detail);
+        const updated = e?.detail?.cita;
+        if (updated) {
+          const fechaSeleccionada = format(selectedDate, 'yyyy-MM-dd');
+          if (updated.fecha === fechaSeleccionada) {
+            setCitas(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+          } else {
+            // Si cambió de fecha, remover de lista actual
+            setCitas(prev => prev.filter(c => c.id !== updated.id));
+          }
+          return;
+        }
+        fetchData();
+      } catch (err) { console.warn('Error manejando citaActualizada:', err); }
+    };
+
+    window.addEventListener('citaCreada', onCitaCreada);
+    window.addEventListener('citaActualizada', onCitaActualizada);
+    return () => {
+      window.removeEventListener('citaCreada', onCitaCreada);
+      window.removeEventListener('citaActualizada', onCitaActualizada);
+    };
+  }, [selectedDate]);
 
   const filteredCitas = citas.filter(cita => {
     const matchesBecario = !filterBecario || cita.becario_nombre?.includes(filterBecario);
@@ -105,6 +144,48 @@ const PsicologoCitas = () => {
       )
     );
     notifications.success(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
+  };
+
+  const handleCancelarCita = async (cita) => {
+    try {
+      const confirmado = await confirmations.warning(`¿Estás seguro de cancelar la cita de ${cita.paciente_nombre} el ${cita.fecha} ${cita.hora}?`);
+      if (!confirmado) return;
+
+      // Pedir motivo (opcional)
+      const motivo = window.prompt('Motivo de la cancelación (opcional):', '');
+
+      const token = localStorage.getItem('token');
+      // Optimistic UI: marcar como cancelada
+      setCitas(prev => prev.map(c => c.id === cita.id ? { ...c, estado: 'cancelada', motivo_cancelacion: motivo || '' } : c));
+
+      // Petición al backend
+      const res = await fetch(`http://localhost:3000/api/citas/cita/${cita.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ estado: 'cancelada', motivo_cancelacion: motivo || '' })
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        // Rollback
+        setCitas(prev => prev.map(c => c.id === cita.id ? { ...c, estado: cita.estado } : c));
+        console.error('Error cancelando cita:', json);
+        notifications.error(json.message || 'No se pudo cancelar la cita');
+        return;
+      }
+
+      const updated = json.data || { ...cita, estado: 'cancelada', motivo_cancelacion: motivo || '' };
+      // Reemplazar con datos retornados
+      setCitas(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+      notifications.success('Cita cancelada');
+
+      // Emitir evento para sincronizar otras vistas
+      window.dispatchEvent(new CustomEvent('citaActualizada', { detail: { cita: updated } }));
+
+    } catch (error) {
+      console.error('Error en handleCancelarCita:', error);
+      notifications.error('Error cancelando la cita');
+    }
   };
 
   if (loading) {
@@ -313,7 +394,7 @@ const PsicologoCitas = () => {
                   {(cita.estado === 'programada' || cita.estado === 'confirmada') && (
                     <button 
                       className="btn-text text-danger"
-                      onClick={() => handleEstadoCita(cita.id, 'cancelada')}
+                      onClick={() => handleCancelarCita(cita)}
                     >
                       <FiXCircle /> Cancelar
                     </button>

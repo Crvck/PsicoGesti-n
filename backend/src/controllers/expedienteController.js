@@ -4,7 +4,7 @@ const Sesion = require('../models/sesionModel');
 const Cita = require('../models/citaModel');
 const Asignacion = require('../models/asignacionModel');
 const User = require('../models/userModel');
-const { QueryTypes } = require('sequelize');
+const { QueryTypes, Op } = require('sequelize');
 const sequelize = require('../config/db');
 
 class ExpedienteController {
@@ -14,10 +14,11 @@ class ExpedienteController {
             const { paciente_id } = req.params;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
-            // Verificar permisos
-            const tieneAcceso = await this.verificarAccesoExpediente(usuarioId, usuarioRol, paciente_id);
-            
+
+            // Si el token no incluye rol, buscarlo por seguridad
+            const effectiveRol = usuarioRol || (await User.findByPk(usuarioId)).rol;
+            console.log(`obtenerExpedienteCompleto: usuarioId=${usuarioId}, usuarioRol=${effectiveRol}, paciente_id=${paciente_id}`);
+            const tieneAcceso = await ExpedienteController.verificarAccesoExpediente(usuarioId, effectiveRol, paciente_id);
             if (!tieneAcceso) {
                 return res.status(403).json({
                     success: false,
@@ -29,6 +30,7 @@ class ExpedienteController {
             const paciente = await Paciente.findByPk(paciente_id, {
                 attributes: { exclude: ['password'] }
             });
+            console.log('Paciente lookup result:', paciente ? `id=${paciente.id}` : 'NOT FOUND');
             
             if (!paciente) {
                 return res.status(404).json({
@@ -48,6 +50,7 @@ class ExpedienteController {
                     }
                 ]
             });
+            console.log('Expediente found:', !!expediente);
             
             // Obtener asignación actual
             const asignacion = await Asignacion.findOne({
@@ -69,30 +72,31 @@ class ExpedienteController {
                 ]
             });
             
-            // Obtener historial de sesiones
-            const sesiones = await Sesion.findAll({
-                where: { '$Cita.paciente_id$': paciente_id },
-                include: [
-                    {
-                        model: Cita,
-                        attributes: ['id', 'fecha', 'hora', 'tipo_consulta']
-                    },
-                    {
-                        model: User,
-                        as: 'Psicologo',
-                        attributes: ['id', 'nombre', 'apellido']
-                    }
-                ],
-                order: [['fecha', 'DESC'], ['hora_inicio', 'DESC']],
-                limit: 20
-            });
+            // Obtener historial de sesiones: primero obtener IDs de citas del paciente y luego sesiones por cita_id
+            const citasPaciente = await Cita.findAll({ where: { paciente_id }, attributes: ['id'] });
+            const citaIds = (citasPaciente || []).map(c => c.id);
+
+            let sesiones = [];
+            if (citaIds.length > 0) {
+                sesiones = await Sesion.findAll({
+                    where: { cita_id: { [Op.in]: citaIds } },
+                    include: [
+                        { model: Cita, attributes: ['id', 'fecha', 'hora', 'tipo_consulta', 'paciente_id'] },
+                        { model: User, as: 'Psicologo', attributes: ['id', 'nombre', 'apellido'] }
+                    ],
+                    order: [['fecha', 'DESC'], ['hora_inicio', 'DESC']],
+                    limit: 20
+                });
+            }
+
+            console.log('Citas encontradas para paciente:', citaIds.length, 'Sesiones encontradas:', sesiones.length);
             
             // Obtener citas futuras
             const citasFuturas = await Cita.findAll({
                 where: {
                     paciente_id,
-                    fecha: { [sequelize.Op.gte]: new Date().toISOString().split('T')[0] },
-                    estado: { [sequelize.Op.in]: ['programada', 'confirmada'] }
+                    fecha: { [Op.gte]: new Date().toISOString().split('T')[0] },
+                    estado: { [Op.in]: ['programada', 'confirmada'] }
                 },
                 include: [
                     {
@@ -108,6 +112,7 @@ class ExpedienteController {
                 ],
                 order: [['fecha', 'ASC'], ['hora', 'ASC']]
             });
+            console.log('Citas futuras encontradas:', citasFuturas.length);
             
             // Obtener estadísticas
             const [estadisticas] = await sequelize.query(`
@@ -239,7 +244,7 @@ class ExpedienteController {
             const usuarioRol = req.user.rol;
             
             // Verificar permisos
-            const puedeActualizar = await this.verificarPermisoActualizarExpediente(usuarioId, usuarioRol, paciente_id);
+            const puedeActualizar = await ExpedienteController.verificarPermisoActualizarExpediente(usuarioId, usuarioRol, paciente_id);
             
             if (!puedeActualizar) {
                 return res.status(403).json({
@@ -365,8 +370,11 @@ class ExpedienteController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
             
+            // Si token no incluye rol, buscarlo
+            const effectiveRol = usuarioRol || (await User.findByPk(usuarioId)).rol;
+
             // Verificar permisos básicos
-            const tieneAcceso = await this.verificarAccesoExpediente(usuarioId, usuarioRol, paciente_id);
+            const tieneAcceso = await ExpedienteController.verificarAccesoExpediente(usuarioId, effectiveRol, paciente_id);
             
             if (!tieneAcceso) {
                 return res.status(403).json({

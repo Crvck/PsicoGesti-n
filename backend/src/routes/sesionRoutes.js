@@ -10,8 +10,11 @@ router.use(verifyToken);
 // Registrar sesión (solo psicólogos y coordinadores)
 router.post('/', requireRole(['psicologo', 'coordinador']), SesionController.registrarSesion);
 
-// Obtener sesiones
+// Obtener sesiones por paciente
 router.get('/paciente/:paciente_id', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.obtenerSesionesPaciente);
+// Obtener sesiones recientes (global)
+router.get('/recientes', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.obtenerSesionesRecientes);
+// Obtener detalle
 router.get('/:id', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.obtenerSesionDetalle);
 
 // Actualizar sesión (solo psicólogo creador o coordinador)

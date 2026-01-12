@@ -16,44 +16,31 @@ const PsicologoExpedientes = () => {
 
   const fetchExpedientes = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setExpedientes([
-          {
-            id: 1,
-            paciente_nombre: 'Carlos Gómez',
-            edad: 25,
-            fecha_ingreso: '2023-10-15',
-            diagnostico: 'Trastorno de ansiedad generalizada',
-            motivo_consulta: 'Ansiedad académica',
-            antecedentes: 'No significativos',
-            tratamiento_actual: 'Terapia cognitivo-conductual',
-            medicacion: 'No',
-            ultima_evaluacion: '2024-01-10',
-            proxima_cita: '2024-01-17',
-            sesiones_totales: 8,
-            evolucion: 'Mejoría progresiva en manejo de ansiedad'
-          },
-          {
-            id: 2,
-            paciente_nombre: 'Mariana López',
-            edad: 28,
-            fecha_ingreso: '2023-09-20',
-            diagnostico: 'Síndrome de burnout',
-            motivo_consulta: 'Estrés laboral',
-            antecedentes: 'Antecedentes familiares de ansiedad',
-            tratamiento_actual: 'Terapia de aceptación y compromiso',
-            medicacion: 'No',
-            ultima_evaluacion: '2024-01-09',
-            proxima_cita: '2024-01-16',
-            sesiones_totales: 12,
-            evolucion: 'Mejor manejo de límites laborales'
-          }
-        ]);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      // Obtener pacientes activos y luego mapear a una vista de expedientes básicos
+      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (!res.ok) {
+        console.error('Error fetching pacientes activos:', res.status);
+        setExpedientes([]);
         setLoading(false);
-      }, 1000);
+        return;
+      }
+      const json = await res.json().catch(() => ([]));
+      const data = Array.isArray(json) ? json : (json.data || []);
+      // Normalizar para mostrar información básica en la lista
+      const lista = data.map(p => ({
+        id: p.id,
+        paciente_nombre: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim(),
+        edad: p.edad || null
+      }));
+      setExpedientes(lista);
     } catch (error) {
       console.error('Error al obtener expedientes:', error);
+      setExpedientes([]);
+    } finally {
       setLoading(false);
     }
   };
@@ -63,14 +50,53 @@ const PsicologoExpedientes = () => {
     expediente.diagnostico.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const showExpedienteDetalles = (expediente) => {
-    setSelectedExpediente(expediente);
+  const [expedienteDetalle, setExpedienteDetalle] = useState(null);
+
+  const showExpedienteDetalles = async (item) => {
+    setSelectedExpediente(null);
     setShowDetalles(true);
+    setExpedienteDetalle(null);
+    try {
+      const token = localStorage.getItem('token');
+      // item.id is paciente id
+      const res = await fetch(`http://localhost:3000/api/expedientes/paciente/${item.id}/completo`, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (!res.ok) {
+        const jsonErr = await res.json().catch(() => ({}));
+        notifications.error(jsonErr.message || 'No se pudo obtener expediente');
+        setShowDetalles(false);
+        return;
+      }
+      const json = await res.json();
+      const pacienteData = json.data.paciente || {};
+      const expedienteData = json.data.expediente || {};
+      const estadisticas = json.data.estadisticas || {};
+      const citasFuturas = Array.isArray(json.data.citas_futuras) ? json.data.citas_futuras : [];
+
+      const paciente_nombre = pacienteData.nombre_completo || `${pacienteData.nombre || ''} ${pacienteData.apellido || ''}`.trim();
+      const proximaCita = citasFuturas.length > 0 ? citasFuturas[0].fecha : null;
+
+      setSelectedExpediente({
+        ...pacienteData,
+        ...expedienteData,
+        paciente_nombre,
+        sesiones_totales: estadisticas.total_sesiones || 0,
+        ultima_evaluacion: estadisticas.ultima_sesion || expedienteData.ultima_evaluacion || null,
+        proxima_cita: proximaCita,
+        paciente: pacienteData
+      });
+
+      setExpedienteDetalle(json.data);
+    } catch (err) {
+      console.error('Error al cargar expediente:', err);
+      notifications.error('Error al cargar expediente');
+      setShowDetalles(false);
+    }
   };
 
   const exportarExpediente = (expediente) => {
-    // Simulación de exportación
-    notifications.success(`Exportando expediente de ${expediente.paciente_nombre}...`);
+    notifications.success(`Exportando expediente de ${expediente.paciente_nombre || expediente.nombre || ''}...`);
   };
 
   if (loading) {
@@ -206,26 +232,20 @@ const PsicologoExpedientes = () => {
               
               <div className="mt-20">
                 <h4>Historial de Sesiones</h4>
-                <div className="timeline mt-10">
-                  <div className="timeline-item">
-                    <div className="timeline-content">
-                      <strong>2024-01-10 - Sesión 8</strong>
-                      <p>Continuación trabajo en exposición gradual. Paciente reporta menor ansiedad anticipatoria.</p>
-                    </div>
+                {expedienteDetalle && expedienteDetalle.sesiones && expedienteDetalle.sesiones.length > 0 ? (
+                  <div className="timeline mt-10">
+                    {expedienteDetalle.sesiones.map(s => (
+                      <div className="timeline-item" key={s.id}>
+                        <div className="timeline-content">
+                          <strong>{s.fecha ? new Date(s.fecha).toLocaleDateString() : ''} - Sesión</strong>
+                          <p>{s.desarrollo || s.conclusion || ''}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="timeline-item">
-                    <div className="timeline-content">
-                      <strong>2024-01-03 - Sesión 7</strong>
-                      <p>Introducción de técnicas de exposición. Paciente colaborador y motivado.</p>
-                    </div>
-                  </div>
-                  <div className="timeline-item">
-                    <div className="timeline-content">
-                      <strong>2023-12-27 - Sesión 6</strong>
-                      <p>Revisión de tareas. Buen progreso en identificación de pensamientos automáticos.</p>
-                    </div>
-                  </div>
-                </div>
+                ) : (
+                  <div className="text-small">No hay sesiones registradas en este expediente.</div>
+                )}
               </div>
             </div>
             

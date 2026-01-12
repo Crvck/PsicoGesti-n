@@ -25,6 +25,54 @@ const PsicologoPacientes = () => {
     notas: ''
   });
 
+  // Estados para expediente y sesiones reales
+  const [expediente, setExpediente] = useState(null);
+  const [sesionesPaciente, setSesionesPaciente] = useState([]);
+  const [showRegistrarSesionModal, setShowRegistrarSesionModal] = useState(false);
+  const [registroSesionForm, setRegistroSesionForm] = useState({
+    fecha: new Date().toISOString().slice(0,10),
+    hora_inicio: '10:00',
+    hora_fin: '10:50',
+    desarrollo: '',
+    conclusion: '',
+    tareas_asignadas: '',
+    siguiente_cita: '',
+    privado: false
+  });
+
+  const fetchExpediente = async (pacienteId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/expedientes/paciente/${pacienteId}/completo`, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+
+      let json = null;
+      try {
+        json = await res.json();
+      } catch (e) {
+        console.warn('No JSON body in expediente response', e);
+      }
+
+      if (!res.ok) {
+        console.error('Error fetching expediente:', res.status, json);
+        notifications.error((json && (json.message || json.error)) || 'Error al obtener expediente');
+        setExpediente(null);
+        setSesionesPaciente([]);
+        return;
+      }
+
+      const data = json?.data || {};
+      setExpediente(data.expediente || {});
+      setSesionesPaciente(data.sesiones || []);
+    } catch (err) {
+      console.error('Error al obtener expediente completo:', err);
+      notifications.error('Error al obtener expediente');
+      setExpediente(null);
+      setSesionesPaciente([]);
+    }
+  };
+
   useEffect(() => {
     fetchPacientes();
     fetchBecarios();
@@ -125,6 +173,8 @@ const PsicologoPacientes = () => {
   const showPacienteDetalles = (paciente) => {
     setSelectedPaciente(paciente);
     setShowDetalles(true);
+    // Cargar expediente y sesiones reales
+    fetchExpediente(paciente.id);
   };
 
   const getEstadoLabel = (estado) => {
@@ -425,21 +475,25 @@ const PsicologoPacientes = () => {
                         <th>Tipo</th>
                         <th>Duración</th>
                         <th>Observaciones</th>
+                        <th>Psicólogo</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr>
-                        <td>{new Date(selectedPaciente.ultima_sesion).toLocaleDateString()}</td>
-                        <td>Presencial</td>
-                        <td>50 min</td>
-                        <td>Avance en técnicas de relajación</td>
-                      </tr>
-                      <tr>
-                        <td>2024-01-03</td>
-                        <td>Virtual</td>
-                        <td>45 min</td>
-                        <td>Trabajo en identificación de pensamientos automáticos</td>
-                      </tr>
+                      {sesionesPaciente.length > 0 ? (
+                        sesionesPaciente.map(s => (
+                          <tr key={s.id}>
+                            <td>{s.fecha ? new Date(s.fecha).toLocaleDateString() : ''}</td>
+                            <td>{s.tipo_consulta || (s.Cita && s.Cita.tipo_consulta) || 'N/A'}</td>
+                            <td>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio} - ${s.hora_fin}` : (s.hora_inicio || '')}</td>
+                            <td>{s.desarrollo || s.conclusion || ''}</td>
+                            <td>{(s.psicologo_nombre || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || '')}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="5">No hay sesiones registradas</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -449,16 +503,6 @@ const PsicologoPacientes = () => {
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
                 Cerrar
-              </button>
-              <button className="btn-primary" onClick={() => {
-                // Abrir modal de agendar desde detalles
-                setScheduleForm(prev => ({ ...prev, fecha: new Date().toISOString().slice(0,10), hora: '10:00', notas: '' }));
-                setShowAgendarModal(true);
-              }}>
-                Agendar Nueva Sesión
-              </button>
-              <button className="btn-warning">
-                Registrar Sesión
               </button>
             </div>
           </div>
@@ -572,6 +616,185 @@ const PsicologoPacientes = () => {
               </button>
 
               <button className="btn-danger" onClick={() => setShowAgendarModal(false)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Registrar Sesión - afuera del modal detalles */}
+      {showRegistrarSesionModal && selectedPaciente && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-medium">
+            <div className="modal-header">
+              <h3>Registrar sesión para {selectedPaciente.nombre}</h3>
+              <button className="modal-close" onClick={() => setShowRegistrarSesionModal(false)}>×</button>
+            </div>
+
+            <div className="modal-content">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Fecha</label>
+                  <input type="date" className="input-field" value={registroSesionForm.fecha} onChange={(e) => setRegistroSesionForm({...registroSesionForm, fecha: e.target.value})} />
+                </div>
+
+                <div className="form-group">
+                  <label>Hora inicio</label>
+                  <input type="time" className="input-field" value={registroSesionForm.hora_inicio} onChange={(e) => setRegistroSesionForm({...registroSesionForm, hora_inicio: e.target.value})} />
+                </div>
+
+                <div className="form-group">
+                  <label>Hora fin</label>
+                  <input type="time" className="input-field" value={registroSesionForm.hora_fin} onChange={(e) => setRegistroSesionForm({...registroSesionForm, hora_fin: e.target.value})} />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Desarrollo</label>
+                  <textarea rows="4" className="textarea-field" value={registroSesionForm.desarrollo} onChange={(e) => setRegistroSesionForm({...registroSesionForm, desarrollo: e.target.value})} />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Conclusión</label>
+                  <textarea rows="3" className="textarea-field" value={registroSesionForm.conclusion} onChange={(e) => setRegistroSesionForm({...registroSesionForm, conclusion: e.target.value})} />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Tareas asignadas</label>
+                  <textarea rows="3" className="textarea-field" value={registroSesionForm.tareas_asignadas} onChange={(e) => setRegistroSesionForm({...registroSesionForm, tareas_asignadas: e.target.value})} />
+                </div>
+
+                <div className="form-group">
+                  <label>Próxima sesión</label>
+                  <input type="date" className="input-field" value={registroSesionForm.siguiente_cita || ''} onChange={(e) => setRegistroSesionForm({...registroSesionForm, siguiente_cita: e.target.value})} />
+                </div>
+
+                <div className="form-group">
+                  <label>Privado</label>
+                  <div>
+                    <input type="checkbox" checked={registroSesionForm.privado} onChange={(e) => setRegistroSesionForm({...registroSesionForm, privado: e.target.checked})} /> Privado
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-primary" onClick={async () => {
+                try {
+                  notifications.info('Registrando sesión...');
+                  const token = localStorage.getItem('token');
+
+                  // 1) Crear una cita temporal (si no existe) y marcarla completada
+                  const citaBody = {
+                    paciente: { nombre: selectedPaciente.nombre, apellido: selectedPaciente.apellido, email: selectedPaciente.email || null, telefono: selectedPaciente.telefono || null },
+                    fecha: registroSesionForm.fecha,
+                    hora: registroSesionForm.hora_inicio,
+                    tipo_consulta: 'presencial',
+                    duracion: 50,
+                    notas: 'Sesión registrada desde expediente'
+                  };
+
+                  const resCita = await fetch('http://localhost:3000/api/citas/nueva', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+                    body: JSON.stringify(citaBody)
+                  });
+
+                  let jsonCita = null;
+                  try { jsonCita = await resCita.json(); } catch(e) { console.warn('No JSON in create-cita response', e); }
+                  if (!resCita.ok) {
+                    console.error('Error creando cita temporal:', resCita.status, jsonCita);
+                    notifications.error((jsonCita && (jsonCita.message || jsonCita.error)) || 'Error creando cita temporal');
+                    return;
+                  }
+
+                  if (!jsonCita || !jsonCita.success) {
+                    console.error('Create-cita response missing success flag:', jsonCita);
+                    notifications.error(jsonCita && (jsonCita.message || 'Error creando cita temporal') || 'Error creando cita temporal');
+                    return;
+                  }
+
+                  const citaCreada = jsonCita.data;
+
+                  // Marcar cita como completada
+                  const resPut = await fetch(`http://localhost:3000/api/citas/cita/${citaCreada.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+                    body: JSON.stringify({ estado: 'completada' })
+                  });
+
+                  let jsonPut = null;
+                  try { jsonPut = await resPut.json(); } catch(e) { console.warn('No JSON in put-cita response', e); }
+                  console.log('PUT /api/citas/cita/:id ->', resPut.status, jsonPut);
+                  if (!resPut.ok) {
+                    console.error('Error marcando cita como completada:', resPut.status, jsonPut);
+                    notifications.error((jsonPut && (jsonPut.message || jsonPut.error)) || 'Error marcando cita como completada');
+                    return;
+                  }
+
+                  if (!jsonPut || !jsonPut.success) {
+                    console.error('Put-cita response missing success flag:', jsonPut);
+                    notifications.error(jsonPut && (jsonPut.message || 'Error marcando cita como completada') || 'Error marcando cita como completada');
+                    return;
+                  }
+
+                  // 2) Registrar sesión usando la cita creada
+                  const sesionBody = {
+                    cita_id: citaCreada.id,
+                    desarrollo: registroSesionForm.desarrollo,
+                    conclusion: registroSesionForm.conclusion,
+                    tareas_asignadas: registroSesionForm.tareas_asignadas,
+                    emocion_predominante: registroSesionForm.emocion_predominante || '',
+                    // Enviar valores compatibles con el enum del backend
+                    riesgo_suicida: 'ninguno',
+                    // Enviar null si no hay escalas
+                    escalas_aplicadas: registroSesionForm.escalas_aplicadas && registroSesionForm.escalas_aplicadas.length ? registroSesionForm.escalas_aplicadas : null,
+                    siguiente_cita: registroSesionForm.siguiente_cita || null,
+                    privado: registroSesionForm.privado || false
+                  };
+
+                  console.log('🚀 Enviando POST /api/sesiones con body:', sesionBody);
+
+                  const resSesion = await fetch('http://localhost:3000/api/sesiones', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+                    body: JSON.stringify(sesionBody)
+                  });
+
+                  let jsonSesion = null;
+                  try { jsonSesion = await resSesion.json(); } catch(e) { console.warn('No JSON in sesiones response', e); }
+                  console.log('POST /api/sesiones ->', resSesion.status, jsonSesion);
+
+                  if (!resSesion.ok) {
+                    console.error('Error registrando sesión:', resSesion.status, jsonSesion);
+                    notifications.error((jsonSesion && (jsonSesion.message || jsonSesion.error)) || 'Error registrando sesión');
+                    return;
+                  }
+
+                  if (!jsonSesion || !jsonSesion.success) {
+                    console.error('Sesion response missing success flag:', jsonSesion);
+                    notifications.error(jsonSesion && (jsonSesion.message || 'Error registrando sesión') || 'Error registrando sesión');
+                    return;
+                  }
+
+                  notifications.success('Sesión registrada exitosamente');
+                  setShowRegistrarSesionModal(false);
+
+                  // Refrescar expediente y sesiones
+                  fetchExpediente(selectedPaciente.id);
+
+                  // Emitir evento para sincronizar con la vista de Sesiones
+                  try { window.dispatchEvent(new CustomEvent('sesionRegistrada', { detail: { sesion: jsonSesion.data } })); } catch(e) { console.warn(e); }
+
+                } catch (err) {
+                  console.error('Error registrando sesión:', err);
+                  notifications.error('Error registrando sesión');
+                }
+              }}>
+                Guardar sesión
+              </button>
+
+              <button className="btn-danger" onClick={() => setShowRegistrarSesionModal(false)}>
                 Cancelar
               </button>
             </div>

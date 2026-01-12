@@ -101,6 +101,10 @@ const Expediente = sequelize.define('Expediente', {
         type: DataTypes.TEXT,
         allowNull: true,
         comment: 'Solo visible para psicólogo asignado'
+    },
+    riesgo_suicida: {
+        type: DataTypes.ENUM('ninguno','bajo','moderado','alto'),
+        defaultValue: 'ninguno'
     }
 }, {
     tableName: 'expedientes',

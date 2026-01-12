@@ -33,10 +33,11 @@ class AuthController {
                 return res.status(401).json({ message: 'Credenciales inválidas' });
             }
 
-            // 5. Generar el JWT (usamos user.id y user.email del objeto Sequelize)
+            // 5. Generar el JWT (incluimos rol para que esté disponible en req.user)
             const payload = {
                 id: user.id,
-                email: user.email
+                email: user.email,
+                rol: user.rol
             };
 
             const token = jwt.sign(

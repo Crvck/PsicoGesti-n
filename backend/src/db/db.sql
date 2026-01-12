@@ -68,6 +68,8 @@ CREATE TABLE expedientes (
     medicamentos JSON,
     alergias TEXT,
     factores_riesgo JSON,
+    -- Riesgo suicida: actualizado por el trigger tr_after_insert_sesion al insertar sesiones
+    riesgo_suicida ENUM('ninguno','bajo','moderado','alto') DEFAULT 'ninguno',
     redes_apoyo TEXT,
     emergencia_contacto VARCHAR(255),
     emergencia_telefono VARCHAR(20),
@@ -639,6 +641,12 @@ BEGIN
     WHERE paciente_id = (SELECT paciente_id FROM citas WHERE id = NEW.cita_id);
 END$$
 DELIMITER ;
+
+-- NOTE: If you apply this schema to an existing database, make sure the following columns exist
+-- because the trigger 'tr_after_insert_sesion' expects 'expedientes.riesgo_suicida' to be present.
+-- To add them manually run (once) on your DB:
+-- ALTER TABLE expedientes ADD COLUMN riesgo_suicida ENUM('ninguno','bajo','moderado','alto') DEFAULT 'ninguno';
+-- If your MySQL/MariaDB version does not support JSON, consider updating to MySQL 5.7+ / MariaDB 10.2+ or change the column type.
 
 CREATE INDEX idx_pacientes_activo ON pacientes(activo);
 CREATE INDEX idx_citas_psicologo_fecha ON citas(psicologo_id, fecha, estado);

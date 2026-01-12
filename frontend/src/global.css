@@ -323,6 +323,17 @@ body {
   text-decoration: none;
 }
 
+/* Badge pequeño para indicar sesiones nuevas */
+.badge-new {
+  background: var(--grnd);
+  color: var(--white);
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: 8px;
+}
+
 /* Botón redondeado especial */
 .btn-rounded {
   padding: 12px;
@@ -934,6 +945,24 @@ body {
   border-radius: 8px;
   margin-bottom: 10px;
   overflow: hidden;
+}
+
+/* Compact session row */
+.session-row {
+  border: 1px solid var(--blub);
+  border-radius: 8px;
+  padding: 12px 18px;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  background: transparent;
+}
+
+.session-row:hover {
+  background: rgba(255,255,255,0.02);
 }
 
 .accordion-header {
@@ -2192,14 +2221,19 @@ input:checked + .slider:before {
   align-items: center;
 }
 
+/* Mostrar el contenido por defecto para evitar que campos se vean cortados. */
 .accordion-content {
+  max-height: none;
+  overflow: visible;
+  transition: none;
+  padding: 20px;
+}
+
+/* Si quieres comportamiento colapsable en un futuro, usa la clase 'collapsed' y controla con JS */
+.accordion.collapsed .accordion-content {
   max-height: 0;
   overflow: hidden;
   transition: max-height 0.3s ease;
-}
-
-.accordion.active .accordion-content {
-  max-height: 1000px;
 }
 
 /* Timeline mejorado */

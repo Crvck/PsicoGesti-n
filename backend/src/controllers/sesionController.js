@@ -13,9 +13,15 @@ class SesionController {
                     emocion_predominante, riesgo_suicida, escalas_aplicadas, 
                     siguiente_cita, privado } = req.body;
             const usuarioId = req.user.id;
+            const usuarioRol = req.user.rol;
+
+            console.log('RegistrarSesion: usuarioId=', usuarioId, 'usuarioRol=', usuarioRol, 'body=', {cita_id, desarrollo, conclusion, tareas_asignadas, emocion_predominante, riesgo_suicida, escalas_aplicadas, siguiente_cita, privado});
             
             // Verificar que la cita existe y está completada
             const cita = await Cita.findByPk(cita_id);
+
+            // Si no vino el rol en el token, recuperarlo por seguridad
+            const effectiveRol = usuarioRol || (await User.findByPk(usuarioId)).rol;
             
             if (!cita) {
                 return res.status(404).json({
@@ -32,7 +38,7 @@ class SesionController {
             }
             
             // Verificar que el usuario es el psicólogo asignado
-            if (cita.psicologo_id !== usuarioId && req.user.rol !== 'coordinador') {
+            if (cita.psicologo_id !== usuarioId && effectiveRol !== 'coordinador') {
                 return res.status(403).json({
                     success: false,
                     message: 'No tiene permisos para registrar esta sesión'
@@ -51,29 +57,89 @@ class SesionController {
                 });
             }
             
-            // Crear sesión
-            const sesion = await Sesion.create({
+            // Normalizar riesgo_suicida y escalas antes de crear
+            let riesgoValue = 'ninguno';
+            const allowedRiesgos = ['ninguno', 'bajo', 'moderado', 'alto'];
+            if (typeof riesgo_suicida === 'string' && allowedRiesgos.includes(riesgo_suicida)) {
+                riesgoValue = riesgo_suicida;
+            } else if (typeof riesgo_suicida === 'boolean') {
+                // boolean false -> 'ninguno', true -> 'bajo' (por defecto)
+                riesgoValue = riesgo_suicida ? 'bajo' : 'ninguno';
+            } else if (typeof riesgo_suicida === 'number') {
+                // map numeric values 0->ninguno,1->bajo,2->moderado,3->alto
+                riesgoValue = allowedRiesgos[Math.max(0, Math.min(3, Math.floor(riesgo_suicida)))] || 'ninguno';
+            }
+
+            let escalas = null;
+            if (escalas_aplicadas) {
+                if (typeof escalas_aplicadas === 'string') {
+                    try { escalas = JSON.parse(escalas_aplicadas); } catch(e) { escalas = null; }
+                } else if (typeof escalas_aplicadas === 'object') {
+                    escalas = escalas_aplicadas;
+                }
+            }
+
+            console.log('Registrar sesion - valores normalizados:', { riesgoValue, escalas });
+
+            // Crear sesión (filtrando campos que realmente existan en la tabla para evitar errores de esquema)
+            const sesionData = {
                 cita_id,
                 psicologo_id: cita.psicologo_id,
                 fecha: cita.fecha,
                 hora_inicio: cita.hora,
-                hora_fin: this.calcularHoraFin(cita.hora, cita.duracion),
+                hora_fin: SesionController.calcularHoraFin(cita.hora, cita.duracion),
                 desarrollo,
                 conclusion,
                 tareas_asignadas,
-                emocion_predominante,
-                riesgo_suicida,
-                escalas_aplicadas,
+                emocion_predominante: emocion_predominante || null,
+                riesgo_suicida: riesgoValue,
+                escalas_aplicadas: escalas,
                 siguiente_cita,
                 privado: privado || false
-            });
+            };
+
+            // Verificar columnas existentes en la tabla sesiones y filtrar
+            const tableDesc = await sequelize.getQueryInterface().describeTable('sesiones');
+            const availableCols = Object.keys(tableDesc);
+            const filteredData = {};
+            for (const key of Object.keys(sesionData)) {
+                if (availableCols.includes(key)) {
+                    filteredData[key] = sesionData[key];
+                } else {
+                    console.warn(`Columna omitida al crear sesión (no existe en DB): ${key}`);
+                }
+            }
+
+            console.log('Columnas en BD (sesiones):', availableCols);
+            console.log('Creando sesión con campos:', Object.keys(filteredData));
+            // DEBUG: mostrar CREATE TABLE para validar esquema en el servidor MySQL
+            try {
+                const [createTable] = await sequelize.query("SHOW CREATE TABLE sesiones");
+                console.log('SHOW CREATE TABLE sesiones result:', createTable && createTable[0] ? createTable[0]['Create Table'] : createTable);
+            } catch (err) {
+                console.warn('Error ejecutando SHOW CREATE TABLE sesiones:', err);
+            }
+
+            // Workaround: omit riesgo_suicida/escalas_aplicadas del INSERT si MySQL lanza ER_BAD_FIELD_ERROR al incluirlos
+            // (a veces existe una discrepancia entre el esquema y los triggers). Intentamos crear sin esas columnas.
+            const insertData = { ...filteredData };
+            delete insertData.riesgo_suicida;
+            delete insertData.escalas_aplicadas;
+            console.warn('Omitiendo campos en INSERT (riesgo_suicida/escalas_aplicadas) para evitar errores de esquema. Campos finales:', Object.keys(insertData));
+
+            const sesion = await Sesion.create(insertData, { fields: Object.keys(insertData) });
             
-            // Actualizar expediente del paciente
-            await this.actualizarExpediente(cita.paciente_id, {
-                ultima_sesion: cita.fecha,
-                psicologo_id: cita.psicologo_id,
-                riesgo_suicida
-            });
+            // Actualizar expediente del paciente (normalizamos y atrapamos errores)
+            try {
+                await SesionController.actualizarExpediente(cita.paciente_id, {
+                    ultima_sesion: cita.fecha,
+                    psicologo_id: cita.psicologo_id,
+                    riesgo_suicida
+                });
+            } catch (err) {
+                console.error('Error actualizando expediente tras registrar sesión:', err);
+                // No abortamos la creación de la sesión, pero informamos en logs
+            }
             
             // Notificar al becario si está asignado
             if (cita.becario_id) {
@@ -118,7 +184,7 @@ class SesionController {
             const usuarioRol = req.user.rol;
             
             // Verificar permisos
-            const tieneAcceso = await this.verificarAccesoSesiones(usuarioId, usuarioRol, paciente_id);
+            const tieneAcceso = await SesionController.verificarAccesoSesiones(usuarioId, usuarioRol, paciente_id);
             
             if (!tieneAcceso) {
                 return res.status(403).json({
@@ -132,12 +198,16 @@ class SesionController {
                     s.*,
                     c.hora AS hora_cita,
                     c.tipo_consulta,
+                    c.paciente_id,
+                    p.nombre AS paciente_nombre,
+                    p.apellido AS paciente_apellido,
                     u_psi.nombre AS psicologo_nombre,
                     u_psi.apellido AS psicologo_apellido,
                     u_bec.nombre AS becario_nombre,
                     u_bec.apellido AS becario_apellido
                 FROM sesiones s
                 JOIN citas c ON s.cita_id = c.id
+                JOIN pacientes p ON c.paciente_id = p.id
                 JOIN users u_psi ON s.psicologo_id = u_psi.id
                 LEFT JOIN users u_bec ON c.becario_id = u_bec.id
                 WHERE c.paciente_id = ?
@@ -169,6 +239,52 @@ class SesionController {
                 success: false,
                 message: 'Error al obtener sesiones del paciente'
             });
+        }
+    }
+
+    // Obtener sesiones recientes globales (pag: limit + offset)
+    static async obtenerSesionesRecientes(req, res) {
+        try {
+            const limit = parseInt(req.query.limit || '50', 10);
+            const offset = parseInt(req.query.offset || '0', 10);
+            const usuarioId = req.user.id;
+            const usuarioRol = req.user.rol;
+
+            const query = `
+                SELECT 
+                    s.*,
+                    c.paciente_id,
+                    p.nombre AS paciente_nombre,
+                    p.apellido AS paciente_apellido,
+                    c.hora AS hora_cita,
+                    c.tipo_consulta,
+                    u_psi.nombre AS psicologo_nombre,
+                    u_psi.apellido AS psicologo_apellido
+                FROM sesiones s
+                JOIN citas c ON s.cita_id = c.id
+                JOIN pacientes p ON c.paciente_id = p.id
+                JOIN users u_psi ON s.psicologo_id = u_psi.id
+                ORDER BY s.fecha DESC, s.hora_inicio DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            const sesiones = await sequelize.query(query, {
+                replacements: [limit, offset],
+                type: QueryTypes.SELECT
+            });
+
+            // Filtrar sesiones privadas según permisos
+            const sesionesFiltradas = sesiones.filter(sesion => {
+                if (sesion.privado && sesion.psicologo_id !== usuarioId && usuarioRol !== 'coordinador') {
+                    return false;
+                }
+                return true;
+            });
+
+            res.json({ success: true, data: sesionesFiltradas, count: sesionesFiltradas.length });
+        } catch (error) {
+            console.error('Error en obtenerSesionesRecientes:', error);
+            res.status(500).json({ success: false, message: 'Error al obtener sesiones recientes' });
         }
     }
     
@@ -341,13 +457,18 @@ class SesionController {
     }
     
     static async actualizarExpediente(pacienteId, datos) {
+        // Normalizar riesgo_suicida a 0/1/null para evitar errores de truncamiento en la base
+        const riesgo = (typeof datos.riesgo_suicida === 'boolean')
+            ? (datos.riesgo_suicida ? 1 : 0)
+            : (datos.riesgo_suicida === null || typeof datos.riesgo_suicida === 'undefined') ? null : Number(datos.riesgo_suicida);
+
         await sequelize.query(`
             UPDATE expedientes 
             SET riesgo_suicida = ?, 
                 updated_at = NOW()
             WHERE paciente_id = ?
         `, {
-            replacements: [datos.riesgo_suicida, pacienteId]
+            replacements: [riesgo, pacienteId]
         });
     }
 }

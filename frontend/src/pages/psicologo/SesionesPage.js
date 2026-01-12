@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FiCalendar, FiUser, FiFileText, FiPlus, FiEdit2, FiSave } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
@@ -19,52 +19,230 @@ const PsicologoSesiones = () => {
     proxima_sesion: ''
   });
   const [pacientes, setPacientes] = useState([]);
+  const [expandedIds, setExpandedIds] = useState([]);
+  const [recientesLimit, setRecientesLimit] = useState(50);
+  const [recientesOffset, setRecientesOffset] = useState(0);
+  const [hasMoreRecientes, setHasMoreRecientes] = useState(false);
+  const [selectedSesion, setSelectedSesion] = useState(null);
+  const [showSesionModal, setShowSesionModal] = useState(false);
+
+  const toggleExpand = (id) => {
+    setExpandedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [id, ...prev]);
+  };
+
+  const openSesionModal = (sesion) => {
+    setSelectedSesion(sesion);
+    setShowSesionModal(true);
+  };
+
+  const closeSesionModal = () => {
+    setSelectedSesion(null);
+    setShowSesionModal(false);
+  };
+
+  // Ensure numbering uses chronological order (newest = Sesión 1)
+  const sesionesOrdenadas = useMemo(() => {
+    return [...sesiones].sort((a, b) => {
+      const da = a?.fecha ? new Date(a.fecha).getTime() : 0;
+      const db = b?.fecha ? new Date(b.fecha).getTime() : 0;
+      return db - da; // newest first
+    });
+  }, [sesiones]);
+
+  const getSessionNumber = (s) => {
+    const idx = sesionesOrdenadas.findIndex(x => String(x.id) === String(s.id));
+    return idx >= 0 ? idx + 1 : '?';
+  };
 
   useEffect(() => {
     fetchData();
+
+    // Escuchar eventos de sesiones registradas desde otras vistas: refrescar lista si aplica o añadir optimísticamente
+    const onSesionRegistrada = (e) => {
+      try {
+        const nueva = e?.detail?.sesion;
+        if (!nueva) return;
+
+        // Intentar obtener paciente_id desde distintos lugares
+        const pacienteIdFromEvent = nueva.paciente_id || (nueva.Cita && nueva.Cita.paciente_id) || null;
+
+        // Si hay paciente seleccionado y coincide con la sesión, refrescamos desde servidor
+        if (formData.paciente_id && String(formData.paciente_id) === String(pacienteIdFromEvent)) {
+          fetchSesiones(formData.paciente_id).catch(err => console.warn('Error refrescando sesiones tras evento:', err));
+          return;
+        }
+
+        // Si no hay paciente seleccionado, o la sesión es de otro paciente, añadir de forma optimista
+        // Evitar duplicados por id
+        setSesiones(prev => {
+          if (!nueva.id) {
+            // Si no hay id, crear un placeholder
+            const pacienteNombre = nueva.paciente_nombre || (nueva.Paciente && `${nueva.Paciente.nombre} ${nueva.Paciente.apellido}`) || 'Paciente';
+            return [{
+              id: Date.now(),
+              paciente_nombre: pacienteNombre,
+              fecha: nueva.fecha || new Date().toISOString().split('T')[0],
+              hora_inicio: nueva.hora_inicio || nueva.hora_cita || '',
+              hora_fin: nueva.hora_fin || '',
+              motivo_consulta: nueva.motivo_consulta || '',
+              contenido_sesion: nueva.desarrollo || nueva.conclusion || '',
+              observaciones: nueva.observaciones || '',
+              tareas_asignadas: nueva.tareas_asignadas || '',
+              proxima_sesion: nueva.siguiente_cita || ''
+            }, ...prev];
+          }
+
+          if (prev.some(s => s.id === nueva.id)) return prev; // ya existe
+
+          const pacienteNombre = nueva.paciente_nombre || (nueva.Paciente && `${nueva.Paciente.nombre} ${nueva.Paciente.apellido}`) || (pacientes.find(p => String(p.id) === String(pacienteIdFromEvent))?.nombre_completo) || 'Paciente';
+
+          return [{
+            id: nueva.id,
+            paciente_nombre: pacienteNombre,
+            fecha: nueva.fecha || new Date().toISOString().split('T')[0],
+            hora_inicio: nueva.hora_inicio || nueva.hora_cita || '',
+            hora_fin: nueva.hora_fin || '',
+            motivo_consulta: nueva.motivo_consulta || '',
+            contenido_sesion: nueva.desarrollo || nueva.conclusion || '',
+            observaciones: nueva.observaciones || '',
+            tareas_asignadas: nueva.tareas_asignadas || '',
+            proxima_sesion: nueva.siguiente_cita || ''
+          }, ...prev];
+        });
+      } catch (err) { console.warn(err); }
+    };
+
+    window.addEventListener('sesionRegistrada', onSesionRegistrada);
+    return () => window.removeEventListener('sesionRegistrada', onSesionRegistrada);
   }, []);
+
+  // Cargar sesiones cuando se selecciona un paciente o mostrar recientes si no
+  useEffect(() => {
+    if (formData.paciente_id) {
+      fetchSesiones(formData.paciente_id);
+    } else {
+      fetchRecientes();
+    }
+  }, [formData.paciente_id]);
+
+  // Obtener sesiones recientes globales
+  const fetchRecientes = async (limit = recientesLimit, offset = recientesOffset, append = false) => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/sesiones/recientes?limit=${limit}&offset=${offset}`, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Error en servidor' }));
+        console.error('Error fetching sesiones recientes:', err);
+        if (!append) setSesiones([]);
+        return;
+      }
+
+      const json = await res.json();
+      const data = Array.isArray(json) ? json : (json.data || []);
+      const normalized = data.map(s => ({
+        id: s.id,
+        paciente_nombre: s.paciente_nombre ? `${s.paciente_nombre} ${s.paciente_apellido || ''}`.trim() : 'Paciente',
+        fecha: s.fecha,
+        hora_inicio: s.hora_inicio || s.hora_cita || '',
+        hora_fin: s.hora_fin || '',
+        motivo_consulta: s.tipo_consulta || '',
+        contenido_sesion: s.desarrollo || s.conclusion || '',
+        observaciones: s.observaciones || '',
+        tareas_asignadas: s.tareas_asignadas || '',
+        proxima_sesion: s.siguiente_cita || null
+      }));
+
+      if (append) {
+        setSesiones(prev => [...prev, ...normalized]);
+        setRecientesOffset(prev => prev + data.length);
+      } else {
+        setSesiones(normalized);
+        setRecientesOffset(data.length);
+      }
+
+      setHasMoreRecientes(data.length === limit);
+    } catch (error) {
+      console.error('Error al cargar sesiones recientes:', error);
+      if (!append) setSesiones([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setPacientes([
-          { id: 1, nombre: 'Carlos Gómez' },
-          { id: 2, nombre: 'Mariana López' },
-          { id: 3, nombre: 'Roberto Sánchez' }
-        ]);
-        
-        setSesiones([
-          {
-            id: 1,
-            paciente_nombre: 'Carlos Gómez',
-            fecha: '2024-01-10',
-            hora_inicio: '10:00',
-            hora_fin: '11:00',
-            motivo_consulta: 'Ansiedad académica',
-            contenido_sesion: 'Exposición gradual a situaciones académicas estresantes',
-            observaciones: 'Paciente mostró buena disposición y colaboración',
-            tareas_asignadas: 'Practicar técnicas de relajación 10 min/día',
-            proxima_sesion: '2024-01-17'
-          },
-          {
-            id: 2,
-            paciente_nombre: 'Mariana López',
-            fecha: '2024-01-09',
-            hora_inicio: '11:30',
-            hora_fin: '12:15',
-            motivo_consulta: 'Estrés laboral',
-            contenido_sesion: 'Trabajo en establecimiento de límites laborales',
-            observaciones: 'Paciente reporta mejor manejo de situaciones laborales',
-            tareas_asignadas: 'Registrar situaciones estresantes en el trabajo',
-            proxima_sesion: '2024-01-16'
-          }
-        ]);
-        
-        setLoading(false);
-      }, 1000);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      // Obtener pacientes activos para el select
+      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Error en servidor' }));
+        console.error('Error fetching pacientes:', err);
+        setPacientes([]);
+      } else {
+        const json = await res.json();
+        const data = Array.isArray(json) ? json : (json.data || []);
+      const normalized = data.map(p => ({
+        id: p.id,
+        nombre: p.nombre || '',
+        apellido: p.apellido || '',
+        nombre_completo: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim()
+      }));
+        setPacientes(normalized);
+      }
+
+      setLoading(false);
     } catch (error) {
-      console.error('Error al cargar datos:', error);
+      console.error('Error al cargar pacientes:', error);
+      setLoading(false);
+    }
+  };
+
+  // Cargar sesiones de un paciente por ID
+  const fetchSesiones = async (pacienteId) => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/sesiones/paciente/${pacienteId}`, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Error en servidor' }));
+        console.error('Error fetching sesiones:', err);
+        setSesiones([]);
+        return;
+      }
+
+      const json = await res.json();
+      const data = Array.isArray(json) ? json : (json.data || []);
+      // Normalizar para la UI
+      const paciente = pacientes.find(p => String(p.id) === String(pacienteId));
+      const pacienteNombre = paciente ? paciente.nombre : 'Paciente';
+      const normalized = data.map(s => ({
+        id: s.id,
+        paciente_nombre: pacienteNombre,
+        fecha: s.fecha,
+        hora_inicio: s.hora_inicio || s.hora_cita || '',
+        hora_fin: s.hora_fin || '',
+        motivo_consulta: s.tipo_consulta || '',
+        contenido_sesion: s.desarrollo || s.conclusion || '',
+        observaciones: s.observaciones || '',
+        tareas_asignadas: s.tareas_asignadas || '',
+        proxima_sesion: s.siguiente_cita || null
+      }));
+
+      setSesiones(normalized);
+    } catch (error) {
+      console.error('Error al cargar sesiones:', error);
+      setSesiones([]);
+    } finally {
       setLoading(false);
     }
   };
@@ -77,20 +255,107 @@ const PsicologoSesiones = () => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    const nuevaSesion = {
-      id: sesiones.length + 1,
-      paciente_nombre: pacientes.find(p => p.id == formData.paciente_id)?.nombre || 'Paciente',
-      ...formData
-    };
-    
-    setSesiones([nuevaSesion, ...sesiones]);
-    setShowForm(false);
-    resetForm();
-    
-    notifications.success('Sesión registrada exitosamente');
+    try {
+      notifications.info('Registrando sesión...');
+      const token = localStorage.getItem('token');
+      const paciente = pacientes.find(p => p.id == formData.paciente_id);
+
+      // Asegurar nombre y apellido para la API; si sólo hay nombre_completo, lo separamos
+      let firstName = paciente?.nombre || '';
+      let lastName = paciente?.apellido || '';
+      if ((!firstName || !lastName) && paciente?.nombre_completo) {
+        const parts = paciente.nombre_completo.split(' ').filter(Boolean);
+        firstName = parts.shift() || '';
+        lastName = parts.join(' ') || '';
+      }
+
+      // Validación básica antes de crear la cita
+      if (!firstName || !lastName || !formData.fecha || !formData.hora_inicio) {
+        notifications.error('Faltan campos requeridos: paciente (nombre y apellido), fecha y hora');
+        return;
+      }
+
+      const citaBody = {
+        paciente: { nombre: firstName, apellido: lastName, email: null, telefono: null },
+        fecha: formData.fecha,
+        hora: formData.hora_inicio,
+        tipo_consulta: 'presencial',
+        duracion: 50,
+        notas: 'Sesión registrada desde Registro de Sesiones'
+      };
+
+      // Crear cita
+      const resCita = await fetch('http://localhost:3000/api/citas/nueva', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+        body: JSON.stringify(citaBody)
+      });
+
+      const jsonCita = await resCita.json().catch(() => ({}));
+      console.log('POST /api/citas/nueva ->', resCita.status, jsonCita);
+      if (!resCita.ok || !jsonCita.success) {
+        notifications.error(jsonCita.message || 'Error creando cita temporal');
+        return;
+      }
+
+      const citaCreada = jsonCita.data;
+      // Marcar completada
+      const resPut = await fetch(`http://localhost:3000/api/citas/cita/${citaCreada.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ estado: 'completada' })
+      });
+
+      const jsonPut = await resPut.json().catch(() => ({}));
+      console.log('PUT /api/citas/cita/:id ->', resPut.status, jsonPut);
+      if (!resPut.ok || !jsonPut.success) {
+        notifications.error(jsonPut.message || 'Error marcando cita como completada');
+        return;
+      }
+
+      // Registrar sesión
+      const sesionBody = {
+        cita_id: citaCreada.id,
+        desarrollo: formData.contenido_sesion,
+        conclusion: '',
+        tareas_asignadas: formData.tareas_asignadas,
+        emocion_predominante: formData.emocion_predominante || '',
+        riesgo_suicida: 'ninguno',
+        escalas_aplicadas: formData.escalas_aplicadas && formData.escalas_aplicadas.length ? formData.escalas_aplicadas : null,
+        siguiente_cita: formData.proxima_sesion || null,
+        privado: false
+      };
+
+      const resSesion = await fetch('http://localhost:3000/api/sesiones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+        body: JSON.stringify(sesionBody)
+      });
+
+      const jsonSesion = await resSesion.json().catch(() => ({}));
+      if (!resSesion.ok || !jsonSesion.success) {
+        notifications.error(jsonSesion.message || 'Error registrando sesión');
+        return;
+      }
+
+      const nueva = jsonSesion.data;
+
+      // Refrescar la lista de sesiones del paciente para mantener consistencia
+      try { await fetchSesiones(formData.paciente_id); } catch (err) { console.warn('Error refrescando sesiones después de crear:', err); }
+
+      setShowForm(false);
+      resetForm();
+      notifications.success('Sesión registrada exitosamente');
+
+      // Emitir evento global
+      try { window.dispatchEvent(new CustomEvent('sesionRegistrada', { detail: { sesion: nueva } })); } catch(e) { console.warn(e); }
+
+    } catch (err) {
+      console.error('Error registrando sesión:', err);
+      notifications.error('Error registrando sesión');
+    }
   };
 
   const resetForm = () => {
@@ -153,9 +418,9 @@ const PsicologoSesiones = () => {
                   <option value="">Seleccionar paciente</option>
                   {pacientes.map(paciente => (
                     <option key={paciente.id} value={paciente.id}>
-                      {paciente.nombre}
+                      {paciente.nombre_completo || `${paciente.nombre} ${paciente.apellido}`.trim()}
                     </option>
-                  ))}
+                  ))} 
                 </select>
               </div>
               
@@ -282,52 +547,36 @@ const PsicologoSesiones = () => {
         <h3>Sesiones Registradas</h3>
         
         {sesiones.length > 0 ? (
+          <>
           <div className="sesiones-list">
-            {sesiones.map((sesion) => (
-              <div key={sesion.id} className="accordion">
-                <div className="accordion-header">
-                  <div className="flex-row align-center gap-10">
-                    <FiCalendar />
-                    <span>{new Date(sesion.fecha).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex-row align-center gap-10">
-                    <FiUser />
-                    <span>{sesion.paciente_nombre}</span>
-                  </div>
-                  <div className="flex-row align-center gap-10">
-                    <span>{sesion.hora_inicio} - {sesion.hora_fin}</span>
-                  </div>
+            {sesiones.map((sesion, idx) => (
+              <div key={sesion.id} className="session-row" onClick={() => openSesionModal(sesion)}>
+                <div className="flex-row align-center gap-10">
+                  <strong>Sesión {getSessionNumber(sesion)}</strong>
+                  <FiCalendar />
+                  <span>{new Date(sesion.fecha).toLocaleDateString()}</span>
                 </div>
-                
-                <div className="accordion-content">
-                  <div className="grid-2 gap-20">
-                    <div>
-                      <h4>Motivo de consulta</h4>
-                      <p>{sesion.motivo_consulta}</p>
-                      
-                      <h4 className="mt-10">Contenido de la sesión</h4>
-                      <p>{sesion.contenido_sesion}</p>
-                    </div>
-                    
-                    <div>
-                      <h4>Observaciones</h4>
-                      <p>{sesion.observaciones}</p>
-                      
-                      <h4 className="mt-10">Tareas asignadas</h4>
-                      <p>{sesion.tareas_asignadas}</p>
-                      
-                      {sesion.proxima_sesion && (
-                        <>
-                          <h4 className="mt-10">Próxima sesión</h4>
-                          <p>{new Date(sesion.proxima_sesion).toLocaleDateString()}</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
+
+                <div className="flex-row align-center gap-10">
+                  <FiUser />
+                  <span>{sesion.paciente_nombre}</span>
+                  {(Date.now() - new Date(sesion.fecha).getTime()) < 24*60*60*1000 && (
+                    <span className="badge-new ml-8">Nueva</span>
+                  )}
+                </div>
+
+                <div className="flex-row align-center gap-10">
+                  <span>{sesion.hora_inicio} - {sesion.hora_fin}</span>
                 </div>
               </div>
             ))}
           </div>
+          {!formData.paciente_id && hasMoreRecientes && (
+            <div className="mt-10 text-center">
+              <button className="btn-secondary" onClick={() => fetchRecientes(recientesLimit, recientesOffset, true)}>Cargar más</button>
+            </div>
+          )}
+          </>
         ) : (
           <div className="no-citas">
             <div className="no-citas-icon">📋</div>
@@ -344,6 +593,69 @@ const PsicologoSesiones = () => {
           </div>
         )}
       </div>
+
+      {showSesionModal && selectedSesion && (
+        <div className="modal-overlay" onClick={closeSesionModal}>
+          <div className="modal-container modal-large" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Detalles de la sesión</h3>
+              <button className="modal-close" onClick={closeSesionModal}>×</button>
+            </div>
+
+            <div className="modal-content">
+              <div className="grid-2 gap-20">
+                <div>
+                  <h4>Información</h4>
+                  <div className="detail-row"><strong>Paciente:</strong> {selectedSesion.paciente_nombre}</div>
+                  <div className="detail-row"><strong>Fecha:</strong> {selectedSesion.fecha ? new Date(selectedSesion.fecha).toLocaleDateString() : '—'}</div>
+                  <div className="detail-row"><strong>Hora:</strong> {selectedSesion.hora_inicio || ''}{selectedSesion.hora_fin ? ` - ${selectedSesion.hora_fin}` : ''}</div>
+                  <div className="detail-row"><strong>Cita / ID:</strong> {selectedSesion.cita_id || selectedSesion.id}</div>
+                  {selectedSesion.emocion_predominante && <div className="detail-row"><strong>Emoción predominante:</strong> {selectedSesion.emocion_predominante}</div>}
+                </div>
+
+                <div>
+                  <h4>Próxima sesión</h4>
+                  <p>{selectedSesion.proxima_sesion ? new Date(selectedSesion.proxima_sesion).toLocaleDateString() : '—'}</p>
+
+                  <h4 className="mt-10">Observaciones</h4>
+                  <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.observaciones || '—'}</p>
+                </div>
+              </div>
+
+              <div className="mt-10">
+                <h4>Motivo de consulta</h4>
+                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.motivo_consulta || '—'}</p>
+
+                <h4 className="mt-10">Contenido de la sesión</h4>
+                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.contenido_sesion || '—'}</p>
+
+                <h4 className="mt-10">Tareas asignadas</h4>
+                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.tareas_asignadas || '—'}</p>
+
+                {selectedSesion.riesgo_suicida && (
+                  <>
+                    <h4 className="mt-10">Riesgo suicida</h4>
+                    <p>{selectedSesion.riesgo_suicida}</p>
+                  </>
+                )}
+
+                {selectedSesion.escalas_aplicadas && (
+                  <>
+                    <h4 className="mt-10">Escalas aplicadas</h4>
+                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{typeof selectedSesion.escalas_aplicadas === 'string' ? selectedSesion.escalas_aplicadas : JSON.stringify(selectedSesion.escalas_aplicadas, null, 2)}</pre>
+                  </>
+                )}
+
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ textAlign: 'right', marginTop: 12 }}>
+              <button className="btn-secondary" onClick={closeSesionModal}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

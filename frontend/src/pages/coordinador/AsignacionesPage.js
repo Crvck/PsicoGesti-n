@@ -56,12 +56,19 @@ const CoordinadorAsignaciones = () => {
 
       const token = localStorage.getItem('token');
 
-      // Fetch becarios
+      // Fetch becarios (normalizar campos para UI)
       const resBec = await fetch('http://localhost:3000/api/users/becarios', {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const becariosData = await resBec.json();
-      setBecarios(becariosData || []);
+      // Asegurar valores por defecto para evitar que aparezcan como "Inactivo" si campo faltante
+      const normalizedBecarios = (becariosData || []).map(b => ({
+        ...b,
+        activo: typeof b.activo === 'boolean' ? b.activo : true,
+        pacientes_asignados: typeof b.pacientes_asignados === 'number' ? b.pacientes_asignados : (b.pacientes_asignados || 0),
+        capacidad: typeof b.capacidad === 'number' ? b.capacidad : (b.capacidad || 4)
+      }));
+      setBecarios(normalizedBecarios);
 
       // Fetch all users and filter psicologos
       const resUsers = await fetch('http://localhost:3000/api/users', {

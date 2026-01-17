@@ -421,43 +421,66 @@ const PsicologoPacientes = () => {
       {/* Modal de Detalles */}
       {showDetalles && selectedPaciente && (
         <div className="modal-overlay">
-          <div className="modal-container modal-large">
+          <div className="modal-container modal-large" style={{ width: '95vw', maxWidth: '1400px' }}>
             <div className="modal-header">
-              <h3>Expediente de {selectedPaciente.nombre}</h3>
+              <div>
+                <h3>Expediente Clínico</h3>
+                <p className="text-small" style={{ marginTop: '5px', color: 'var(--gray)' }}>
+                  {selectedPaciente.nombre} • {selectedPaciente.edad} años
+                </p>
+              </div>
               <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
             </div>
             
-            <div className="modal-content">
-              <div className="grid-2 gap-20">
-                <div>
-                  <h4>Datos Personales</h4>
+            <div className="modal-content" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+              {/* Estadísticas rápidas (expandido) */}
+              <div className="grid-3 gap-20 mb-25">
+                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Sesiones Totales</div>
+                  <div className="stat-value" style={{ fontSize: '36px', lineHeight: '1' }}>{selectedPaciente.sesiones_completadas || 0}</div>
+                </div>
+                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Última Sesión</div>
+                  <div className="font-bold" style={{ fontSize: '16px' }}>
+                    {selectedPaciente.ultima_sesion ? new Date(selectedPaciente.ultima_sesion).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin registro'}
+                  </div>
+                </div>
+                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Estado</div>
+                  <span className={`badge badge-${getEstadoLabel(selectedPaciente.estado).color}`} style={{ fontSize: '16px', padding: '6px 10px' }}>
+                    {getEstadoLabel(selectedPaciente.estado).text}
+                  </span>
+                </div>
+              </div>
+
+              {/* Información detallada */}
+              <div className="grid-2 gap-20 mb-20">
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Datos Personales</h4>
                   <div className="detail-row">
-                    <strong>Nombre:</strong> {selectedPaciente.nombre}
+                    <strong>Nombre completo:</strong> {selectedPaciente.nombre}
                   </div>
                   <div className="detail-row">
                     <strong>Edad:</strong> {selectedPaciente.edad} años
                   </div>
                   <div className="detail-row">
-                    <strong>Contacto:</strong> {selectedPaciente.telefono} • {selectedPaciente.email}
+                    <strong>Email:</strong> {selectedPaciente.email || 'No registrado'}
                   </div>
                   <div className="detail-row">
-                    <strong>Motivo de consulta:</strong> {selectedPaciente.motivo_consulta}
+                    <strong>Teléfono:</strong> {selectedPaciente.telefono || 'No registrado'}
                   </div>
                 </div>
                 
-                <div>
-                  <h4>Información Clínica</h4>
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Información Clínica</h4>
                   <div className="detail-row">
-                    <strong>Diagnóstico:</strong> {selectedPaciente.diagnostico}
+                    <strong>Motivo de consulta:</strong> 
+                    <div style={{ marginTop: '5px', padding: '8px', background: 'var(--blud)', borderRadius: '6px' }}>
+                      {selectedPaciente.motivo_consulta || 'No especificado'}
+                    </div>
                   </div>
                   <div className="detail-row">
-                    <strong>Estado:</strong> 
-                    <span className={`badge badge-${getEstadoLabel(selectedPaciente.estado).color} ml-10`}>
-                      {getEstadoLabel(selectedPaciente.estado).text}
-                    </span>
-                  </div>
-                  <div className="detail-row">
-                    <strong>Sesiones completadas:</strong> {selectedPaciente.sesiones_completadas}
+                    <strong>Diagnóstico:</strong> {selectedPaciente.diagnostico || 'Sin diagnóstico'}
                   </div>
                   <div className="detail-row">
                     <strong>Becario asignado:</strong> {selectedPaciente.becario || 'No asignado'}
@@ -465,16 +488,19 @@ const PsicologoPacientes = () => {
                 </div>
               </div>
               
-              <div className="mt-20">
-                <h4>Historial de Sesiones</h4>
-                <div className="table-container mt-10">
+              {/* Historial de sesiones */}
+              <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                <div className="flex-row justify-between align-center mb-15">
+                  <h4 style={{ color: 'var(--blu)' }}>Historial de Sesiones ({sesionesPaciente.length})</h4>
+                </div>
+                <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                   <table className="data-table">
                     <thead>
                       <tr>
                         <th>Fecha</th>
                         <th>Tipo</th>
-                        <th>Duración</th>
-                        <th>Observaciones</th>
+                        <th>Horario</th>
+                        <th>Desarrollo</th>
                         <th>Psicólogo</th>
                       </tr>
                     </thead>
@@ -482,16 +508,27 @@ const PsicologoPacientes = () => {
                       {sesionesPaciente.length > 0 ? (
                         sesionesPaciente.map(s => (
                           <tr key={s.id}>
-                            <td>{s.fecha ? new Date(s.fecha).toLocaleDateString() : ''}</td>
-                            <td>{s.tipo_consulta || (s.Cita && s.Cita.tipo_consulta) || 'N/A'}</td>
-                            <td>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio} - ${s.hora_fin}` : (s.hora_inicio || '')}</td>
-                            <td>{s.desarrollo || s.conclusion || ''}</td>
-                            <td>{(s.psicologo_nombre || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || '')}</td>
+                            <td>{s.fecha ? new Date(s.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</td>
+                            <td>
+                              <span className="badge badge-info">
+                                {s.tipo_sesion || s.tipo_consulta || (s.Cita && s.Cita.tipo_consulta) || 'terapia'}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '13px' }}>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio.slice(0,5)} - ${s.hora_fin.slice(0,5)}` : (s.hora_inicio ? s.hora_inicio.slice(0,5) : 'N/A')}</td>
+                            <td style={{ maxWidth: '300px' }}>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {s.desarrollo || s.conclusion || 'Sin notas'}
+                              </div>
+                            </td>
+                            <td>{(s.psicologo_nombre || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || 'N/A')}</td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan="5">No hay sesiones registradas</td>
+                          <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: 'var(--gray)' }}>
+                            <div>📋</div>
+                            <div style={{ marginTop: '10px' }}>No hay sesiones registradas para este paciente</div>
+                          </td>
                         </tr>
                       )}
                     </tbody>
@@ -501,6 +538,13 @@ const PsicologoPacientes = () => {
             </div>
             
             <div className="modal-footer">
+              <button className="btn-primary" onClick={() => {
+                setShowDetalles(false);
+                setSelectedPaciente(selectedPaciente);
+                setShowAgendarModal(true);
+              }}>
+                <FiCalendar /> Agendar Cita
+              </button>
               <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
                 Cerrar
               </button>

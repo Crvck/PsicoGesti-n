@@ -33,6 +33,12 @@ const CoordinadorPacientes = () => {
     estado: 'activo'
   });
 
+  // Estados para expediente
+  const [selectedPaciente, setSelectedPaciente] = useState(null);
+  const [showDetalles, setShowDetalles] = useState(false);
+  const [expediente, setExpediente] = useState(null);
+  const [sesionesPaciente, setSesionesPaciente] = useState([]);
+
   useEffect(() => {
     fetchPacientes();
 
@@ -325,6 +331,45 @@ const CoordinadorPacientes = () => {
     });
   };
 
+  const fetchExpediente = async (pacienteId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/expedientes/paciente/${pacienteId}/completo`, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+
+      let json = null;
+      try {
+        json = await res.json();
+      } catch (e) {
+        console.warn('No JSON body in expediente response', e);
+      }
+
+      if (!res.ok) {
+        console.error('Error fetching expediente:', res.status, json);
+        notifications.error((json && (json.message || json.error)) || 'Error al obtener expediente');
+        setExpediente(null);
+        setSesionesPaciente([]);
+        return;
+      }
+
+      const data = json?.data || {};
+      setExpediente(data.expediente || {});
+      setSesionesPaciente(data.sesiones || []);
+    } catch (err) {
+      console.error('Error al obtener expediente completo:', err);
+      notifications.error('Error al obtener expediente');
+      setExpediente(null);
+      setSesionesPaciente([]);
+    }
+  };
+
+  const showPacienteDetalles = (paciente) => {
+    setSelectedPaciente(paciente);
+    setShowDetalles(true);
+    fetchExpediente(paciente.id);
+  };
+
   const exportarListadoPacientes = async () => {
     try {
       console.log('exportarListadoPacientes called, pacientes filtrados:', filteredPacientes.length);
@@ -566,6 +611,7 @@ const CoordinadorPacientes = () => {
                       <button 
                         className="btn-text"
                         title="Ver expediente"
+                        onClick={() => showPacienteDetalles(paciente)}
                       >
                         <FiFileText />
                       </button>
@@ -835,6 +881,167 @@ const CoordinadorPacientes = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalles del Expediente */}
+      {showDetalles && selectedPaciente && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-large" style={{ width: '95vw', maxWidth: '1400px' }}>
+            <div className="modal-header">
+              <div>
+                <h3>Expediente Clínico</h3>
+                <p className="text-small" style={{ marginTop: '5px', color: 'var(--gray)' }}>
+                  {selectedPaciente.nombre} {selectedPaciente.apellido} • {calcularEdad(selectedPaciente.fecha_nacimiento)} años
+                </p>
+              </div>
+              <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
+            </div>
+            
+            <div className="modal-content">
+              {/* Estadísticas rápidas (expandido) */}
+              <div className="grid-4 gap-20 mb-25" style={{  width: '200vw' }}>
+                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Sesiones Totales</div>
+                  <div className="stat-value" style={{ fontSize: '36px', lineHeight: '1' }}>{selectedPaciente.sesiones_completadas || 0}</div>
+                </div>
+                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Estado</div>
+                  <span className={`badge badge-${getEstadoLabel(selectedPaciente.estado).color}`} style={{ fontSize: '16px', padding: '6px 10px' }}>
+                    {getEstadoLabel(selectedPaciente.estado).text}
+                  </span>
+                </div>
+                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Psicólogo</div>
+                  <div className="font-bold" style={{ fontSize: '16px' }}>
+                    {selectedPaciente.psicologo_asignado || 'No asignado'}
+                  </div>
+                </div>
+                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Becario</div>
+                  <div className="font-bold" style={{ fontSize: '16px' }}>
+                    {selectedPaciente.becario_asignado || 'No asignado'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Información detallada */}
+              <div className="grid-2 gap-20 mb-20">
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Datos Personales</h4>
+                  <div className="detail-row">
+                    <strong>Nombre completo:</strong> {selectedPaciente.nombre} {selectedPaciente.apellido}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Edad:</strong> {calcularEdad(selectedPaciente.fecha_nacimiento)} años
+                  </div>
+                  <div className="detail-row">
+                    <strong>Género:</strong> {selectedPaciente.genero || 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Email:</strong> {selectedPaciente.email || 'No registrado'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Teléfono:</strong> {selectedPaciente.telefono || 'No registrado'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Dirección:</strong> {selectedPaciente.direccion || 'N/A'}
+                  </div>
+                  {selectedPaciente.es_estudiante && (
+                    <>
+                      <div className="detail-row">
+                        <strong>Matrícula:</strong> {selectedPaciente.matricula || 'N/A'}
+                      </div>
+                      <div className="detail-row">
+                        <strong>Institución:</strong> {selectedPaciente.institucion_educativa || 'N/A'}
+                      </div>
+                    </>
+                  )}
+                </div>
+                
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Información Clínica</h4>
+                  <div className="detail-row">
+                    <strong>Motivo de consulta:</strong>
+                    <div style={{ marginTop: '5px', padding: '8px', background: 'var(--blud)', borderRadius: '6px' }}>
+                      {selectedPaciente.motivo_consulta || 'No especificado'}
+                    </div>
+                  </div>
+                  <div className="detail-row">
+                    <strong>Contacto de emergencia:</strong> 
+                    <div style={{ marginTop: '5px' }}>
+                      {selectedPaciente.contacto_emergencia_nombre || 'N/A'}
+                      {selectedPaciente.contacto_emergencia_telefono && (
+                        <div className="text-small" style={{ color: 'var(--gray)' }}>
+                          Tel: {selectedPaciente.contacto_emergencia_telefono}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Historial de sesiones */}
+              <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                <div className="flex-row justify-between align-center mb-15">
+                  <h4 style={{ color: 'var(--blu)' }}>Historial de Sesiones ({sesionesPaciente.length})</h4>
+                </div>
+                <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Horario</th>
+                        <th>Desarrollo</th>
+                        <th>Psicólogo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sesionesPaciente.length > 0 ? (
+                        sesionesPaciente.map(s => (
+                          <tr key={s.id}>
+                            <td>{s.fecha ? new Date(s.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}</td>
+                            <td>
+                              <span className="badge badge-info">
+                                {s.tipo_sesion || s.tipo_consulta || (s.Cita && s.Cita.tipo_consulta) || 'terapia'}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '13px' }}>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio.slice(0,5)} - ${s.hora_fin.slice(0,5)}` : (s.hora_inicio ? s.hora_inicio.slice(0,5) : 'N/A')}</td>
+                            <td style={{ maxWidth: '300px' }}>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {s.desarrollo || s.conclusion || 'Sin notas'}
+                              </div>
+                            </td>
+                            <td>{(s.psicologo_nombre || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || 'N/A')}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: 'var(--gray)' }}>
+                            <div>📋</div>
+                            <div style={{ marginTop: '10px' }}>No hay sesiones registradas para este paciente</div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn-primary" onClick={() => {
+                setShowDetalles(false);
+                editarPaciente(selectedPaciente);
+              }}>
+                Editar Paciente
+              </button>
+              <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

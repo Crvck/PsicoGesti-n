@@ -15,9 +15,31 @@ class ExpedienteController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
 
+            console.log(`obtenerExpedienteCompleto: usuarioId=${usuarioId}, usuarioRol=${usuarioRol}, paciente_id=${paciente_id}`);
+
             // Si el token no incluye rol, buscarlo por seguridad
-            const effectiveRol = usuarioRol || (await User.findByPk(usuarioId)).rol;
-            console.log(`obtenerExpedienteCompleto: usuarioId=${usuarioId}, usuarioRol=${effectiveRol}, paciente_id=${paciente_id}`);
+            let effectiveRol = usuarioRol;
+            if (!effectiveRol) {
+                try {
+                    const user = await User.findByPk(usuarioId);
+                    effectiveRol = user ? user.rol : null;
+                    console.log(`Rol obtenido de DB: ${effectiveRol}`);
+                } catch (err) {
+                    console.error('Error obteniendo rol de usuario:', err);
+                    return res.status(500).json({
+                        success: false,
+                        message: 'Error verificando permisos de usuario'
+                    });
+                }
+            }
+
+            if (!effectiveRol) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No se pudo verificar el rol del usuario'
+                });
+            }
+
             const tieneAcceso = await ExpedienteController.verificarAccesoExpediente(usuarioId, effectiveRol, paciente_id);
             if (!tieneAcceso) {
                 return res.status(403).json({
@@ -435,20 +457,32 @@ class ExpedienteController {
     
     // Métodos auxiliares
     static async verificarAccesoExpediente(usuarioId, usuarioRol, pacienteId) {
-        if (usuarioRol === 'coordinador') return true;
-        
-        // Verificar si el usuario está asignado al paciente
-        const [asignacion] = await sequelize.query(`
-            SELECT 1 FROM asignaciones 
-            WHERE paciente_id = ? 
-            AND estado = 'activa'
-            AND (psicologo_id = ? OR becario_id = ?)
-        `, {
-            replacements: [pacienteId, usuarioId, usuarioId],
-            type: QueryTypes.SELECT
-        });
-        
-        return !!asignacion;
+        try {
+            console.log(`verificarAccesoExpediente: usuarioId=${usuarioId}, usuarioRol=${usuarioRol}, pacienteId=${pacienteId}`);
+            
+            if (usuarioRol === 'coordinador') {
+                console.log('Acceso concedido: coordinador');
+                return true;
+            }
+            
+            // Verificar si el usuario está asignado al paciente
+            const [asignacion] = await sequelize.query(`
+                SELECT 1 FROM asignaciones 
+                WHERE paciente_id = ? 
+                AND estado = 'activa'
+                AND (psicologo_id = ? OR becario_id = ?)
+            `, {
+                replacements: [pacienteId, usuarioId, usuarioId],
+                type: QueryTypes.SELECT
+            });
+            
+            const tieneAcceso = !!asignacion;
+            console.log(`Acceso verificado: ${tieneAcceso}`);
+            return tieneAcceso;
+        } catch (error) {
+            console.error('Error en verificarAccesoExpediente:', error);
+            return false;
+        }
     }
     
     static async verificarPermisoActualizarExpediente(usuarioId, usuarioRol, pacienteId) {

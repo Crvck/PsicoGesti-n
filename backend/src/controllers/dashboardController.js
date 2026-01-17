@@ -10,106 +10,168 @@ class DashboardController {
             
             
             // Estadísticas generales
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes
-                    (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) as pacientes_activos,
-                    (SELECT COUNT(*) FROM pacientes WHERE activo = FALSE) as pacientes_inactivos,
-                    (SELECT COUNT(*) FROM pacientes WHERE DATE(created_at) = CURDATE()) as pacientes_nuevos_hoy,
-                    
-                    -- Citas
-                    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado IN ('programada', 'confirmada')) as citas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') as citas_completadas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'cancelada') as citas_canceladas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE fecha BETWEEN DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND CURDATE()) as citas_semana,
-                    
-                    -- Profesionales
-                    (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) as psicologos_activos,
-                    (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) as becarios_activos,
-                    (SELECT COUNT(*) FROM users WHERE rol = 'coordinador' AND activo = TRUE) as coordinadores_activos,
-                    
-                    -- Asignaciones
-                    (SELECT COUNT(*) FROM asignaciones WHERE estado = 'activa') as asignaciones_activas,
-                    (SELECT COUNT(*) FROM asignaciones WHERE estado = 'finalizada' AND fecha_fin >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as asignaciones_finalizadas_mes,
-                    
-                    -- Altas
-                    (SELECT COUNT(*) FROM altas WHERE fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as altas_mes,
-                    (SELECT COUNT(*) FROM altas WHERE fecha_alta = CURDATE()) as altas_hoy
-            `, { type: QueryTypes.SELECT });
+            let estadisticas = {};
+            let citasPorDia = [];
+            let topPsicologos = [];
+            let becariosConCarga = [];
+            let actividadReciente = [];
+            let alertas = [];
+            let evolucionMensual = [];
             
-            // Citas por día de la semana actual
-            const citasPorDia = await sequelize.query(`
-                SELECT 
-                    DAYNAME(fecha) as dia,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-                    SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas
-                FROM citas
-                WHERE YEARWEEK(fecha, 1) = YEARWEEK(CURDATE(), 1)
-                GROUP BY DAYNAME(fecha), DAYOFWEEK(fecha)
-                ORDER BY DAYOFWEEK(fecha)
-            `, { type: QueryTypes.SELECT });
+            try {
+                const [estResult] = await sequelize.query(`
+                    SELECT 
+                        (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) as pacientes_activos,
+                        (SELECT COUNT(*) FROM pacientes WHERE activo = FALSE) as pacientes_inactivos,
+                        (SELECT COUNT(*) FROM pacientes WHERE DATE(created_at) = CURDATE()) as pacientes_nuevos_hoy,
+                        (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado IN ('programada', 'confirmada')) as citas_hoy,
+                        (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') as citas_completadas_hoy,
+                        (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'cancelada') as citas_canceladas_hoy,
+                        (SELECT COUNT(*) FROM citas WHERE fecha BETWEEN DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND CURDATE()) as citas_semana,
+                        (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) as psicologos_activos,
+                        (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) as becarios_activos,
+                        (SELECT COUNT(*) FROM users WHERE rol = 'coordinador' AND activo = TRUE) as coordinadores_activos,
+                        (SELECT COUNT(*) FROM asignaciones WHERE estado = 'activa') as asignaciones_activas,
+                        (SELECT COUNT(*) FROM asignaciones WHERE estado = 'finalizada' AND fecha_fin >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as asignaciones_finalizadas_mes,
+                        (SELECT COUNT(*) FROM altas WHERE fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as altas_mes,
+                        (SELECT COUNT(*) FROM altas WHERE fecha_alta = CURDATE()) as altas_hoy
+                `, { type: QueryTypes.SELECT });
+                estadisticas = estResult || {};
+            } catch (e) {
+                console.warn('Error en estadísticas:', e.message);
+                estadisticas = {};
+            }
             
-            // Top psicólogos por citas completadas
-            const topPsicologos = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as nombre_completo,
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completadas
-                FROM users u
-                LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                WHERE u.rol = 'psicologo' AND u.activo = TRUE
-                GROUP BY u.id, u.nombre, u.apellido
-                ORDER BY citas_completadas DESC
-                LIMIT 10
-            `, { type: QueryTypes.SELECT });
+            // Citas por día
+            try {
+                citasPorDia = await sequelize.query(`
+                    SELECT 
+                        DAYNAME(fecha) as dia,
+                        COUNT(*) as total_citas,
+                        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+                        SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas
+                    FROM citas
+                    WHERE YEARWEEK(fecha, 1) = YEARWEEK(CURDATE(), 1)
+                    GROUP BY DAYNAME(fecha), DAYOFWEEK(fecha)
+                    ORDER BY DAYOFWEEK(fecha)
+                `, { type: QueryTypes.SELECT });
+            } catch (e) {
+                console.warn('Error en citas por día:', e.message);
+                citasPorDia = [];
+            }
             
-            // Alertas y pendientes
-            const alertas = await sequelize.query(`
-                SELECT 
-                    'citas_sin_confirmar' as tipo,
-                    COUNT(*) as cantidad,
-                    'Citas programadas sin confirmar' as descripcion
-                FROM citas
-                WHERE estado = 'programada' AND fecha = CURDATE()
-                
-                UNION ALL
-                
-                SELECT 
-                    'observaciones_pendientes' as tipo,
-                    COUNT(*) as cantidad,
-                    'Observaciones de becarios pendientes de revisión' as descripcion
-                FROM observaciones_becarios
-                WHERE fecha_seguimiento <= CURDATE() AND fecha_seguimiento IS NOT NULL
-                
-                UNION ALL
-                
-                SELECT 
-                    'altas_pendientes' as tipo,
-                    COUNT(*) as cantidad,
-                    'Pacientes pendientes de revisión para alta' as descripcion
-                FROM pacientes p
-                WHERE p.activo = TRUE 
-                AND NOT EXISTS (SELECT 1 FROM altas a WHERE a.paciente_id = p.id)
-                AND (SELECT COUNT(*) FROM citas c WHERE c.paciente_id = p.id AND c.estado = 'completada') >= 4
-            `, { type: QueryTypes.SELECT });
+            // Top psicólogos
+            try {
+                topPsicologos = await sequelize.query(`
+                    SELECT 
+                        u.id,
+                        CONCAT(u.nombre, ' ', u.apellido) as nombre_completo,
+                        COUNT(c.id) as total_citas,
+                        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas
+                    FROM users u
+                    LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                    WHERE u.rol = 'psicologo' AND u.activo = TRUE
+                    GROUP BY u.id, u.nombre, u.apellido
+                    ORDER BY citas_completadas DESC
+                    LIMIT 5
+                `, { type: QueryTypes.SELECT });
+            } catch (e) {
+                console.warn('Error en top psicólogos:', e.message);
+                topPsicologos = [];
+            }
             
-            // Evolución mensual de pacientes
-            const evolucionMensual = await sequelize.query(`
-                SELECT 
-                    DATE_FORMAT(fecha_alta, '%Y-%m') as mes,
-                    COUNT(*) as altas,
-                    SUM(CASE WHEN tipo_alta = 'terapeutica' THEN 1 ELSE 0 END) as altas_terapeuticas,
-                    SUM(CASE WHEN tipo_alta = 'abandono' THEN 1 ELSE 0 END) as abandonos
-                FROM altas
-                WHERE fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-                GROUP BY DATE_FORMAT(fecha_alta, '%Y-%m')
-                ORDER BY mes DESC
-                LIMIT 6
-            `, { type: QueryTypes.SELECT });
+            // Becarios con carga
+            try {
+                becariosConCarga = await sequelize.query(`
+                    SELECT 
+                        u.id,
+                        CONCAT(u.nombre, ' ', u.apellido) as nombre_completo,
+                        COUNT(DISTINCT a.paciente_id) as pacientes_asignados,
+                        COUNT(DISTINCT c.id) as citas_este_mes,
+                        GROUP_CONCAT(DISTINCT CONCAT(p.nombre, ' ', p.apellido) ORDER BY p.nombre SEPARATOR ', ') as pacientes
+                    FROM users u
+                    LEFT JOIN asignaciones a ON u.id = a.becario_id AND a.estado = 'activa'
+                    LEFT JOIN pacientes p ON a.paciente_id = p.id
+                    LEFT JOIN citas c ON u.id = c.becario_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                    WHERE u.rol = 'becario' AND u.activo = TRUE
+                    GROUP BY u.id, u.nombre, u.apellido
+                    ORDER BY pacientes_asignados DESC
+                    LIMIT 5
+                `, { type: QueryTypes.SELECT });
+            } catch (e) {
+                console.warn('Error en becarios con carga:', e.message);
+                becariosConCarga = [];
+            }
+            
+            // Actividad reciente
+            try {
+                actividadReciente = await sequelize.query(`
+                    SELECT 
+                        c.id,
+                        c.paciente_id,
+                        c.fecha,
+                        c.created_at as fecha_evento,
+                        'Cita creada' as tipo_evento,
+                        CONCAT(u.nombre, ' ', u.apellido) as usuario,
+                        u.nombre as nombre_usuario,
+                        CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+                        'cita' as entidad_tipo
+                    FROM citas c
+                    LEFT JOIN users u ON c.psicologo_id = u.id
+                    LEFT JOIN pacientes p ON c.paciente_id = p.id
+                    WHERE c.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    ORDER BY c.created_at DESC
+                    LIMIT 5
+                `, { type: QueryTypes.SELECT });
+            } catch (e) {
+                console.warn('Error en actividad reciente:', e.message);
+                actividadReciente = [];
+            }
+            
+            // Alertas
+            try {
+                alertas = await sequelize.query(`
+                    SELECT 
+                        'citas_sin_confirmar' as tipo,
+                        COUNT(*) as cantidad,
+                        'Citas programadas sin confirmar' as descripcion
+                    FROM citas
+                    WHERE estado = 'programada' AND fecha = CURDATE()
+                    
+                    UNION ALL
+                    
+                    SELECT 
+                        'altas_pendientes' as tipo,
+                        COUNT(*) as cantidad,
+                        'Pacientes pendientes de revisión para alta' as descripcion
+                    FROM pacientes p
+                    WHERE p.activo = TRUE 
+                    AND NOT EXISTS (SELECT 1 FROM altas a WHERE a.paciente_id = p.id)
+                    AND (SELECT COUNT(*) FROM citas c WHERE c.paciente_id = p.id AND c.estado = 'completada') >= 4
+                `, { type: QueryTypes.SELECT });
+            } catch (e) {
+                console.warn('Error en alertas:', e.message);
+                alertas = [];
+            }
+            
+            // Evolución mensual
+            try {
+                evolucionMensual = await sequelize.query(`
+                    SELECT 
+                        DATE_FORMAT(fecha_alta, '%Y-%m') as mes,
+                        COUNT(*) as altas,
+                        SUM(CASE WHEN tipo_alta = 'terapeutica' THEN 1 ELSE 0 END) as altas_terapeuticas,
+                        SUM(CASE WHEN tipo_alta = 'abandono' THEN 1 ELSE 0 END) as abandonos
+                    FROM altas
+                    WHERE fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                    GROUP BY DATE_FORMAT(fecha_alta, '%Y-%m')
+                    ORDER BY mes DESC
+                    LIMIT 6
+                `, { type: QueryTypes.SELECT });
+            } catch (e) {
+                console.warn('Error en evolución mensual:', e.message);
+                evolucionMensual = [];
+            }
             
             res.json({
                 success: true,
@@ -117,8 +179,10 @@ class DashboardController {
                     estadisticas,
                     citas_por_dia: citasPorDia,
                     top_psicologos: topPsicologos,
+                    becarios_carga: becariosConCarga,
+                    actividad_reciente: actividadReciente,
                     alertas,
-                    evolucion_mensual: evolucionMensual.reverse(), // Orden ascendente
+                    evolucion_mensual: evolucionMensual.length > 0 ? evolucionMensual.reverse() : [],
                     ultima_actualizacion: new Date().toISOString()
                 }
             });

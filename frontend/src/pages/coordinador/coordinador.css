@@ -539,6 +539,59 @@ input:checked + .slider:before {
   max-height: 90vh;
 }
 
+.assign-modal {
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  padding: 24px;
+}
+
+.assign-modal .modal-content {
+  background: transparent;
+}
+
+.autocomplete-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 10px;
+  padding: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  z-index: 30;
+}
+
+.autocomplete-option {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.autocomplete-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateX(2px);
+}
+
+.autocomplete-title {
+  color: var(--white);
+  font-weight: 600;
+}
+
+.autocomplete-subtitle {
+  color: var(--text-light, #c7d1dc);
+}
+
+.autocomplete-empty {
+  color: var(--text-light, #c7d1dc);
+  padding: 6px 4px;
+}
+
 
 
 /* Grid responsive mejorado */
@@ -1220,4 +1273,167 @@ input:checked + .slider:before {
 .badge svg {
   margin-right: 5px;
   vertical-align: -2px;
+}
+
+/* Distribución de Citas Simplificada */
+.distribution-list-simple {
+  padding: 15px 0;
+}
+
+.psychologist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.psychologist-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  border-left: 3px solid;
+  transition: all 0.3s ease;
+}
+
+.psychologist-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateX(5px);
+}
+
+.psychologist-info {
+  flex: 1;
+}
+
+.psychologist-name {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: white;
+}
+
+.psychologist-citas-count {
+  font-size: 13px;
+  color: white;
+}
+
+.psychologist-badge {
+  min-width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  margin-left: 15px;
+  opacity: 0.9;
+}
+
+/* Becarios con Carga */
+.becarios-list {
+  padding: 15px 0;
+}
+
+.becarios-items {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.becario-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.becario-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.becario-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.becario-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: white;
+}
+
+.becario-stats {
+  display: flex;
+  gap: 8px;
+}
+
+.stat-badge {
+  background: var(--blu);
+  color: white;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.stat-badge.secondary {
+  background: var(--blub);
+}
+
+.becario-pacientes {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pacientes-label {
+  font-size: 12px;
+  font-weight: 600;
+  color:  #ffffff;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pacientes-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.paciente-tag {
+  background: var(--grnb);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .psychologist-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .psychologist-badge {
+    margin-left: 0;
+    margin-top: 10px;
+    align-self: flex-start;
+  }
+
+  .becario-stats {
+    flex-direction: column;
+    align-self: flex-end;
+  }
 }

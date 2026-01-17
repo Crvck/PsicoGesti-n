@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { FiMenu, FiChevronLeft,FiChevronLeft, FiHome, FiUsers, FiCalendar, FiSettings, FiLogOut } from 'react-icons/fi';
+import { FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiSettings, FiLogOut } from 'react-icons/fi';
 
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Tema oscuro por defecto
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('theme', 'dark');
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -22,7 +28,6 @@ const MainLayout = () => {
 
   return (
     <div className="main-container">
-      {/* Top Header */}
       <header className="top-header">
         <div className="flex-row align-center">
           <button 
@@ -32,16 +37,19 @@ const MainLayout = () => {
             {sidebarOpen ? <FiChevronLeft size={24} /> : <FiMenu size={24} />}
           </button>
           <img 
-                src="/images/logoCESUN2wide.png" 
-                alt="PsicoGestión" 
-                className="dashboard-logo"
-              />
+            src="/images/logoCESUN2wide.png" 
+            alt="PsicoGestión" 
+            className="dashboard-logo"
+          />
+          <h2 className="app-name">Panel</h2>
         </div>
-        
+
         <div className="flex-row align-center gap-20">
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
+            <span className="user-rol">Usuario</span>
           </div>
+          
           <button 
             className="btn-header"
             onClick={handleLogout}
@@ -54,7 +62,6 @@ const MainLayout = () => {
       </header>
 
       <div className="content-wrapper">
-        {/* Sidebar */}
         <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
           <nav className="sidebar-nav">
             {navItems.map((item) => (
@@ -72,7 +79,6 @@ const MainLayout = () => {
           </nav>
         </aside>
 
-        {/* Main Content */}
         <main className="main-content">
           <div className="content-area">
             <Outlet />
@@ -80,7 +86,6 @@ const MainLayout = () => {
         </main>
       </div>
 
-      {/* Bottom Status Bar */}
       <footer className="status-bar">
         <div className="status-info">
           <span>Sesión activa: {user?.email}</span>

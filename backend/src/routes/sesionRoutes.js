@@ -7,8 +7,8 @@ const { requireRole } = require('../middlewares/roleMiddleware');
 // Todas las rutas requieren autenticación
 router.use(verifyToken);
 
-// Registrar sesión (solo psicólogos y coordinadores)
-router.post('/', requireRole(['psicologo', 'coordinador']), SesionController.registrarSesion);
+// Registrar sesión (psicólogos, becarios y coordinadores)
+router.post('/', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.registrarSesion);
 
 // Obtener sesiones por paciente
 router.get('/paciente/:paciente_id', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.obtenerSesionesPaciente);

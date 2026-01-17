@@ -204,15 +204,27 @@ class AsignacionController {
                         a.becario_id,
                         u_bec.nombre AS becario_nombre,
                         u_bec.apellido AS becario_apellido,
+                        e.diagnostico_presuntivo,
+                        e.diagnostico_definitivo,
+                        e.motivo_consulta,
+                        TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) AS edad,
                         (SELECT COUNT(*) FROM citas c 
                          WHERE c.paciente_id = p.id 
                          AND c.estado = 'completada') AS sesiones_completadas,
+                        (SELECT MAX(c.fecha) FROM citas c 
+                         WHERE c.paciente_id = p.id 
+                         AND c.estado = 'completada') AS ultima_sesion,
+                        (SELECT MIN(c.fecha) FROM citas c 
+                         WHERE c.paciente_id = p.id 
+                         AND c.estado = 'programada'
+                         AND c.fecha >= CURDATE()) AS proxima_cita,
                         (SELECT COUNT(*) FROM citas c 
                          WHERE c.paciente_id = p.id 
                          AND c.estado = 'programada'
                          AND c.fecha >= CURDATE()) AS citas_pendientes
                     FROM asignaciones a
                     JOIN pacientes p ON a.paciente_id = p.id
+                    LEFT JOIN expedientes e ON e.paciente_id = p.id
                     LEFT JOIN users u_bec ON a.becario_id = u_bec.id
                     WHERE a.psicologo_id = ? 
                     AND a.estado = 'activa'
@@ -227,10 +239,23 @@ class AsignacionController {
                         a.psicologo_id,
                         u_psi.nombre AS psicologo_nombre,
                         u_psi.apellido AS psicologo_apellido,
+                        e.diagnostico_presuntivo,
+                        e.diagnostico_definitivo,
+                        e.motivo_consulta,
+                        TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) AS edad,
                         (SELECT COUNT(*) FROM citas c 
                          WHERE c.paciente_id = p.id 
                          AND c.becario_id = ?
                          AND c.estado = 'completada') AS sesiones_completadas,
+                        (SELECT MAX(c.fecha) FROM citas c 
+                         WHERE c.paciente_id = p.id 
+                         AND c.becario_id = ?
+                         AND c.estado = 'completada') AS ultima_sesion,
+                        (SELECT MIN(c.fecha) FROM citas c 
+                         WHERE c.paciente_id = p.id 
+                         AND c.becario_id = ?
+                         AND c.estado = 'programada'
+                         AND c.fecha >= CURDATE()) AS proxima_cita,
                         (SELECT COUNT(*) FROM citas c 
                          WHERE c.paciente_id = p.id 
                          AND c.becario_id = ?
@@ -238,13 +263,14 @@ class AsignacionController {
                          AND c.fecha >= CURDATE()) AS citas_pendientes
                     FROM asignaciones a
                     JOIN pacientes p ON a.paciente_id = p.id
+                    LEFT JOIN expedientes e ON e.paciente_id = p.id
                     JOIN users u_psi ON a.psicologo_id = u_psi.id
                     WHERE a.becario_id = ? 
                     AND a.estado = 'activa'
                     AND p.activo = TRUE
                     ORDER BY p.apellido, p.nombre
                 `;
-                replacements = [usuarioId, usuarioId, usuarioId];
+                replacements = [usuarioId, usuarioId, usuarioId, usuarioId, usuarioId];
             } else {
                 return res.status(403).json({
                     success: false,
@@ -256,6 +282,11 @@ class AsignacionController {
                 replacements,
                 type: QueryTypes.SELECT
             });
+            
+            console.log('Pacientes encontrados:', pacientes.length);
+            if (pacientes.length > 0) {
+                console.log('Primer paciente:', pacientes[0]);
+            }
             
             res.json({
                 success: true,
@@ -356,6 +387,61 @@ class AsignacionController {
             res.status(500).json({
                 success: false,
                 message: 'Error al obtener historial de asignaciones'
+            });
+        }
+    }
+
+    static async obtenerMisBecarios(req, res) {
+        try {
+            const usuarioId = req.user.id;
+            const usuarioRol = req.user.rol;
+
+            // Solo psicólogos pueden ver sus becarios asignados
+            if (usuarioRol !== 'psicologo') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Acceso no permitido para este rol'
+                });
+            }
+
+            const query = `
+                SELECT DISTINCT
+                    u.id,
+                    u.nombre,
+                    u.apellido,
+                    u.email,
+                    u.telefono,
+                    u.especialidad,
+                    u.activo,
+                    u.created_at,
+                    COUNT(DISTINCT a.paciente_id) AS pacientes_asignados
+                FROM users u
+                INNER JOIN asignaciones a ON u.id = a.becario_id
+                WHERE a.psicologo_id = ?
+                AND a.estado = 'activa'
+                AND u.rol = 'becario'
+                AND u.activo = TRUE
+                AND a.becario_id IS NOT NULL
+                GROUP BY u.id, u.nombre, u.apellido, u.email, u.telefono, u.especialidad, u.activo, u.created_at
+                ORDER BY u.apellido, u.nombre
+            `;
+
+            const becarios = await sequelize.query(query, {
+                replacements: [usuarioId],
+                type: QueryTypes.SELECT
+            });
+
+            res.json({
+                success: true,
+                data: becarios,
+                count: becarios.length
+            });
+
+        } catch (error) {
+            console.error('Error en obtenerMisBecarios:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener becarios asignados'
             });
         }
     }

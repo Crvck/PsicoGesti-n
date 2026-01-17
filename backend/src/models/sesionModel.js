@@ -79,6 +79,21 @@ const Sesion = sequelize.define('Sesion', {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
         comment: 'Si solo psicólogo puede ver'
+    },
+    dificultades: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: 'Dificultades encontradas durante la sesión'
+    },
+    logros: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: 'Logros del paciente en la sesión'
+    },
+    preguntas_supervisor: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: 'Preguntas para el supervisor'
     }
 }, {
     tableName: 'sesiones',

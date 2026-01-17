@@ -2,40 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell,FiSun, FiMoon,
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell,
   FiFileText, FiLogOut, FiClock
 } from 'react-icons/fi';
 
 const BecarioLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout } = useAuth();
-  const [darkMode, setDarkMode] = useState(false);
   const navigate = useNavigate();
   const [notificaciones, setNotificaciones] = useState([]);
 
+  // Tema oscuro por defecto
   useEffect(() => {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme === 'dark') {
-        setDarkMode(true);
-        document.documentElement.setAttribute('data-theme', 'dark');
-      } else {
-        setDarkMode(false);
-        document.documentElement.setAttribute('data-theme', 'light');
-      }
-    }, []);
-  
-    const toggleDarkMode = () => {
-      const newDarkMode = !darkMode;
-      setDarkMode(newDarkMode);
-      
-      if (newDarkMode) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        localStorage.setItem('theme', 'dark');
-      } else {
-        document.documentElement.setAttribute('data-theme', 'light');
-        localStorage.setItem('theme', 'light');
-      }
-    };
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('theme', 'dark');
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -45,12 +26,12 @@ const BecarioLayout = () => {
   const fetchNotificaciones = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/notificaciones/mis-notificaciones', {
+      const response = await fetch('http://localhost:3000/api/notificaciones/', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setNotificaciones(data.data || []);
@@ -62,7 +43,6 @@ const BecarioLayout = () => {
 
   useEffect(() => {
     fetchNotificaciones();
-    // Actualizar cada 30 segundos
     const interval = setInterval(fetchNotificaciones, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -72,7 +52,7 @@ const BecarioLayout = () => {
     { path: '/becario/citas', icon: <FiCalendar />, label: 'Mis Citas', permiso: 'gestionar_citas_asignadas' },
     { path: '/becario/pacientes', icon: <FiUsers />, label: 'Mis Pacientes', permiso: 'ver_pacientes_asignados' },
     { path: '/becario/notificaciones', icon: <FiBell />, label: 'Notificaciones', permiso: 'ver_notificaciones' },
-    { path: '/becario/observaciones', icon: <FiFileText />, label: 'Observaciones', permiso: 'registrar_observaciones' },
+    { path: '/becario/observaciones', icon: <FiFileText />, label: 'Observaciones y Sesiones', permiso: 'registrar_observaciones' },
   ];
 
   return (
@@ -106,30 +86,6 @@ const BecarioLayout = () => {
             </button>
           </div>
 
-          {/* Toggle Switch Dark Mode */}
-          <div className="toggle-container">
-            <input 
-              type="checkbox" 
-              id="dark-mode-toggle" 
-              className="toggle-checkbox"
-              checked={darkMode}
-              onChange={toggleDarkMode}
-            />
-            <label 
-              htmlFor="dark-mode-toggle" 
-              className="toggle-label"
-              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
-            >
-              <div className="toggle-ball">
-                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
-              </div>
-              <div className="toggle-icons">
-                <FiSun className="sun-icon" size={14} />
-                <FiMoon className="moon-icon" size={14} />
-              </div>
-            </label>
-          </div>
-          
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
             <span className="user-rol">Becario</span>

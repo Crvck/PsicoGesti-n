@@ -13,73 +13,117 @@ const BecarioNotificaciones = () => {
 
   const fetchNotificaciones = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setNotificaciones([
-          {
-            id: 1,
-            tipo: 'cita_modificada',
-            titulo: 'Cita modificada',
-            mensaje: 'La cita con Carlos Gómez ha sido reprogramada para mañana a las 11:00 AM',
-            fecha: '2024-01-10 09:30:00',
-            leida: false
-          },
-          {
-            id: 2,
-            tipo: 'cita_nueva',
-            titulo: 'Nueva cita asignada',
-            mensaje: 'Tienes una nueva cita con Mariana López para el viernes 12 de enero',
-            fecha: '2024-01-09 14:15:00',
-            leida: true
-          },
-          {
-            id: 3,
-            tipo: 'sistema',
-            titulo: 'Recordatorio de observación',
-            mensaje: 'Recuerda registrar las observaciones de la sesión con Roberto Sánchez',
-            fecha: '2024-01-08 16:45:00',
-            leida: false
-          },
-          {
-            id: 4,
-            tipo: 'mensaje',
-            titulo: 'Mensaje del psicólogo',
-            mensaje: 'Por favor, prepara el informe del paciente Carlos Gómez para la supervisión',
-            fecha: '2024-01-07 10:20:00',
-            leida: true
-          }
-        ]);
-        setLoading(false);
-      }, 1000);
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:3000/api/notificaciones', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Adaptar los campos de la API al formato esperado por el componente
+          const notificacionesAdaptadas = data.data.map(notif => ({
+            ...notif,
+            leida: notif.leido, // La API usa 'leido', el componente usa 'leida'
+            fecha: notif.created_at // La API usa 'created_at', el componente usa 'fecha'
+          }));
+          setNotificaciones(notificacionesAdaptadas);
+        } else {
+          console.error('Error en la respuesta:', data.message);
+          notifications.error('Error al cargar notificaciones');
+        }
+      } else {
+        console.error('Error HTTP:', response.status);
+        notifications.error('Error al cargar notificaciones');
+      }
     } catch (error) {
       console.error('Error al obtener notificaciones:', error);
+      notifications.error('Error de conexión al cargar notificaciones');
+    } finally {
       setLoading(false);
     }
   };
 
   const marcarComoLeida = async (notifId) => {
-    setNotificaciones(prev => 
-      prev.map(notif => 
-        notif.id === notifId ? { ...notif, leida: true } : notif
-      )
-    );
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:3000/api/notificaciones/${notifId}/leer`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Actualizar el estado local
+          setNotificaciones(prev => 
+            prev.map(notif => 
+              notif.id === notifId ? { ...notif, leida: true } : notif
+            )
+          );
+          notifications.success('Notificación marcada como leída');
+        } else {
+          notifications.error('Error al marcar notificación como leída');
+        }
+      } else {
+        notifications.error('Error al marcar notificación como leída');
+      }
+    } catch (error) {
+      console.error('Error al marcar como leída:', error);
+      notifications.error('Error de conexión');
+    }
   };
 
-  const marcarTodasComoLeidas = () => {
-    setNotificaciones(prev => 
-      prev.map(notif => ({ ...notif, leida: true }))
-    );
+  const marcarTodasComoLeidas = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:3000/api/notificaciones/leer-todas', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Actualizar el estado local
+          setNotificaciones(prev => 
+            prev.map(notif => ({ ...notif, leida: true }))
+          );
+          notifications.success('Todas las notificaciones marcadas como leídas');
+        } else {
+          notifications.error('Error al marcar todas las notificaciones como leídas');
+        }
+      } else {
+        notifications.error('Error al marcar todas las notificaciones como leídas');
+      }
+    } catch (error) {
+      console.error('Error al marcar todas como leídas:', error);
+      notifications.error('Error de conexión');
+    }
   };
 
   const getIconByTipo = (tipo) => {
     switch (tipo) {
-      case 'cita_nueva':
+      case 'cita_programada':
       case 'cita_modificada':
+      case 'cita_cancelada':
         return <FiCalendar />;
-      case 'sistema':
-        return <FiBell />;
-      case 'mensaje':
+      case 'asignacion_nueva':
+        return <FiCheckCircle />;
+      case 'observacion_nueva':
         return <FiMessageSquare />;
+      case 'alerta_sistema':
+      case 'reporte_generado':
+        return <FiBell />;
       default:
         return <FiBell />;
     }
@@ -87,14 +131,20 @@ const BecarioNotificaciones = () => {
 
   const getColorByTipo = (tipo) => {
     switch (tipo) {
-      case 'cita_nueva':
+      case 'cita_programada':
         return 'var(--grnb)';
       case 'cita_modificada':
         return 'var(--yy)';
-      case 'sistema':
-        return 'var(--blu)';
-      case 'mensaje':
+      case 'cita_cancelada':
+        return 'var(--red)';
+      case 'asignacion_nueva':
         return 'var(--grnd)';
+      case 'observacion_nueva':
+        return 'var(--blu)';
+      case 'alerta_sistema':
+        return 'var(--orange)';
+      case 'reporte_generado':
+        return 'var(--purple)';
       default:
         return 'var(--gray)';
     }
@@ -174,51 +224,6 @@ const BecarioNotificaciones = () => {
                 <p className="text-small mt-10">Las notificaciones aparecerán aquí cuando tengas nuevas alertas</p>
               </div>
             )}
-          </div>
-          
-          <div className="mt-20">
-            <h4>Tipos de notificaciones</h4>
-            <div className="grid-4 mt-10">
-              <div className="notification-type">
-                <div className="notification-type-icon" style={{ color: 'var(--grnb)' }}>
-                  <FiCalendar />
-                </div>
-                <div className="notification-type-info">
-                  <strong>Citas</strong>
-                  <p>Nuevas citas, modificaciones y recordatorios</p>
-                </div>
-              </div>
-              
-              <div className="notification-type">
-                <div className="notification-type-icon" style={{ color: 'var(--blu)' }}>
-                  <FiBell />
-                </div>
-                <div className="notification-type-info">
-                  <strong>Sistema</strong>
-                  <p>Alertas y recordatorios del sistema</p>
-                </div>
-              </div>
-              
-              <div className="notification-type">
-                <div className="notification-type-icon" style={{ color: 'var(--grnd)' }}>
-                  <FiMessageSquare />
-                </div>
-                <div className="notification-type-info">
-                  <strong>Mensajes</strong>
-                  <p>Comunicación con psicólogos y coordinadores</p>
-                </div>
-              </div>
-              
-              <div className="notification-type">
-                <div className="notification-type-icon" style={{ color: 'var(--yy)' }}>
-                  <FiCheckCircle />
-                </div>
-                <div className="notification-type-info">
-                  <strong>Tareas</strong>
-                  <p>Recordatorios de tareas pendientes</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

@@ -15,5 +15,6 @@ router.get('/paciente/:paciente_id/historial', requireRole(['coordinador', 'psic
 
 // Rutas para psicólogos y becarios
 router.get('/mis-pacientes', requireRole(['psicologo', 'becario']), AsignacionController.obtenerMisPacientes);
+router.get('/mis-becarios', requireRole(['psicologo']), AsignacionController.obtenerMisBecarios);
 
 module.exports = router;

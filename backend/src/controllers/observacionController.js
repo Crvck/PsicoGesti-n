@@ -1,6 +1,7 @@
 const ObservacionBecario = require('../models/observacionBecarioModel');
 const User = require('../models/userModel');
 const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
 const { QueryTypes } = require('sequelize');
 const sequelize = require('../config/db');
 
@@ -108,7 +109,7 @@ class ObservacionController {
             const usuarioRol = req.user.rol;
             
             // Verificar permisos
-            const tienePermisos = await this.verificarPermisosObservaciones(usuarioId, usuarioRol, becario_id);
+            const tienePermisos = await ObservacionController.verificarPermisosObservaciones(usuarioId, usuarioRol, becario_id);
             
             if (!tienePermisos) {
                 return res.status(403).json({
@@ -144,7 +145,7 @@ class ObservacionController {
                         model: Cita,
                         attributes: ['id', 'fecha', 'hora'],
                         include: [{
-                            model: require('../models/pacienteModel'),
+                            model: Paciente,
                             attributes: ['id', 'nombre', 'apellido']
                         }]
                     }
@@ -164,7 +165,7 @@ class ObservacionController {
                     estadisticas: {
                         total: observaciones.length,
                         promedio: promedio.toFixed(2),
-                        porAspecto: this.agruparPorAspecto(observaciones)
+                        porAspecto: ObservacionController.agruparPorAspecto(observaciones)
                     }
                 }
             });
@@ -444,6 +445,79 @@ class ObservacionController {
         });
         
         return estadisticas;
+    }
+
+    static async enviarFeedback(req, res) {
+        try {
+            const { becarioId } = req.params;
+            const { feedback, tipo } = req.body;
+            const supervisorId = req.user.id;
+            const supervisorRol = req.user.rol;
+
+            // Verificar que sea psicólogo o coordinador
+            if (!['psicologo', 'coordinador'].includes(supervisorRol)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Solo psicólogos y coordinadores pueden enviar feedback'
+                });
+            }
+
+            // Verificar que el becario existe y está activo
+            const becario = await User.findOne({
+                where: { id: becarioId, rol: 'becario', activo: true }
+            });
+
+            if (!becario) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Becario no encontrado'
+                });
+            }
+
+            // Verificar que el supervisor tenga relación con el becario
+            if (supervisorRol === 'psicologo') {
+                const relacion = await sequelize.query(`
+                    SELECT 1 FROM asignaciones 
+                    WHERE psicologo_id = ? AND becario_id = ? AND estado = 'activa'
+                    LIMIT 1
+                `, {
+                    replacements: [supervisorId, becarioId],
+                    type: QueryTypes.SELECT
+                });
+
+                if (!relacion.length) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'No tienes permisos para supervisar a este becario'
+                    });
+                }
+            }
+
+            // Crear la observación de feedback
+            const nuevaObservacion = await ObservacionBecario.create({
+                becario_id: becarioId,
+                supervisor_id: supervisorId,
+                tipo_observacion: 'retroalimentacion',
+                aspecto_evaluado: 'profesionalismo',
+                calificacion: 5, // Calificación neutral por defecto para feedback
+                recomendaciones: feedback,
+                privada: false,
+                fecha: new Date()
+            });
+
+            res.json({
+                success: true,
+                message: 'Feedback enviado correctamente',
+                data: nuevaObservacion
+            });
+
+        } catch (error) {
+            console.error('Error en enviarFeedback:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al enviar feedback'
+            });
+        }
     }
 }
 

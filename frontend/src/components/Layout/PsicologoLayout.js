@@ -8,34 +8,14 @@ import {
 
 const PsicologoLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  // Inicializar el tema desde localStorage
+  // Tema oscuro por defecto
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      setDarkMode(true);
-      document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-      setDarkMode(false);
-      document.documentElement.setAttribute('data-theme', 'light');
-    }
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('theme', 'dark');
   }, []);
-
-  const toggleDarkMode = () => {
-    const newDarkMode = !darkMode;
-    setDarkMode(newDarkMode);
-    
-    if (newDarkMode) {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.setAttribute('data-theme', 'light');
-      localStorage.setItem('theme', 'light');
-    }
-  };
 
   const handleLogout = () => {
     logout();
@@ -70,30 +50,6 @@ const PsicologoLayout = () => {
         </div>
         
         <div className="flex-row align-center gap-20">
-          {/* Toggle Switch Dark Mode */}
-          <div className="toggle-container">
-            <input 
-              type="checkbox" 
-              id="dark-mode-toggle" 
-              className="toggle-checkbox"
-              checked={darkMode}
-              onChange={toggleDarkMode}
-            />
-            <label 
-              htmlFor="dark-mode-toggle" 
-              className="toggle-label"
-              title={darkMode ? "Modo oscuro activado" : "Modo claro activado"}
-            >
-              <div className="toggle-ball">
-                {darkMode ? <FiMoon size={14} /> : <FiSun size={14} />}
-              </div>
-              <div className="toggle-icons">
-                <FiSun className="sun-icon" size={14} />
-                <FiMoon className="moon-icon" size={14} />
-              </div>
-            </label>
-          </div>
-          
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
             <span className="user-rol">Psicólogo</span>

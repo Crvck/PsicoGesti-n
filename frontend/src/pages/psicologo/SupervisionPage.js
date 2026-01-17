@@ -10,6 +10,10 @@ const PsicologoSupervision = () => {
   const [selectedBecario, setSelectedBecario] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [showPacienteObservaciones, setShowPacienteObservaciones] = useState(false);
+  const [observacionesPaciente, setObservacionesPaciente] = useState([]);
+  const [selectedPaciente, setSelectedPaciente] = useState(null);
+  const [citasBecarios, setCitasBecarios] = useState([]);
 
   useEffect(() => {
     fetchData();
@@ -17,78 +21,153 @@ const PsicologoSupervision = () => {
 
   const fetchData = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setBecarios([
-          {
-            id: 1,
-            nombre: 'Juan Pérez',
-            email: 'becario1@psicogestion.com',
-            fecha_inicio: '2023-09-01',
-            pacientes_asignados: 3,
-            sesiones_supervisadas: 15,
-            observaciones_pendientes: 2,
-            ultima_supervision: '2024-01-08'
-          },
-          {
-            id: 2,
-            nombre: 'Sofía Ramírez',
-            email: 'becario2@psicogestion.com',
-            fecha_inicio: '2023-10-15',
-            pacientes_asignados: 2,
-            sesiones_supervisadas: 8,
-            observaciones_pendientes: 1,
-            ultima_supervision: '2024-01-05'
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      // Obtener becarios asignados al psicólogo actual
+      const becariosRes = await fetch('http://localhost:3000/api/asignaciones/mis-becarios', {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      
+      if (becariosRes.ok) {
+        const becariosData = await becariosRes.json();
+        const becariosAsignados = becariosData.data || [];
+        setBecarios(becariosAsignados);
+
+        // Obtener observaciones recientes para los becarios asignados
+        const observacionesPromises = becariosAsignados.map(async (becario) => {
+          try {
+            const obsRes = await fetch(`http://localhost:3000/api/observaciones/becario/${becario.id}`, {
+              headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+            });
+            if (obsRes.ok) {
+              const obsData = await obsRes.json();
+              return obsData.map(obs => ({
+                ...obs,
+                becario_nombre: becario.nombre + ' ' + (becario.apellido || ''),
+                paciente_nombre: obs.paciente_nombre || 'Paciente'
+              }));
+            }
+            return [];
+          } catch (err) {
+            console.warn(`Error obteniendo observaciones para becario ${becario.id}:`, err);
+            return [];
           }
-        ]);
-        
-        setObservaciones([
-          {
-            id: 1,
-            becario_nombre: 'Juan Pérez',
-            paciente_nombre: 'Carlos Gómez',
-            fecha: '2024-01-10',
-            contenido: 'El becario mostró buena empatía y habilidades de escucha activa.',
-            areas_mejora: 'Necesita trabajar en el manejo de silencios incómodos.',
-            feedback: 'Excelente manejo de la exposición gradual.',
-            estado: 'revisada'
-          },
-          {
-            id: 2,
-            becario_nombre: 'Sofía Ramírez',
-            paciente_nombre: 'Mariana López',
-            fecha: '2024-01-09',
-            contenido: 'Buen trabajo en el establecimiento de límites laborales.',
-            areas_mejora: 'Podría profundizar más en el análisis de pensamientos automáticos.',
-            feedback: '',
-            estado: 'pendiente'
+        });
+
+        const observacionesArrays = await Promise.all(observacionesPromises);
+        const todasObservaciones = observacionesArrays.flat();
+        setObservaciones(todasObservaciones);
+
+        // Obtener citas de becarios
+        const citasPromises = becariosAsignados.map(async (becario) => {
+          try {
+            const citasRes = await fetch(`http://localhost:3000/api/citas/becario/${becario.id}`, {
+              headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+            });
+            if (citasRes.ok) {
+              const citasData = await citasRes.json();
+              return (citasData.data || citasData).map(cita => ({
+                ...cita,
+                becario_nombre: becario.nombre + ' ' + (becario.apellido || '')
+              }));
+            }
+            return [];
+          } catch (err) {
+            console.warn('Error obteniendo citas de becario', becario.id, err);
+            return [];
           }
-        ]);
-        
-        setLoading(false);
-      }, 1000);
+        });
+
+        const citasArrays = await Promise.all(citasPromises);
+        const todasCitas = citasArrays.flat();
+        setCitasBecarios(todasCitas);
+      }
+      
     } catch (error) {
       console.error('Error al cargar datos:', error);
+      notifications.error('Error al cargar datos de supervisión');
+    } finally {
       setLoading(false);
     }
   };
 
-  const enviarFeedback = (becarioId) => {
+  const enviarFeedback = async (becarioId) => {
     if (!feedback.trim()) {
-      notifications.success('Por favor, escribe algún feedback');
+      notifications.error('Por favor, escribe algún feedback');
       return;
     }
     
-    // Aquí se enviaría al backend
-    notifications.success(`Feedback enviado a ${becarios.find(b => b.id === becarioId)?.nombre}`);
-    setFeedback('');
-    setShowFeedback(false);
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Enviar feedback al backend
+      const response = await fetch(`http://localhost:3000/api/observaciones/feedback/${becarioId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({
+          feedback: feedback,
+          tipo: 'supervision'
+        })
+      });
+
+      if (response.ok) {
+        // Enviar notificación al becario
+        await fetch('http://localhost:3000/api/notificaciones', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify({
+            usuario_id: becarioId,
+            titulo: 'Nuevo feedback de supervisión',
+            mensaje: `Has recibido feedback de tu supervisor: "${feedback.substring(0, 100)}${feedback.length > 100 ? '...' : ''}"`,
+            tipo: 'feedback_supervision'
+          })
+        });
+
+        notifications.success(`Feedback enviado a ${becarios.find(b => b.id === becarioId)?.nombre}`);
+        setFeedback('');
+        setShowFeedback(false);
+        fetchData(); // Recargar datos
+      } else {
+        notifications.error('Error al enviar feedback');
+      }
+    } catch (error) {
+      console.error('Error enviando feedback:', error);
+      notifications.error('Error al enviar feedback');
+    }
   };
 
   const getBecarioObservaciones = (becarioId) => {
     return observaciones.filter(obs => 
       obs.becario_nombre === becarios.find(b => b.id === becarioId)?.nombre
     );
+  };
+
+  const verObservacionesPaciente = async (pacienteId, pacienteNombre) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:3000/api/observaciones/paciente/${pacienteId}`, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setObservacionesPaciente(data);
+        setSelectedPaciente({ id: pacienteId, nombre: pacienteNombre });
+        setShowPacienteObservaciones(true);
+      } else {
+        notifications.error('Error al obtener observaciones del paciente');
+      }
+    } catch (error) {
+      console.error('Error obteniendo observaciones del paciente:', error);
+      notifications.error('Error al obtener observaciones del paciente');
+    }
   };
 
   if (loading) {
@@ -116,7 +195,7 @@ const PsicologoSupervision = () => {
         <div className="grid-2 gap-20 mt-20">
           {becarios.map((becario) => {
             const becarioObservaciones = getBecarioObservaciones(becario.id);
-            const observacionesPendientes = becarioObservaciones.filter(o => o.estado === 'pendiente').length;
+            const observacionesPendientes = becarioObservaciones.filter(o => o.tipo_observacion !== 'retroalimentacion').length;
             
             return (
               <div key={becario.id} className="card">
@@ -160,7 +239,14 @@ const PsicologoSupervision = () => {
                   >
                     <FiMessageSquare /> Dar Feedback
                   </button>
-                  <button className="btn-text">
+                  <button 
+                    className="btn-text"
+                    onClick={() => {
+                      // Para simplificar, mostrar observaciones del becario en general
+                      // En una implementación completa, se necesitaría seleccionar un paciente específico
+                      notifications.info('Funcionalidad de ver observaciones próximamente');
+                    }}
+                  >
                     <FiFileText /> Ver Observaciones
                   </button>
                 </div>
@@ -186,9 +272,9 @@ const PsicologoSupervision = () => {
                     <span>{obs.becario_nombre} → {obs.paciente_nombre}</span>
                   </div>
                   <div className={`badge ${
-                    obs.estado === 'revisada' ? 'badge-success' : 'badge-warning'
+                    obs.tipo_observacion === 'retroalimentacion' ? 'badge-success' : 'badge-warning'
                   }`}>
-                    {obs.estado === 'revisada' ? 'Revisada' : 'Pendiente'}
+                    {obs.tipo_observacion === 'retroalimentacion' ? 'Feedback' : 'Pendiente'}
                   </div>
                 </div>
                 
@@ -196,28 +282,25 @@ const PsicologoSupervision = () => {
                   <div className="grid-2 gap-20">
                     <div>
                       <h4>Observaciones</h4>
-                      <p>{obs.contenido}</p>
+                      <p>{obs.contenido || obs.fortalezas || 'Sin observaciones detalladas'}</p>
                       
                       <h4 className="mt-10">Áreas de mejora</h4>
-                      <p>{obs.areas_mejora}</p>
+                      <p>{obs.areas_mejora || 'Sin áreas específicas'}</p>
                     </div>
                     
                     <div>
                       <h4>Feedback del supervisor</h4>
-                      {obs.feedback ? (
-                        <p>{obs.feedback}</p>
+                      {obs.recomendaciones || obs.feedback ? (
+                        <p>{obs.recomendaciones || obs.feedback}</p>
                       ) : (
                         <p className="text-danger">Sin feedback aún</p>
                       )}
                       
                       <button 
                         className="btn-text mt-10"
-                        onClick={() => {
-                          setSelectedBecario(becarios.find(b => b.nombre === obs.becario_nombre));
-                          setShowFeedback(true);
-                        }}
+                        onClick={() => verObservacionesPaciente(obs.paciente_id, obs.paciente_nombre)}
                       >
-                        <FiMessageSquare /> {obs.feedback ? 'Editar Feedback' : 'Agregar Feedback'}
+                        <FiFileText /> Ver todas las observaciones del paciente
                       </button>
                     </div>
                   </div>
@@ -227,23 +310,42 @@ const PsicologoSupervision = () => {
           </div>
         </div>
 
+        {/* Citas de Becarios */}
+        <div className="mt-30">
+          <h3>Citas Programadas por Becarios</h3>
+          
+          <div className="citas-list mt-10">
+            {citasBecarios.length > 0 ? citasBecarios.map((cita) => (
+              <div key={cita.id} className="cita-card">
+                <div className="cita-header">
+                  <div className="cita-date">{new Date(cita.fecha).toLocaleDateString()}</div>
+                  <div className="cita-time">{cita.hora}</div>
+                  <div className={`badge ${cita.estado === 'confirmada' ? 'badge-success' : cita.estado === 'completada' ? 'badge-primary' : 'badge-warning'}`}>
+                    {cita.estado}
+                  </div>
+                </div>
+                <div className="cita-body">
+                  <div className="cita-patient">{cita.paciente_nombre}</div>
+                  <div className="cita-becario">Becario: {cita.becario_nombre}</div>
+                  <div className="cita-type">{cita.tipo_consulta}</div>
+                  {cita.notas && <div className="cita-notes">{cita.notas}</div>}
+                </div>
+              </div>
+            )) : (
+              <p>No hay citas programadas por becarios.</p>
+            )}
+          </div>
+        </div>
+
         {/* Estadísticas */}
-        <div className="grid-3 mt-30 gap-20">
+        <div className="grid-2 mt-30 gap-20">
           <div className="card">
             <h4>Resumen de Supervisión</h4>
             <div className="mt-10">
               <p>Total becarios: {becarios.length}</p>
-              <p>Observaciones pendientes: {observaciones.filter(o => o.estado === 'pendiente').length}</p>
-              <p>Sesiones supervisadas: {becarios.reduce((sum, b) => sum + b.sesiones_supervisadas, 0)}</p>
-            </div>
-          </div>
-          
-          <div className="card">
-            <h4>Próximas Supervisiones</h4>
-            <div className="mt-10">
-              <p>Juan Pérez: 2024-01-15</p>
-              <p>Sofía Ramírez: 2024-01-12</p>
-              <p className="text-small mt-10">Agenda programada</p>
+              <p>Observaciones totales: {observaciones.length}</p>
+              <p>Observaciones pendientes: {observaciones.filter(o => o.tipo_observacion !== 'retroalimentacion').length}</p>
+              <p>Sesiones supervisadas: {becarios.reduce((sum, b) => sum + (b.sesiones_supervisadas || 0), 0)}</p>
             </div>
           </div>
           
@@ -251,9 +353,6 @@ const PsicologoSupervision = () => {
             <h4>Acciones</h4>
             <div className="mt-10 flex-col gap-10">
               <button className="btn-primary w-100">
-                Programar Supervisión
-              </button>
-              <button className="btn-secondary w-100">
                 Generar Informe
               </button>
             </div>
@@ -301,6 +400,76 @@ const PsicologoSupervision = () => {
                 onClick={() => enviarFeedback(selectedBecario.id)}
               >
                 <FiCheckCircle /> Enviar Feedback
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Observaciones del Paciente */}
+      {showPacienteObservaciones && selectedPaciente && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-large">
+            <div className="modal-header">
+              <h3>Observaciones de {selectedPaciente.nombre}</h3>
+              <button className="modal-close" onClick={() => setShowPacienteObservaciones(false)}>×</button>
+            </div>
+            
+            <div className="modal-content">
+              <div className="observaciones-list">
+                {observacionesPaciente.length > 0 ? (
+                  observacionesPaciente.map((obs) => (
+                    <div key={obs.id} className="observacion-card">
+                      <div className="observacion-header">
+                        <div className="flex-row align-center gap-10">
+                          <FiCalendar />
+                          <span>{new Date(obs.fecha).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex-row align-center gap-10">
+                          <FiUser />
+                          <span>Becario: {obs.becario_nombre}</span>
+                        </div>
+                        <div className={`badge ${obs.tipo_observacion === 'retroalimentacion' ? 'badge-success' : 'badge-warning'}`}>
+                          {obs.tipo_observacion === 'retroalimentacion' ? 'Feedback' : 'Observación'}
+                        </div>
+                      </div>
+                      
+                      <div className="observacion-content">
+                        <div className="grid-2 gap-20">
+                          <div>
+                            <h5>Observaciones</h5>
+                            <p>{obs.contenido || obs.fortalezas || 'Sin observaciones detalladas'}</p>
+                            
+                            <h5 className="mt-10">Áreas de mejora</h5>
+                            <p>{obs.areas_mejora || 'Sin áreas específicas'}</p>
+                          </div>
+                          
+                          <div>
+                            <h5>Feedback del supervisor</h5>
+                            {obs.recomendaciones || obs.feedback ? (
+                              <p>{obs.recomendaciones || obs.feedback}</p>
+                            ) : (
+                              <p className="text-danger">Sin feedback aún</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data">
+                    <p>No hay observaciones registradas para este paciente</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button 
+                className="btn-secondary"
+                onClick={() => setShowPacienteObservaciones(false)}
+              >
+                Cerrar
               </button>
             </div>
           </div>

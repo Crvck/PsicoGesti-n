@@ -11,7 +11,7 @@ class SesionController {
         try {
             const { cita_id, desarrollo, conclusion, tareas_asignadas, 
                     emocion_predominante, riesgo_suicida, escalas_aplicadas, 
-                    siguiente_cita, privado } = req.body;
+                    siguiente_cita, privado, dificultades, logros, preguntas_supervisor } = req.body;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
 
@@ -37,8 +37,14 @@ class SesionController {
                 });
             }
             
-            // Verificar que el usuario es el psicólogo asignado
-            if (cita.psicologo_id !== usuarioId && effectiveRol !== 'coordinador') {
+            // Verificar que el usuario tiene permisos para registrar esta sesión
+            const puedeRegistrar = 
+                cita.psicologo_id === usuarioId || // Es el psicólogo asignado
+                cita.becario_id === usuarioId || // Es el becario asignado
+                effectiveRol === 'coordinador' || // Es coordinador
+                effectiveRol === 'becario'; // Becarios pueden registrar sesiones
+            
+            if (!puedeRegistrar) {
                 return res.status(403).json({
                     success: false,
                     message: 'No tiene permisos para registrar esta sesión'
@@ -95,7 +101,10 @@ class SesionController {
                 riesgo_suicida: riesgoValue,
                 escalas_aplicadas: escalas,
                 siguiente_cita,
-                privado: privado || false
+                privado: privado || false,
+                dificultades,
+                logros,
+                preguntas_supervisor
             };
 
             // Verificar columnas existentes en la tabla sesiones y filtrar
@@ -250,6 +259,15 @@ class SesionController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
 
+            let whereClause = '';
+            let replacements = [limit, offset];
+
+            // Si es becario, solo mostrar sus sesiones
+            if (usuarioRol === 'becario') {
+                whereClause = 'WHERE s.psicologo_id = ?';
+                replacements = [usuarioId, limit, offset];
+            }
+
             const query = `
                 SELECT 
                     s.*,
@@ -264,12 +282,13 @@ class SesionController {
                 JOIN citas c ON s.cita_id = c.id
                 JOIN pacientes p ON c.paciente_id = p.id
                 JOIN users u_psi ON s.psicologo_id = u_psi.id
+                ${whereClause}
                 ORDER BY s.fecha DESC, s.hora_inicio DESC
                 LIMIT ? OFFSET ?
             `;
 
             const sesiones = await sequelize.query(query, {
-                replacements: [limit, offset],
+                replacements: replacements,
                 type: QueryTypes.SELECT
             });
 

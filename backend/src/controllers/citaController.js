@@ -17,7 +17,11 @@ class CitaController {
                 });
             }
             
-            const becarioId = becario_id ? parseInt(becario_id) : null;
+            // Si el usuario es becario, solo mostrar sus citas asignadas
+            let becarioId = becario_id ? parseInt(becario_id) : null;
+            if (req.user && req.user.role === 'becario') {
+                becarioId = req.user.id;
+            }
             
             console.log(`Buscando citas para fecha: ${fecha}, becarioId: ${becarioId}`);
             
@@ -53,6 +57,7 @@ class CitaController {
                 return res.status(401).json({ success: false, message: 'No autorizado: falta token o sesión' });
             }
             const usuarioId = req.user.id;
+            const usuarioRol = req.user.rol || req.user.role;
             
             console.log('📝 Datos recibidos para nueva cita:', {
                 paciente,
@@ -62,7 +67,8 @@ class CitaController {
                 duracion,
                 notas,
                 becario_id,
-                usuarioId
+                usuarioId,
+                usuarioRol
             });
             
             // Validar campos requeridos
@@ -73,6 +79,12 @@ class CitaController {
                 });
             }
             
+            // Si es becario y no se especificó becario_id, asignar al usuario actual
+            let finalBecarioId = becario_id;
+            if (usuarioRol === 'becario' && !finalBecarioId) {
+                finalBecarioId = usuarioId;
+            }
+            
             // Crear la cita usando DatabaseService
             const nuevaCita = await DatabaseService.crearNuevaCita({
                 paciente,
@@ -81,7 +93,7 @@ class CitaController {
                 tipo_consulta: tipo_consulta || 'presencial',
                 duracion: duracion || 50,
                 notas,
-                becario_id,
+                becario_id: finalBecarioId,
                 usuarioId
             });
             

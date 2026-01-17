@@ -40,7 +40,15 @@ class DashboardService {
       throw new Error('No se recibieron datos del backend');
     }
     
-    const { estadisticas = {}, top_psicologos = [], alertas = [], evolucion_mensual = [], citas_por_dia = [] } = datosBackend;
+    const { 
+      estadisticas = {}, 
+      top_psicologos = [], 
+      becarios_carga = [],
+      actividad_reciente = [],
+      alertas = [], 
+      evolucion_mensual = [], 
+      citas_por_dia = [] 
+    } = datosBackend;
     
     // Transformar estadísticas principales
     const estadisticasTransformadas = {
@@ -53,13 +61,30 @@ class DashboardService {
     };
 
     // Transformar actividad reciente
-    const actividadReciente = this.generarActividadReciente(datosBackend);
+    const actividadRecienteTr = actividad_reciente.length > 0 
+      ? actividad_reciente.map(act => ({
+          id: act.id,
+          tipo: act.tipo_evento,
+          descripcion: `${act.tipo_evento} de ${act.paciente_nombre}`,
+          fecha: act.fecha_evento,
+          usuario: act.nombre_usuario || 'Sistema'
+        }))
+      : this.generarActividadReciente(datosBackend);
 
-    // Transformar distribución de citas por psicólogo
+    // Transformar distribución de citas por psicólogo (simplificado a máximo 5)
     const distribucionPsicologos = top_psicologos.map(psicologo => ({
       nombre: psicologo.nombre_completo || psicologo.nombre || 'Psicólogo',
-      citas: psicologo.total_citas || psicologo.citas_completadas || 0,
+      citas: psicologo.citas_completadas || 0,
       color: this.asignarColor(psicologo.id || 0)
+    }));
+
+    // Transformar becarios con carga
+    const becariosCargaTr = becarios_carga.map(becario => ({
+      id: becario.id,
+      nombre: becario.nombre_completo || 'Becario',
+      pacientes_asignados: becario.pacientes_asignados || 0,
+      citas_mes: becario.citas_este_mes || 0,
+      pacientes: becario.pacientes ? becario.pacientes.split(', ') : []
     }));
 
     // Transformar alertas
@@ -72,8 +97,9 @@ class DashboardService {
 
     return {
       estadisticas: estadisticasTransformadas,
-      actividadReciente,
+      actividadReciente: actividadRecienteTr,
       distribucionPsicologos,
+      becariosCarga: becariosCargaTr,
       alertas: alertasTransformadas,
       evolucionMensual: evolucion_mensual,
       citasPorDia: citas_por_dia

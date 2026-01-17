@@ -14,6 +14,9 @@ router.post('/', requireRole(['psicologo', 'coordinador']), ObservacionControlle
 router.get('/becario/:becario_id', requireRole(['psicologo', 'becario', 'coordinador']), ObservacionController.obtenerObservacionesBecario);
 router.get('/supervisor', requireRole(['psicologo', 'coordinador']), ObservacionController.obtenerObservacionesSupervisor);
 
+// Enviar feedback
+router.post('/feedback/:becarioId', requireRole(['psicologo', 'coordinador']), ObservacionController.enviarFeedback);
+
 // Actualizar y eliminar observaciones
 router.put('/:id', requireRole(['psicologo', 'coordinador']), ObservacionController.actualizarObservacion);
 router.delete('/:id', requireRole(['psicologo', 'coordinador']), ObservacionController.eliminarObservacion);

@@ -26,6 +26,7 @@ const CoordinadorDashboard = () => {
   
   const [actividadReciente, setActividadReciente] = useState([]);
   const [distribucionPsicologos, setDistribucionPsicologos] = useState([]);
+  const [becariosCarga, setBecariosCarga] = useState([]);
   const [alertas, setAlertas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -47,6 +48,7 @@ const CoordinadorDashboard = () => {
       setEstadisticas(datosTransformados.estadisticas);
       setActividadReciente(datosTransformados.actividadReciente);
       setDistribucionPsicologos(datosTransformados.distribucionPsicologos);
+      setBecariosCarga(datosTransformados.becariosCarga || []);
       setAlertas(datosTransformados.alertas);
       
       
@@ -134,25 +136,11 @@ const CoordinadorDashboard = () => {
       change: 'Pacientes finalizados'
     },
     {
-      title: 'Sesiones Promedio',
-      value: '8.5',
-      icon: <FiBarChart2 />,
-      color: 'var(--rr)',
-      change: 'Por paciente/mes'
-    },
-    {
       title: 'Alertas Pendientes',
       value: alertas.reduce((total, alerta) => total + (alerta.cantidad || 0), 0),
       icon: <FiAlertCircle />,
       color: 'var(--rl)',
       change: 'Requieren atención'
-    },
-    {
-      title: 'Ingresos Estimados',
-      value: '$24,500',
-      icon: <FiDollarSign />,
-      color: 'var(--grnb)',
-      change: 'Este mes'
     }
   ];
 
@@ -245,46 +233,31 @@ const CoordinadorDashboard = () => {
         {/* Distribución de Citas */}
         <div className="dashboard-section">
           <div className="section-header">
-            <h3>Distribución de Citas por Psicólogo</h3>
+            <h3>Citas Completadas por Psicólogo</h3>
           </div>
           
-          <div className="distribution-chart">
+          <div className="distribution-list-simple">
             {distribucionPsicologos.length > 0 ? (
-              <div className="distribution-bars">
-                {distribucionPsicologos.map((psicologo, index) => {
-                  // Calcular altura máxima basada en el máximo de citas
-                  const maxCitas = Math.max(...distribucionPsicologos.map(p => p.citas || 0), 1);
-                  const porcentaje = ((psicologo.citas || 0) / maxCitas) * 100;
-                  
-                  return (
-                    <div key={index} className="distribution-bar-container">
-                      <div className="distribution-bar-wrapper">
-                        <div 
-                          className="distribution-bar"
-                          style={{ 
-                            height: `${porcentaje}%`,
-                            backgroundColor: psicologo.color || 'var(--grnb)'
-                          }}
-                        >
-                          <div className="bar-value-inside">{psicologo.citas || 0}</div>
-                        </div>
-                      </div>
-                      <div className="distribution-label">
-                        <div className="psychologist-name">
-                          {psicologo.nombre || 'Sin nombre'}
-                        </div>
-                        <div className="psychologist-sessions">
-                          {psicologo.citas || 0} citas
-                        </div>
-                      </div>
+              <div className="psychologist-list">
+                {distribucionPsicologos.map((psicologo, index) => (
+                  <div key={index} className="psychologist-item">
+                    <div className="psychologist-info">
+                      <div className="psychologist-name">{psicologo.nombre}</div>
+                      <div className="psychologist-citas-count">{psicologo.citas} citas completadas</div>
                     </div>
-                  );
-                })}
+                    <div 
+                      className="psychologist-badge"
+                      style={{ backgroundColor: psicologo.color }}
+                    >
+                      {psicologo.citas}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="no-data-message">
                 <FiBarChart2 size={40} />
-                <p>No hay datos de distribución disponibles</p>
+                <p>No hay datos disponibles</p>
               </div>
             )}
           </div>
@@ -299,12 +272,37 @@ const CoordinadorDashboard = () => {
             </button>
           </div>
           
-          <div className="pacientes-list">
-            {/* Aquí puedes obtener datos reales de becarios */}
-            <div className="no-data-message">
-              <FiUser size={40} />
-              <p>Los datos de becarios se cargarán próximamente</p>
-            </div>
+          <div className="becarios-list">
+            {becariosCarga.length > 0 ? (
+              <div className="becarios-items">
+                {becariosCarga.map((becario) => (
+                  <div key={becario.id} className="becario-item">
+                    <div className="becario-header">
+                      <div className="becario-name">{becario.nombre}</div>
+                      <div className="becario-stats">
+                        <span className="stat-badge">{becario.pacientes_asignados} pacientes</span>
+                        <span className="stat-badge secondary">{becario.citas_mes} citas</span>
+                      </div>
+                    </div>
+                    {becario.pacientes.length > 0 && (
+                      <div className="becario-pacientes">
+                        <div className="pacientes-label">Pacientes asignados:</div>
+                        <div className="pacientes-list">
+                          {becario.pacientes.map((paciente, idx) => (
+                            <div key={idx} className="paciente-tag">{paciente}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="no-data-message">
+                <FiUser size={40} />
+                <p>No hay becarios con pacientes asignados</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -312,9 +310,9 @@ const CoordinadorDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Alertas Pendientes</h3>
-            <button className="btn-text" onClick={handleResolverAlertas}>
+            {/* <button className="btn-text" onClick={handleResolverAlertas}>
               Resolver
-            </button>
+            </button> */}
           </div>
           
           <div className="alertas-list">

@@ -32,6 +32,10 @@ const CoordinadorAsignaciones = () => {
       if (selectedPaciente) setPatientQuery(selectedPaciente.nombre || '');
       if (selectedBecario) setBecarioQuery(selectedBecario.nombre || '');
       if (selectedPsicologo) setPsicologoQuery(selectedPsicologo.nombre || '');
+    } else {
+      setShowPatientList(false);
+      setShowBecarioList(false);
+      setShowPsicologoList(false);
     }
   }, [showModal]);
 
@@ -504,7 +508,7 @@ const CoordinadorAsignaciones = () => {
       {/* Modal de Asignación */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal-container">
+          <div className="modal-container modal-large assign-modal">
             <div className="modal-header">
               <h3>Asignar Paciente</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
@@ -521,17 +525,22 @@ const CoordinadorAsignaciones = () => {
                     value={patientQuery}
                     onChange={(e) => { setPatientQuery(e.target.value); setShowPatientList(true); }}
                     onFocus={() => setShowPatientList(true)}
+                    onBlur={() => setTimeout(() => setShowPatientList(false), 120)}
                   />
                   {showPatientList && (
-                    <div style={{ border: '1px solid #eee', maxHeight: '200px', overflowY: 'auto', background: '#fff', marginTop: '6px', padding: '6px', zIndex: 9999 }}>
+                    <div className="autocomplete-panel">
                       {pacientesSinAsignar.filter(p => (`${p.nombre}`.toLowerCase().includes(patientQuery.toLowerCase()) || (`${p.nombre} ${p.motivo}` || '').toLowerCase().includes(patientQuery.toLowerCase()))).slice(0,50).map(p => (
-                        <div key={p.id} style={{ padding: '6px', cursor: 'pointer', color: '#111', borderBottom: '1px solid #f0f0f0', background: '#fff' }} onClick={() => { setSelectedPaciente(p); setPatientQuery(p.nombre); setShowPatientList(false); }}>
-                          <div style={{ color: '#111', fontWeight: 600 }}>{p.nombre}</div>
-                          <div className="text-small" style={{ color: '#444' }}>{p.motivo}</div>
+                        <div
+                          key={p.id}
+                          className="autocomplete-option"
+                          onClick={() => { setSelectedPaciente(p); setPatientQuery(p.nombre); setShowPatientList(false); }}
+                        >
+                          <div className="autocomplete-title">{p.nombre}</div>
+                          <div className="text-small autocomplete-subtitle">{p.motivo}</div>
                         </div>
                       ))}
                       {pacientesSinAsignar.filter(p => (`${p.nombre}`.toLowerCase().includes(patientQuery.toLowerCase()) || (`${p.nombre} ${p.motivo}` || '').toLowerCase().includes(patientQuery.toLowerCase()))).length === 0 && (
-                        <div className="text-small" style={{ color: '#666' }}>No se encontraron pacientes</div>
+                        <div className="text-small autocomplete-empty">No se encontraron pacientes</div>
                       )}
                     </div>
                   )}
@@ -546,17 +555,22 @@ const CoordinadorAsignaciones = () => {
                     value={becarioQuery}
                     onChange={(e) => { setBecarioQuery(e.target.value); setShowBecarioList(true); }}
                     onFocus={() => setShowBecarioList(true)}
+                    onBlur={() => setTimeout(() => setShowBecarioList(false), 120)}
                   />
                   {showBecarioList && (
-                    <div style={{ border: '1px solid #eee', maxHeight: '200px', overflowY: 'auto', background: '#fff', marginTop: '6px', padding: '6px', zIndex: 9999 }}>
+                    <div className="autocomplete-panel">
                       {becarios.filter(b => (`${b.nombre}`.toLowerCase().includes(becarioQuery.toLowerCase()) || (b.especialidad || '').toLowerCase().includes(becarioQuery.toLowerCase()))).slice(0,50).map(b => (
-                        <div key={b.id} style={{ padding: '6px', cursor: 'pointer', color: '#111', borderBottom: '1px solid #f0f0f0', background: '#fff' }} onClick={() => { setSelectedBecario(b); setBecarioQuery(b.nombre); setShowBecarioList(false); }}>
-                          <div style={{ color: '#111', fontWeight: 600 }}>{b.nombre}</div>
-                          <div className="text-small" style={{ color: '#444' }}>{b.pacientes_asignados}/{b.capacidad || '-'}</div>
+                        <div
+                          key={b.id}
+                          className="autocomplete-option"
+                          onClick={() => { setSelectedBecario(b); setBecarioQuery(b.nombre); setShowBecarioList(false); }}
+                        >
+                          <div className="autocomplete-title">{b.nombre}</div>
+                          <div className="text-small autocomplete-subtitle">{b.pacientes_asignados}/{b.capacidad || '-'}</div>
                         </div>
                       ))}
                       {becarios.filter(b => (`${b.nombre}`.toLowerCase().includes(becarioQuery.toLowerCase()) || (b.especialidad || '').toLowerCase().includes(becarioQuery.toLowerCase()))).length === 0 && (
-                        <div className="text-small" style={{ color: '#666' }}>No se encontraron becarios</div>
+                        <div className="text-small autocomplete-empty">No se encontraron becarios</div>
                       )}
                     </div>
                   )}
@@ -571,17 +585,22 @@ const CoordinadorAsignaciones = () => {
                     value={psicologoQuery}
                     onChange={(e) => { setPsicologoQuery(e.target.value); setShowPsicologoList(true); }}
                     onFocus={() => setShowPsicologoList(true)}
+                    onBlur={() => setTimeout(() => setShowPsicologoList(false), 120)}
                   />
                   {showPsicologoList && (
-                    <div style={{ border: '1px solid #eee', maxHeight: '200px', overflowY: 'auto', background: '#fff', marginTop: '6px', padding: '6px', zIndex: 9999 }}>
+                    <div className="autocomplete-panel">
                       {psicologos.filter(p => (`${p.nombre}`.toLowerCase().includes(psicologoQuery.toLowerCase()) || (p.especialidad || '').toLowerCase().includes(psicologoQuery.toLowerCase()))).slice(0,50).map(p => (
-                        <div key={p.id} style={{ padding: '6px', cursor: 'pointer', color: '#111', borderBottom: '1px solid #f0f0f0', background: '#fff' }} onClick={() => { setSelectedPsicologo(p); setPsicologoQuery(p.nombre); setShowPsicologoList(false); }}>
-                          <div style={{ color: '#111', fontWeight: 600 }}>{p.nombre}</div>
-                          <div className="text-small" style={{ color: '#444' }}>{p.especialidad || ''}</div>
+                        <div
+                          key={p.id}
+                          className="autocomplete-option"
+                          onClick={() => { setSelectedPsicologo(p); setPsicologoQuery(p.nombre); setShowPsicologoList(false); }}
+                        >
+                          <div className="autocomplete-title">{p.nombre}</div>
+                          <div className="text-small autocomplete-subtitle">{p.especialidad || ''}</div>
                         </div>
                       ))}
                       {psicologos.filter(p => (`${p.nombre}`.toLowerCase().includes(psicologoQuery.toLowerCase()) || (p.especialidad || '').toLowerCase().includes(psicologoQuery.toLowerCase()))).length === 0 && (
-                        <div className="text-small" style={{ color: '#666' }}>No se encontraron psicólogos</div>
+                        <div className="text-small autocomplete-empty">No se encontraron psicólogos</div>
                       )}
                     </div>
                   )}

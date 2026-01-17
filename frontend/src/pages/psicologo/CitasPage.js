@@ -16,6 +16,9 @@ const PsicologoCitas = () => {
   const [filterBecario, setFilterBecario] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [becarios, setBecarios] = useState([]);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [citaEnEdicion, setCitaEnEdicion] = useState(null);
+  const [nuevoEstado, setNuevoEstado] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -144,6 +147,74 @@ const PsicologoCitas = () => {
       )
     );
     notifications.success(`Cita ${nuevoEstado === 'completada' ? 'marcada como completada' : 'cancelada'}`);
+  };
+
+  const handleAbrirEditModal = (cita) => {
+    setCitaEnEdicion(cita);
+    setNuevoEstado(cita.estado);
+    setShowEditModal(true);
+  };
+
+  const handleCerrarEditModal = () => {
+    setShowEditModal(false);
+    setCitaEnEdicion(null);
+    setNuevoEstado('');
+  };
+
+  const handleGuardarCambiosEstado = async () => {
+    if (!citaEnEdicion || !nuevoEstado) {
+      notifications.warning('Por favor selecciona un estado');
+      return;
+    }
+
+    if (nuevoEstado === citaEnEdicion.estado) {
+      notifications.info('El estado es igual al actual');
+      handleCerrarEditModal();
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Optimistic UI
+      setCitas(prev => 
+        prev.map(c => c.id === citaEnEdicion.id ? { ...c, estado: nuevoEstado } : c)
+      );
+
+      const res = await fetch(`http://localhost:3000/api/citas/cita/${citaEnEdicion.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ estado: nuevoEstado })
+      });
+
+      const json = await res.json().catch(() => ({}));
+      
+      if (!res.ok || !json.success) {
+        // Rollback
+        setCitas(prev => 
+          prev.map(c => c.id === citaEnEdicion.id ? { ...c, estado: citaEnEdicion.estado } : c)
+        );
+        console.error('Error actualizando estado:', json);
+        notifications.error(json.message || 'No se pudo actualizar el estado');
+        return;
+      }
+
+      const updated = json.data || { ...citaEnEdicion, estado: nuevoEstado };
+      setCitas(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+      notifications.success(`Estado actualizado a: ${nuevoEstado}`);
+      
+      // Emitir evento para sincronizar otras vistas
+      window.dispatchEvent(new CustomEvent('citaActualizada', { detail: { cita: updated } }));
+      
+      handleCerrarEditModal();
+    } catch (error) {
+      console.error('Error en handleGuardarCambiosEstado:', error);
+      // Rollback
+      setCitas(prev => 
+        prev.map(c => c.id === citaEnEdicion.id ? { ...c, estado: citaEnEdicion.estado } : c)
+      );
+      notifications.error('Error al actualizar el estado');
+    }
   };
 
   const handleCancelarCita = async (cita) => {
@@ -378,7 +449,10 @@ const PsicologoCitas = () => {
                 </div>
                 
                 <div className="cita-card-footer">
-                  <button className="btn-text">
+                  <button 
+                    className="btn-text"
+                    onClick={() => handleAbrirEditModal(cita)}
+                  >
                     <FiEdit2 /> Editar
                   </button>
                   
@@ -443,6 +517,77 @@ const PsicologoCitas = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal para Editar Estado */}
+      {showEditModal && citaEnEdicion && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2>Editar Estado de Cita</h2>
+              <button 
+                className="btn-close"
+                onClick={handleCerrarEditModal}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-group mb-20">
+                <label className="font-bold">Cita de: {citaEnEdicion.paciente_nombre}</label>
+                <p className="text-small mt-5">
+                  {citaEnEdicion.fecha} a las {citaEnEdicion.hora}
+                </p>
+              </div>
+
+              <div className="form-group mb-20">
+                <label className="font-bold">Estado Actual</label>
+                <p className={`badge ${
+                  citaEnEdicion.estado === 'confirmada' ? 'badge-success' :
+                  citaEnEdicion.estado === 'completada' ? 'badge-primary' :
+                  citaEnEdicion.estado === 'programada' ? 'badge-warning' :
+                  'badge-danger'
+                }`}>
+                  {citaEnEdicion.estado}
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="nuevoEstado" className="font-bold">
+                  Nuevo Estado
+                </label>
+                <select 
+                  id="nuevoEstado"
+                  value={nuevoEstado} 
+                  onChange={(e) => setNuevoEstado(e.target.value)}
+                  className="select-field"
+                >
+                  <option value="">-- Seleccionar estado --</option>
+                  <option value="programada">Programada</option>
+                  <option value="confirmada">Confirmada</option>
+                  <option value="completada">Completada</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                className="btn-secondary"
+                onClick={handleCerrarEditModal}
+              >
+                Cancelar
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={handleGuardarCambiosEstado}
+              >
+                Guardar Cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

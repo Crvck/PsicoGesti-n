@@ -90,16 +90,32 @@ const CoordinadorAgenda = () => {
   const fetchPsicologos = async () => {
     try {
       const response = await ApiService.get('/users?rol=psicologo');
-      if (response.success) {
-        const psicologosData = response.data.map((psicologo, index) => ({
-          id: psicologo.id,
-          nombre: `${psicologo.nombre} ${psicologo.apellido}`,
-          color: coloresPsicologos[index % coloresPsicologos.length],
-          especialidad: psicologo.especialidad || 'Psicología General',
-          email: psicologo.email
-        }));
-        setPsicologos(psicologosData);
+      console.log('Respuesta de psicólogos:', response);
+      
+      let data = [];
+      // Si la respuesta es directamente un array
+      if (Array.isArray(response)) {
+        data = response;
+      } else if (response.success && Array.isArray(response.data)) {
+        data = response.data;
+      } else if (Array.isArray(response.data)) {
+        data = response.data;
       }
+      
+      // Filtrar solo psicólogos (excluyendo becarios)
+      const psicologos = data.filter(user => user.rol === 'psicologo');
+      console.log('Psicólogos filtrados:', psicologos);
+      
+      const psicologosData = psicologos.map((psicologo, index) => ({
+        id: psicologo.id,
+        nombre: `${psicologo.nombre} ${psicologo.apellido}`,
+        color: coloresPsicologos[index % coloresPsicologos.length],
+        especialidad: psicologo.especialidad || 'Psicología General',
+        email: psicologo.email
+      }));
+      
+      console.log('Psicólogos procesados:', psicologosData);
+      setPsicologos(psicologosData);
     } catch (error) {
       console.error('Error cargando psicólogos:', error);
     }
@@ -186,10 +202,32 @@ const CoordinadorAgenda = () => {
   };
 
   const filteredCitas = citas.filter(cita => {
-    const matchesPsicologo = !filterPsicologo || cita.psicologo_id == filterPsicologo;
+    // Convertir a número para comparación correcta
+    const matchesPsicologo = !filterPsicologo || Number(cita.psicologo_id) === Number(filterPsicologo);
     const matchesEstado = !filterEstado || cita.estado === filterEstado;
-    return matchesPsicologo && matchesEstado;
+    const matchesTipoConsulta = !filtrosAvanzados.tipo_consulta || cita.tipo_consulta === filtrosAvanzados.tipo_consulta;
+    
+    let matchesFechas = true;
+    if (filtrosAvanzados.fecha_inicio && filtrosAvanzados.fecha_fin) {
+      matchesFechas = cita.fecha >= filtrosAvanzados.fecha_inicio && cita.fecha <= filtrosAvanzados.fecha_fin;
+    } else if (filtrosAvanzados.fecha_inicio) {
+      matchesFechas = cita.fecha >= filtrosAvanzados.fecha_inicio;
+    } else if (filtrosAvanzados.fecha_fin) {
+      matchesFechas = cita.fecha <= filtrosAvanzados.fecha_fin;
+    }
+    
+    const matchesPaciente = !filtrosAvanzados.paciente_id || Number(cita.paciente_id) === Number(filtrosAvanzados.paciente_id);
+    
+    return matchesPsicologo && matchesEstado && matchesTipoConsulta && matchesFechas && matchesPaciente;
   });
+  
+  const activeFiltersCount = [
+    filterPsicologo ? 1 : 0,
+    filterEstado ? 1 : 0,
+    filtrosAvanzados.tipo_consulta ? 1 : 0,
+    (filtrosAvanzados.fecha_inicio || filtrosAvanzados.fecha_fin) ? 1 : 0,
+    filtrosAvanzados.paciente_id ? 1 : 0
+  ].reduce((a, b) => a + b, 0);
 
   // Función para buscar pacientes
   const buscarPaciente = (searchTerm) => {
@@ -436,6 +474,7 @@ const CoordinadorAgenda = () => {
   const [showDayModal, setShowDayModal] = useState(false);
   const [dayModalDate, setDayModalDate] = useState(null);
   const [dayModalCitas, setDayModalCitas] = useState([]);
+  const [expandedCells, setExpandedCells] = useState(new Set());
 
   const weekDays = view === 'week' ? 
     eachDayOfInterval({ 
@@ -647,7 +686,13 @@ const CoordinadorAgenda = () => {
             </h3>
             <div className="text-small">
               <FiClock className="mr-5" />
-              Total citas: {filteredCitas.length}
+              {activeFiltersCount > 0 ? (
+                <>
+                  Filtradas: <span style={{ fontWeight: 'bold', color: 'var(--blu)' }}>{filteredCitas.length}</span> / <span style={{ color: 'var(--gray)' }}>{citas.length}</span>
+                </>
+              ) : (
+                <>Total: <span style={{ fontWeight: 'bold' }}>{filteredCitas.length}</span></>
+              )}
             </div>
           </div>
           
@@ -666,7 +711,26 @@ const CoordinadorAgenda = () => {
 
       {/* Filtros - MEJORADO con alineación consistente */}
       <div className="filters-container mb-20">
-
+        {/* Indicador de filtros activos */}
+        {activeFiltersCount > 0 && (
+          <div className="flex-row justify-between align-center mb-15" style={{ padding: '12px 15px', background: 'rgba(31, 133, 186, 0.1)', borderRadius: '6px', border: '1px solid var(--blu)' }}>
+            <div className="flex-row align-center gap-10">
+              <span className="badge badge-primary" style={{ fontSize: '12px', padding: '6px 12px' }}>
+                {activeFiltersCount} filtro{activeFiltersCount !== 1 ? 's' : ''} activo{activeFiltersCount !== 1 ? 's' : ''}
+              </span>
+              <span className="text-small" style={{ color: 'var(--gray)' }}>
+                Mostrando {filteredCitas.length} de {citas.length} cita{citas.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <button 
+              className="btn-text" 
+              onClick={resetFiltros}
+              style={{ fontSize: '12px', color: 'var(--rr)', cursor: 'pointer' }}
+            >
+              ✕ Limpiar
+            </button>
+          </div>
+        )}
         
         <div className="grid-3 gap-20 mt-15">
           <div className="form-group">
@@ -678,12 +742,16 @@ const CoordinadorAgenda = () => {
               onChange={(e) => setFilterPsicologo(e.target.value)}
               className="select-field"
             >
-              <option value="">Todos los psicólogos</option>
-              {psicologos.map(psicologo => (
-                <option key={psicologo.id} value={psicologo.id}>
-                  {psicologo.nombre}
-                </option>
-              ))}
+              <option value="">Todos los psicólogos ({psicologos.length})</option>
+              {psicologos && psicologos.length > 0 ? (
+                psicologos.map(psicologo => (
+                  <option key={psicologo.id} value={psicologo.id}>
+                    {psicologo.nombre}
+                  </option>
+                ))
+              ) : (
+                <option disabled>Cargando psicólogos...</option>
+              )}
             </select>
           </div>
           
@@ -746,7 +814,7 @@ const CoordinadorAgenda = () => {
             />
           </div>
           
-          <div className="form-group">
+          {/* <div className="form-group">
             <label className="form-label">
               <FiSearch /> Buscar Paciente
             </label>
@@ -777,7 +845,7 @@ const CoordinadorAgenda = () => {
                 </div>
               )}
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -792,7 +860,7 @@ const CoordinadorAgenda = () => {
                 <div
                   key={day.toISOString()}
                   className={`day-header ${citasCount > 0 ? 'has-citas' : ''}`}
-                  style={{ backgroundColor: citasCount > 0 ? '#e6f7ff' : 'transparent', cursor: citasCount > 0 ? 'pointer' : 'default' }}
+                  style={{ backgroundColor: citasCount > 0 ? '#44535a' : 'transparent', cursor: citasCount > 0 ? 'pointer' : 'default' }}
                   onClick={() => {
                     if (citasCount > 0) {
                       setDayModalDate(dayStr);
@@ -822,49 +890,92 @@ const CoordinadorAgenda = () => {
             ))}
           </div>
           
-          {weekDays.map((day) => (
-            <div key={day.toISOString()} className="day-column">
-              {generateHours().map(hour => {
-                const citasHora = getCitasPorDiaYHora(day, hour);
-                
-                return (
-                  <div key={hour} className="hour-cell">
-                    {citasHora.slice(0, mostrarTodas ? citasHora.length : 1).map((cita, index) => (
-                      <div 
-                        key={cita.id}
-                        className="week-event"
-                        style={{ 
-                          backgroundColor: cita.psicologo_color,
-                          opacity: 0.95,
-                          height: `${100 / (mostrarTodas ? Math.max(citasHora.length, 1) : 1)}%`,
-                          top: `${(index / (mostrarTodas ? citasHora.length : 1)) * 100}%`
-                        }}
-                        onClick={() => showCitaDetalles(cita)}
-                        title={`${cita.hora} - ${cita.paciente_nombre} (${cita.psicologo_nombre})`}
-                      >
-                        <div className="week-event-time">{cita.hora}</div>
-                        <div className="week-event-patient">{cita.paciente_nombre}</div>
-                        <div className="week-event-psicologo">
-                          {cita.psicologo_nombre.split(' ')[1]}
+          {weekDays.map((day) => {
+            const dayStr = format(day, 'yyyy-MM-dd');
+            return (
+              <div key={day.toISOString()} className="day-column">
+                {generateHours().map(hour => {
+                  const citasHora = getCitasPorDiaYHora(day, hour);
+                  const cellKey = `${dayStr}-${hour}`;
+                  const isExpanded = expandedCells.has(cellKey);
+                  const maxVisible = 2;
+                  const citasVisibles = isExpanded ? citasHora : citasHora.slice(0, maxVisible);
+                  const citasRestantes = citasHora.length - maxVisible;
+                  
+                  return (
+                    <div 
+                      key={hour} 
+                      className={`hour-cell ${citasHora.length > maxVisible ? 'has-overflow' : ''} ${isExpanded ? 'expanded' : ''}`}
+                      style={{
+                        minHeight: isExpanded ? `${Math.max(60, citasHora.length * 50)}px` : '60px'
+                      }}
+                    >
+                      {citasVisibles.map((cita, index) => (
+                        <div 
+                          key={cita.id}
+                          className="week-event"
+                          style={{ 
+                            backgroundColor: cita.psicologo_color,
+                            opacity: 0.95,
+                            height: isExpanded ? '48px' : `${Math.min(95 / citasVisibles.length, 55)}px`,
+                            top: isExpanded ? `${index * 50}px` : `${(index / citasVisibles.length) * 100}%`,
+                            zIndex: 10 + index
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            showCitaDetalles(cita);
+                          }}
+                          title={`${cita.hora} - ${cita.paciente_nombre}\n${cita.psicologo_nombre}\nTipo: ${cita.tipo_consulta}\nEstado: ${cita.estado}`}
+                        >
+                          <div className="week-event-time">{cita.hora.slice(0, 5)}</div>
+                          <div className="week-event-patient">{cita.paciente_nombre.length > 15 ? cita.paciente_nombre.slice(0, 15) + '...' : cita.paciente_nombre}</div>
+                          {isExpanded && (
+                            <div className="week-event-psicologo">
+                              {cita.psicologo_nombre.split(' ').slice(0, 2).join(' ')}
+                            </div>
+                          )}
+                          <div className="week-event-type">
+                            {cita.tipo_consulta === 'virtual' ? <FiVideo size={10} /> : <FiMapPin size={10} />}
+                          </div>
                         </div>
-                        <div className="week-event-type">
-                          {cita.tipo_consulta === 'virtual' ? <FiVideo /> : <FiMapPin />}
+                      ))}
+                      {citasHora.length > maxVisible && !isExpanded && (
+                        <div 
+                          className="week-event-more-button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedCells(prev => {
+                              const newSet = new Set(prev);
+                              newSet.add(cellKey);
+                              return newSet;
+                            });
+                          }}
+                          title={`Ver todas las ${citasHora.length} citas de esta hora`}
+                        >
+                          <FiEye size={12} /> +{citasRestantes} más
                         </div>
-                      </div>
-                    ))}
-                    {citasHora.length > 1 && !mostrarTodas && (
-                      <div 
-                        className="week-event-more"
-                        onClick={() => setMostrarTodas(true)}
-                      >
-                        +{citasHora.length - 1} más
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                      )}
+                      {citasHora.length > maxVisible && isExpanded && (
+                        <div 
+                          className="week-event-collapse-button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedCells(prev => {
+                              const newSet = new Set(prev);
+                              newSet.delete(cellKey);
+                              return newSet;
+                            });
+                          }}
+                        >
+                          <FiEyeOff size={12} /> Ocultar
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -929,7 +1040,7 @@ const CoordinadorAgenda = () => {
               <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
             </div>
             
-            <div className="modal-content">
+            <div className="modal-content" style={{padding:"20px"}}>
               <div className="detail-row">
                 <strong>Paciente:</strong>
                 <span>{selectedCita.paciente_nombre}</span>
@@ -1004,9 +1115,9 @@ const CoordinadorAgenda = () => {
               <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
                 Cerrar
               </button>
-              <button className="btn-primary">
+              {/* <button className="btn-primary">
                 Ver Expediente
-              </button>
+              </button> */}
             </div>
           </div>
         </div>

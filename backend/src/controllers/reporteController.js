@@ -5,7 +5,7 @@ const path = require('path');
 const Cita = require('../models/citaModel');
 const Paciente = require('../models/pacienteModel');
 const User = require('../models/userModel');
-const { Op } = require('sequelize');
+const { Op, QueryTypes } = require('sequelize');
 const sequelize = require('../config/db');
 
 class ReporteController {
@@ -264,6 +264,127 @@ class ReporteController {
         } catch (error) {
             console.error('Error guardando reporte:', error);
             res.status(500).json({ success: false, message: 'Error al guardar reporte', error: error.message });
+        }
+    }
+
+    // Obtener estadísticas filtradas por tipo de reporte y fechas
+    static async obtenerEstadisticasReporte(req, res) {
+        try {
+            const { 
+                tipo_reporte = 'mensual', 
+                fecha_inicio = null, 
+                fecha_fin = null 
+            } = req.body;
+
+            // Valores por defecto
+            let estadisticas = {
+                pacientes_activos: 0,
+                pacientes_nuevos_mes: 0,
+                total_citas: 0,
+                citas_completadas: 0,
+                citas_canceladas: 0,
+                citas_pendientes: 0,
+                tasa_completitud: 0,
+                duracion_promedio: 0,
+                total_sesiones: 0,
+                pacientes_con_sesiones: 0,
+                sesiones_completadas: 0,
+                becarios_activos: 0,
+                total_citas_becarios: 0,
+                pacientes_atendidos_becarios: 0,
+                altas_totales: 0,
+                asignaciones_activas: 0,
+                citas_presenciales: 0,
+                citas_virtuales: 0
+            };
+
+            // Consulta simple para estadísticas
+            try {
+                // Citas
+                const citasResp = await sequelize.query(`
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+                        SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas
+                    FROM citas
+                    WHERE 1=1 ${fecha_inicio && fecha_fin ? 'AND DATE(fecha) BETWEEN ? AND ?' : ''}
+                `, { 
+                    replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : [],
+                    type: QueryTypes.SELECT 
+                });
+
+                if (citasResp && citasResp[0]) {
+                    estadisticas.total_citas = parseInt(citasResp[0].total) || 0;
+                    estadisticas.citas_completadas = parseInt(citasResp[0].completadas) || 0;
+                    estadisticas.citas_canceladas = parseInt(citasResp[0].canceladas) || 0;
+                    estadisticas.citas_pendientes = estadisticas.total_citas - estadisticas.citas_completadas - estadisticas.citas_canceladas;
+                    if (estadisticas.total_citas > 0) {
+                        estadisticas.tasa_completitud = Math.round((estadisticas.citas_completadas / estadisticas.total_citas) * 100 * 100) / 100;
+                    }
+                }
+
+                // Pacientes activos
+                const pacientesResp = await sequelize.query(`
+                    SELECT COUNT(*) as total FROM pacientes WHERE activo = TRUE
+                `, { type: QueryTypes.SELECT });
+
+                if (pacientesResp && pacientesResp[0]) {
+                    estadisticas.pacientes_activos = parseInt(pacientesResp[0].total) || 0;
+                }
+
+                // Pacientes nuevos en el período
+                const pacientesNuevosResp = await sequelize.query(`
+                    SELECT COUNT(*) as total FROM pacientes WHERE activo = TRUE 
+                    AND DATE(created_at) ${fecha_inicio && fecha_fin ? 'BETWEEN ? AND ?' : '> DATE_SUB(CURDATE(), INTERVAL 30 DAY)'}
+                `, { 
+                    replacements: fecha_inicio && fecha_fin ? [fecha_inicio, fecha_fin] : [],
+                    type: QueryTypes.SELECT 
+                });
+
+                if (pacientesNuevosResp && pacientesNuevosResp[0]) {
+                    estadisticas.pacientes_nuevos_mes = parseInt(pacientesNuevosResp[0].total) || 0;
+                }
+
+                // Datos específicos por tipo de reporte
+                if (tipo_reporte === 'clinico') {
+                    const sesionesResp = await sequelize.query(`
+                        SELECT 
+                            COUNT(*) as total,
+                            COUNT(DISTINCT paciente_id) as pacientes,
+                            SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas
+                        FROM sesiones
+                    `, { type: QueryTypes.SELECT });
+
+                    if (sesionesResp && sesionesResp[0]) {
+                        estadisticas.total_sesiones = parseInt(sesionesResp[0].total) || 0;
+                        estadisticas.pacientes_con_sesiones = parseInt(sesionesResp[0].pacientes) || 0;
+                        estadisticas.sesiones_completadas = parseInt(sesionesResp[0].completadas) || 0;
+                    }
+                } else if (tipo_reporte === 'becarios') {
+                    const becariosResp = await sequelize.query(`
+                        SELECT COUNT(DISTINCT id) as total FROM users WHERE rol = 'becario' AND activo = TRUE
+                    `, { type: QueryTypes.SELECT });
+
+                    if (becariosResp && becariosResp[0]) {
+                        estadisticas.becarios_activos = parseInt(becariosResp[0].total) || 0;
+                    }
+                }
+
+            } catch (err) {
+                console.warn('Error en estadísticas detalladas:', err.message);
+            }
+
+            res.json({ 
+                success: true, 
+                data: estadisticas
+            });
+        } catch (error) {
+            console.error('Error obteniendo estadísticas de reporte:', error);
+            res.status(500).json({ 
+                success: false, 
+                message: 'Error al obtener estadísticas', 
+                error: error.message 
+            });
         }
     }
 

@@ -164,23 +164,41 @@
   height: 60px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
+  transition: all 0.3s ease;
+  overflow: visible;
+}
+
+.hour-cell.has-overflow {
+  background: rgba(255, 166, 49, 0.05);
+}
+
+.hour-cell.expanded {
+  background: rgba(31, 133, 186, 0.1);
+  border: 1px solid var(--blu);
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .week-event {
   position: absolute;
   left: 2px;
   right: 2px;
-  padding: 5px;
+  padding: 4px 6px;
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   font-size: 11px;
   color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .week-event:hover {
-  transform: scale(1.02);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.4);
+  z-index: 50 !important;
 }
 
 .week-event-time {
@@ -198,17 +216,55 @@
   font-size: 10px;
   opacity: 0.8;
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.week-event-more {
+.week-event-type {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  opacity: 0.9;
+}
+
+.week-event-more-button,
+.week-event-collapse-button {
   position: absolute;
   bottom: 2px;
   right: 2px;
+  left: 2px;
   font-size: 10px;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 2px 5px;
-  border-radius: 3px;
+  background: linear-gradient(135deg, var(--blu), var(--grnd));
+  padding: 4px 8px;
+  border-radius: 4px;
   color: var(--white);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  z-index: 20;
+}
+
+.week-event-more-button:hover,
+.week-event-collapse-button:hover {
+  background: linear-gradient(135deg, var(--grnb), var(--blu));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(31, 133, 186, 0.4);
+}
+
+.week-event-collapse-button {
+  background: linear-gradient(135deg, var(--yy), var(--grnb));
+  bottom: auto;
+  top: 2px;
+}
+
+.week-event-collapse-button:hover {
+  background: linear-gradient(135deg, var(--grnb), var(--yy));
 }
 
 .day-header {

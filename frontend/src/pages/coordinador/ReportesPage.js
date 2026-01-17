@@ -29,6 +29,11 @@ const CoordinadorReportes = () => {
     generarEstadisticas();
   }, []);
 
+  // Actualizar estadísticas cuando cambien filtros
+  useEffect(() => {
+    generarEstadisticas();
+  }, [tipoReporte, fechaInicio, fechaFin]);
+
   const fetchReportes = async () => {
     try {
       setLoading(true);
@@ -54,23 +59,29 @@ const CoordinadorReportes = () => {
 
   const generarEstadisticas = async () => {
     try {
-      const resp = await ApiService.getEstadisticas();
+      const resp = await ApiService.post('/reportes/estadisticas', {
+        tipo_reporte: tipoReporte,
+        fecha_inicio: fechaInicio || null,
+        fecha_fin: fechaFin || null
+      });
+      
+      // Extraer datos correctamente de la respuesta del backend
       const data = resp.data || resp;
 
-      // Mapear campos para la UI (usar valores por defecto cuando falten)
+      // Mapear campos para la UI
       setEstadisticas({
-        pacientesActivos: data.pacientes?.pacientes_activos || data.pacientes?.total_pacientes || 0,
-        pacientesNuevosMes: data.pacientes?.altas_totales || 0,
-        citasCompletadas: data.citas?.completadas || 0,
-        promedioSesiones: data.citas?.duracion_promedio || 0,
-        tasaRetencion: data.citas?.tasa_completitud || 0,
-        // Si el backend no provee 'satisfaccion', dejar null para mostrar '-' en UI
-        satisfaccionPacientes: data.pacientes?.satisfaccionPromedio || data.satisfaccionPromedio || null
+        pacientesActivos: parseInt(data.pacientes_activos) || 0,
+        pacientesNuevosMes: parseInt(data.pacientes_nuevos_mes) || 0,
+        citasCompletadas: parseInt(data.citas_completadas) || 0,
+        promedioSesiones: parseInt(data.duracion_promedio) || 0,
+        tasaRetencion: parseFloat(data.tasa_completitud) || 0,
+        totalCitas: parseInt(data.total_citas) || 0,
+        citasCanceladas: parseInt(data.citas_canceladas) || 0,
+        citasPendientes: parseInt(data.citas_pendientes) || 0
       });
     } catch (error) {
       console.error('Error obteniendo estadísticas:', error);
-      // Mantener valores previos o limpiar
-      setEstadisticas({});
+      // No limpiar estadísticas para mantener valores anteriores
     }
   };
 
@@ -87,6 +98,19 @@ const CoordinadorReportes = () => {
     try {
       let nuevoReporte = null;
       const fecha = new Date().toISOString().split('T')[0];
+
+      // Obtener datos estadísticos actualizados para el reporte
+      const statsResp = await ApiService.post('/reportes/estadisticas', {
+        tipo_reporte: tipoReporte,
+        fecha_inicio: fechaInicio || null,
+        fecha_fin: fechaFin || null
+      });
+      
+      // Extraer datos correctamente
+      const statsData = statsResp.data || statsResp;
+      console.log('📊 Stats Response completo:', statsResp);
+      console.log('📊 Stats Data extraído:', statsData);
+      console.log('📊 Tipo de statsData:', typeof statsData);
 
       if (tipoReporte === 'conflictos') {
         // Llamar al backend para obtener conflictos
@@ -210,20 +234,60 @@ const CoordinadorReportes = () => {
           notifications.warning('Reporte generado localmente, no fue guardado en servidor');
         }
       } else {
-        // Generar un Word básico con estadísticas y un resumen
+        // Generar un Word con datos reales según tipo de reporte
+        let contenidoDocumento = [
+          new Paragraph({ text: `Reporte: ${tipoReporte === 'mensual' ? 'Mensual' : tipoReporte === 'trimestral' ? 'Trimestral' : tipoReporte === 'anual' ? 'Anual' : tipoReporte === 'clinico' ? 'Clínico' : tipoReporte === 'becarios' ? 'Becarios' : tipoReporte}`, heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: `Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}` }),
+          new Paragraph({ text: `Generado: ${fecha}` }),
+          new Paragraph({ text: `Coordinador del Sistema` }),
+          new Paragraph({ text: ` ` }),
+          new Paragraph({ text: `RESUMEN EJECUTIVO`, heading: HeadingLevel.HEADING_2 })
+        ];
+
+        // Agregar datos según el tipo de reporte
+        contenidoDocumento.push(
+          new Paragraph({ text: `Pacientes Activos: ${statsData.pacientes_activos || 0}` }),
+          new Paragraph({ text: `Pacientes Nuevos (Este Mes): ${statsData.pacientes_nuevos_mes || 0}` }),
+          new Paragraph({ text: `Total de Citas: ${statsData.total_citas || 0}` }),
+          new Paragraph({ text: `Citas Completadas: ${statsData.citas_completadas || 0}` }),
+          new Paragraph({ text: `Citas Canceladas: ${statsData.citas_canceladas || 0}` }),
+          new Paragraph({ text: `Citas Pendientes: ${statsData.citas_pendientes || 0}` }),
+          new Paragraph({ text: `Tasa de Completitud: ${statsData.tasa_completitud || 0}%` }),
+          new Paragraph({ text: `Duración Promedio de Citas: ${statsData.duracion_promedio || 0} minutos` })
+        );
+
+        // Información específica por tipo
+        if (tipoReporte === 'clinico') {
+          contenidoDocumento.push(
+            new Paragraph({ text: ` ` }),
+            new Paragraph({ text: `DATOS CLÍNICOS`, heading: HeadingLevel.HEADING_2 }),
+            new Paragraph({ text: `Total de Sesiones: ${statsData.total_sesiones || 0}` }),
+            new Paragraph({ text: `Pacientes con Sesiones Registradas: ${statsData.pacientes_con_sesiones || 0}` }),
+            new Paragraph({ text: `Sesiones Completadas: ${statsData.sesiones_completadas || 0}` })
+          );
+        } else if (tipoReporte === 'becarios') {
+          contenidoDocumento.push(
+            new Paragraph({ text: ` ` }),
+            new Paragraph({ text: `INFORMACIÓN DE BECARIOS`, heading: HeadingLevel.HEADING_2 }),
+            new Paragraph({ text: `Becarios Activos: ${statsData.becarios_activos || 0}` }),
+            new Paragraph({ text: `Total de Citas Atendidas por Becarios: ${statsData.total_citas_becarios || 0}` }),
+            new Paragraph({ text: `Pacientes Atendidos por Becarios: ${statsData.pacientes_atendidos_becarios || 0}` })
+          );
+        } else if (tipoReporte === 'trimestral' || tipoReporte === 'anual') {
+          contenidoDocumento.push(
+            new Paragraph({ text: ` ` }),
+            new Paragraph({ text: `ANÁLISIS COMPARATIVO`, heading: HeadingLevel.HEADING_2 }),
+            new Paragraph({ text: `Altas Registradas: ${statsData.altas_totales || 0}` }),
+            new Paragraph({ text: `Asignaciones Activas: ${statsData.asignaciones_activas || 0}` }),
+            new Paragraph({ text: `Citas Presenciales: ${statsData.citas_presenciales || 0}` }),
+            new Paragraph({ text: `Citas Virtuales: ${statsData.citas_virtuales || 0}` })
+          );
+        }
+
         const doc = new Document({
           sections: [{
             properties: {},
-            children: [
-              new Paragraph({ text: `Reporte: ${tipoReporte}`, heading: HeadingLevel.HEADING_1 }),
-              new Paragraph({ text: `Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}` }),
-              new Paragraph({ text: `Generado: ${fecha}` }),
-              new Paragraph({ text: ` ` }),
-              new Paragraph({ text: `Resumen:` , heading: HeadingLevel.HEADING_2}),
-              new Paragraph({ text: `Pacientes activos: ${estadisticas.pacientesActivos || 0}` }),
-              new Paragraph({ text: `Pacientes nuevos mes: ${estadisticas.pacientesNuevosMes || 0}` }),
-              new Paragraph({ text: `Citas completadas: ${estadisticas.citasCompletadas || 0}` })
-            ]
+            children: contenidoDocumento
           }]
         });
 
@@ -232,12 +296,42 @@ const CoordinadorReportes = () => {
 
         const previewHtmlLocal = `
           <h3>Reporte: ${tipoReporte}</h3>
-          <p>Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}</p>
+          <p><strong>Periodo:</strong> ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}</p>
+          <h4>RESUMEN EJECUTIVO</h4>
           <ul>
-            <li>Pacientes activos: ${estadisticas.pacientesActivos || 0}</li>
-            <li>Pacientes nuevos mes: ${estadisticas.pacientesNuevosMes || 0}</li>
-            <li>Citas completadas: ${estadisticas.citasCompletadas || 0}</li>
+            <li>Pacientes Activos: ${statsData.pacientes_activos || 0}</li>
+            <li>Pacientes Nuevos: ${statsData.pacientes_nuevos_mes || 0}</li>
+            <li>Total de Citas: ${statsData.total_citas || 0}</li>
+            <li>Citas Completadas: ${statsData.citas_completadas || 0}</li>
+            <li>Citas Canceladas: ${statsData.citas_canceladas || 0}</li>
+            <li>Tasa de Completitud: ${statsData.tasa_completitud || 0}%</li>
+            <li>Duración Promedio: ${statsData.duracion_promedio || 0} minutos</li>
           </ul>
+          ${tipoReporte === 'clinico' ? `
+            <h4>DATOS CLÍNICOS</h4>
+            <ul>
+              <li>Total de Sesiones: ${statsData.total_sesiones || 0}</li>
+              <li>Pacientes con Sesiones: ${statsData.pacientes_con_sesiones || 0}</li>
+              <li>Sesiones Completadas: ${statsData.sesiones_completadas || 0}</li>
+            </ul>
+          ` : ''}
+          ${tipoReporte === 'becarios' ? `
+            <h4>INFORMACIÓN DE BECARIOS</h4>
+            <ul>
+              <li>Becarios Activos: ${statsData.becarios_activos || 0}</li>
+              <li>Citas Atendidas por Becarios: ${statsData.total_citas_becarios || 0}</li>
+              <li>Pacientes Atendidos: ${statsData.pacientes_atendidos_becarios || 0}</li>
+            </ul>
+          ` : ''}
+          ${tipoReporte === 'trimestral' || tipoReporte === 'anual' ? `
+            <h4>ANÁLISIS COMPARATIVO</h4>
+            <ul>
+              <li>Altas Registradas: ${statsData.altas_totales || 0}</li>
+              <li>Asignaciones Activas: ${statsData.asignaciones_activas || 0}</li>
+              <li>Citas Presenciales: ${statsData.citas_presenciales || 0}</li>
+              <li>Citas Virtuales: ${statsData.citas_virtuales || 0}</li>
+            </ul>
+          ` : ''}
         `;
 
         // Intentar guardar en backend
@@ -389,8 +483,7 @@ const CoordinadorReportes = () => {
               <option value="anual">Reporte Anual</option>
               <option value="becarios">Reporte de Becarios</option>
               <option value="clinico">Reporte Clínico</option>
-              <option value="financiero">Reporte Financiero</option>
-              <option value="especial">Reporte Especial</option>
+              
             </select>
           </div>
           
@@ -455,7 +548,7 @@ const CoordinadorReportes = () => {
               <div className="stat-value">{estadisticas.pacientesActivos || 0}</div>
             </div>
           </div>
-          <div className="text-small">+{estadisticas.pacientesNuevosMes || 0} este mes</div>
+          <div className="text-small">+{estadisticas.pacientesNuevosMes || 0} nuevos en el período</div>
         </div>
         
         <div className="card">
@@ -466,18 +559,18 @@ const CoordinadorReportes = () => {
               <div className="stat-value">{estadisticas.citasCompletadas || 0}</div>
             </div>
           </div>
-          <div className="text-small">este mes</div>
+          <div className="text-small">de {estadisticas.totalCitas || 0} citas totales</div>
         </div>
         
         <div className="card">
           <div className="flex-row align-center gap-10 mb-10">
             <FiTrendingUp size={24} style={{ color: 'var(--yy)' }} />
             <div>
-              <h4>Tasa de Retención</h4>
+              <h4>Tasa de Completitud</h4>
               <div className="stat-value">{estadisticas.tasaRetencion || 0}%</div>
             </div>
           </div>
-          <div className="text-small">de pacientes continúan tratamiento</div>
+          <div className="text-small">{estadisticas.citasCanceladas || 0} canceladas, {estadisticas.citasPendientes || 0} pendientes</div>
         </div>
       </div>
 
@@ -659,16 +752,7 @@ const CoordinadorReportes = () => {
           </ul>
         </div>
         
-        <div className="card">
-          <h4>💰 Reportes Financieros</h4>
-          <p className="text-small mt-10">Análisis económico y de rentabilidad</p>
-          <ul className="text-small mt-10">
-            <li>Ingresos vs gastos</li>
-            <li>Proyecciones financieras</li>
-            <li>Análisis de rentabilidad</li>
-            <li>Reportes fiscales</li>
-          </ul>
-        </div>
+        
       </div>
     </div>
   );

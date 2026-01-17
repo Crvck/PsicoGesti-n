@@ -12,6 +12,9 @@ router.post('/exportar-agenda-csv', ReporteController.exportarAgendaCSV);
 // Exportar disponibilidad a CSV
 router.post('/exportar-disponibilidad-csv', ReporteController.exportarDisponibilidadCSV);
 
+// Obtener estadísticas filtradas para reportes (el usuario ya está autenticado al acceder a la página)
+router.post('/estadisticas', ReporteController.obtenerEstadisticasReporte);
+
 // Generar reporte de conflictos
 router.post('/reporte-conflictos', ReporteController.generarReporteConflictos);
 

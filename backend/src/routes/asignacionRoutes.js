@@ -12,6 +12,7 @@ router.post('/', requireRole(['coordinador']), AsignacionController.crearAsignac
 router.get('/', requireRole(['coordinador']), AsignacionController.obtenerAsignacionesActivas);
 router.put('/:id/finalizar', requireRole(['coordinador', 'psicologo']), AsignacionController.finalizarAsignacion);
 router.get('/paciente/:paciente_id/historial', requireRole(['coordinador', 'psicologo']), AsignacionController.obtenerHistorialAsignaciones);
+router.post('/becarios/:id/horas', requireRole(['coordinador', 'psicologo']), AsignacionController.registrarHorasBecario);
 
 // Rutas para psicólogos y becarios
 router.get('/mis-pacientes', requireRole(['psicologo', 'becario']), AsignacionController.obtenerMisPacientes);

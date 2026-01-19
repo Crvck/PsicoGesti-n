@@ -11,6 +11,7 @@ import {
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ApiService from '../../services/api';
+import ConfiguracionService from '../../services/configuracionService';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
@@ -32,6 +33,7 @@ const CoordinadorAgenda = () => {
   const [pacientes, setPacientes] = useState([]);
   const [searchPaciente, setSearchPaciente] = useState('');
   const [filteredPacientes, setFilteredPacientes] = useState([]);
+  const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
   
   const [filtrosAvanzados, setFiltrosAvanzados] = useState({
     fecha_inicio: '',
@@ -46,6 +48,7 @@ const CoordinadorAgenda = () => {
   useEffect(() => {
     fetchPsicologos();
     fetchPacientes();
+    fetchConfigCitas();
   }, []);
 
   useEffect(() => {
@@ -84,6 +87,19 @@ const CoordinadorAgenda = () => {
       }
     } catch (error) {
       console.error('Error cargando pacientes:', error);
+    }
+  };
+
+  const fetchConfigCitas = async () => {
+    try {
+      const response = await ConfiguracionService.obtenerPorCategoria('citas');
+      const data = response?.data || response || {};
+      setConfigCitas({
+        horarioInicio: data.horarioInicio || '09:00',
+        horarioFin: data.horarioFin || '20:00'
+      });
+    } catch (error) {
+      console.error('Error cargando configuración de citas:', error);
     }
   };
 
@@ -276,8 +292,13 @@ const CoordinadorAgenda = () => {
 
   const generateHours = () => {
     const hours = [];
-    for (let i = 9; i <= 20; i++) {
-      hours.push(`${i}:00`);
+    const startHour = parseInt((configCitas.horarioInicio || '09:00').split(':')[0], 10);
+    const endHour = parseInt((configCitas.horarioFin || '20:00').split(':')[0], 10);
+    const safeStart = Number.isNaN(startHour) ? 9 : startHour;
+    const safeEnd = Number.isNaN(endHour) ? 20 : endHour;
+
+    for (let i = safeStart; i <= safeEnd; i++) {
+      hours.push(`${i.toString().padStart(2, '0')}:00`);
     }
     return hours;
   };

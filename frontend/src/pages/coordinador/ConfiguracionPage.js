@@ -7,10 +7,70 @@ import {
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import ConfiguracionService from '../../services/configuracionService';
+
+const DEFAULT_CONFIG = {
+  general: {
+    nombreConsultorio: 'PsicoGestión Consultorio',
+    direccion: 'Av. Principal 123, Ciudad',
+    telefono: '+123 456 7890',
+    email: 'contacto@psicogestion.com',
+    sitioWeb: 'https://psicogestion.com',
+    moneda: 'USD',
+    zonaHoraria: 'America/Mexico_City',
+    idioma: 'es'
+  },
+  clinica: {
+    duracionSesionDefault: 50,
+    sesionesGratuitas: 3,
+    edadMinima: 16,
+    maxPacientesPsicologo: 15,
+    maxPacientesBecario: 5,
+    requiereSupervision: true,
+    frecuenciaSupervision: 'semanal'
+  },
+  citas: {
+    horarioInicio: '09:00',
+    horarioFin: '20:00',
+    intervaloCitas: 15,
+    antelacionReserva: 30,
+    recordatorio24h: true,
+    recordatorio1h: true,
+    margenCancelacion: 24,
+    maxCitasDia: 8
+  },
+  notificaciones: {
+    emailNuevaCita: true,
+    emailCancelacion: true,
+    emailRecordatorio: true,
+    emailReportes: true,
+    smsRecordatorio: false,
+    notificacionesPush: true,
+    emailCoordinador: 'coordinador@psicogestion.com'
+  },
+  seguridad: {
+    requerirVerificacionEmail: true,
+    intentosLogin: 3,
+    bloqueoTemporal: 30,
+    expiracionSesion: 60,
+    requerir2FA: false,
+    registroIP: true,
+    politicasAceptadas: true
+  },
+  avanzada: {
+    backupAutomatico: true,
+    frecuenciaBackup: 'diario',
+    retencionBackups: 30,
+    logsDetallados: true,
+    modoMantenimiento: false,
+    versionAPI: '1.0.0',
+    debugMode: false
+  }
+};
 
 const CoordinadorConfiguracion = () => {
   const [activeTab, setActiveTab] = useState('general');
-  const [configuraciones, setConfiguraciones] = useState({});
+  const [configuraciones, setConfiguraciones] = useState(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -19,7 +79,7 @@ const CoordinadorConfiguracion = () => {
     { id: 'general', label: 'General', icon: <FiSettings /> },
     { id: 'clinica', label: 'Clínica', icon: <FiUsers /> },
     { id: 'citas', label: 'Citas', icon: <FiCalendar /> },
-    { id: 'notificaciones', label: 'Notificaciones', icon: <FiBell /> },
+    // { id: 'notificaciones', label: 'Notificaciones', icon: <FiBell /> },
     { id: 'seguridad', label: 'Seguridad', icon: <FiShield /> },
     { id: 'avanzada', label: 'Avanzada', icon: <FiDatabase /> }
   ];
@@ -31,71 +91,15 @@ const CoordinadorConfiguracion = () => {
   const fetchConfiguraciones = async () => {
     try {
       setLoading(true);
-      
-      // Simulación de datos
-      setTimeout(() => {
-        setConfiguraciones({
-          general: {
-            nombreConsultorio: 'PsicoGestión Consultorio',
-            direccion: 'Av. Principal 123, Ciudad',
-            telefono: '+123 456 7890',
-            email: 'contacto@psicogestion.com',
-            sitioWeb: 'https://psicogestion.com',
-            moneda: 'USD',
-            zonaHoraria: 'America/Mexico_City',
-            idioma: 'es'
-          },
-          clinica: {
-            duracionSesionDefault: 50,
-            sesionesGratuitas: 3,
-            edadMinima: 16,
-            maxPacientesPsicologo: 15,
-            maxPacientesBecario: 5,
-            requiereSupervision: true,
-            frecuenciaSupervision: 'semanal'
-          },
-          citas: {
-            horarioInicio: '09:00',
-            horarioFin: '20:00',
-            intervaloCitas: 15,
-            antelacionReserva: 30,
-            recordatorio24h: true,
-            recordatorio1h: true,
-            margenCancelacion: 24,
-            maxCitasDia: 8
-          },
-          notificaciones: {
-            emailNuevaCita: true,
-            emailCancelacion: true,
-            emailRecordatorio: true,
-            emailReportes: true,
-            smsRecordatorio: false,
-            notificacionesPush: true,
-            emailCoordinador: 'coordinador@psicogestion.com'
-          },
-          seguridad: {
-            requerirVerificacionEmail: true,
-            intentosLogin: 3,
-            bloqueoTemporal: 30,
-            expiracionSesion: 60,
-            requerir2FA: false,
-            registroIP: true,
-            politicasAceptadas: true
-          },
-          avanzada: {
-            backupAutomatico: true,
-            frecuenciaBackup: 'diario',
-            retencionBackups: 30,
-            logsDetallados: true,
-            modoMantenimiento: false,
-            versionAPI: '1.0.0',
-            debugMode: false
-          }
-        });
-        setLoading(false);
-      }, 1000);
+      const response = await ConfiguracionService.obtenerTodas();
+      const data = response?.data || response;
+
+      setConfiguraciones(prev => ({ ...DEFAULT_CONFIG, ...prev, ...data }));
     } catch (error) {
       console.error('Error cargando configuraciones:', error);
+      setMessage({ type: 'error', text: 'No se pudieron cargar las configuraciones' });
+      setConfiguraciones(DEFAULT_CONFIG);
+    } finally {
       setLoading(false);
     }
   };
@@ -114,22 +118,23 @@ const CoordinadorConfiguracion = () => {
     try {
       setSaving(true);
       setMessage({ type: '', text: '' });
-      
-      // Simulación de guardado
-      setTimeout(() => {
-        setMessage({ 
-          type: 'success', 
-          text: `Configuración ${categoria} guardada exitosamente` 
-        });
-        setSaving(false);
-        
-        setTimeout(() => {
-          setMessage({ type: '', text: '' });
-        }, 3000);
-      }, 1000);
+
+      const payload = configuraciones[categoria] || {};
+      const response = await ConfiguracionService.guardarCategoria(categoria, payload);
+      const valoresActualizados = response?.data || payload;
+      setConfiguraciones(prev => ({ ...prev, [categoria]: valoresActualizados }));
+      setMessage({ 
+        type: 'success', 
+        text: response?.message || `Configuración ${categoria} guardada exitosamente` 
+      });
     } catch (error) {
-      setMessage({ type: 'error', text: 'Error al guardar la configuración' });
+      console.error('Error al guardar la configuración:', error);
+      setMessage({ type: 'error', text: error.message || 'Error al guardar la configuración' });
+    } finally {
       setSaving(false);
+      setTimeout(() => {
+        setMessage({ type: '', text: '' });
+      }, 3000);
     }
   };
 
@@ -151,15 +156,20 @@ const CoordinadorConfiguracion = () => {
     const file = event.target.files[0];
     if (!file) return;
     
+    setSaving(true);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const config = JSON.parse(e.target.result);
-        setConfiguraciones(config);
-        setMessage({ type: 'success', text: 'Configuración importada exitosamente' });
-        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+        setConfiguraciones(prev => ({ ...prev, ...config }));
+        await ConfiguracionService.guardarMultiples(config);
+        setMessage({ type: 'success', text: 'Configuración importada y guardada' });
       } catch (error) {
+        console.error('Error al importar la configuración:', error);
         setMessage({ type: 'error', text: 'Error al importar la configuración' });
+      } finally {
+        setSaving(false);
+        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
       }
     };
     reader.readAsText(file);
@@ -169,7 +179,18 @@ const CoordinadorConfiguracion = () => {
     const confirmado = await confirmations.warning('¿Estás seguro de restaurar los valores predeterminados?');
     
     if (confirmado) {
-      notifications.success('Valores predeterminados restaurados');
+      const valores = DEFAULT_CONFIG[categoria];
+      setSaving(true);
+      setConfiguraciones(prev => ({ ...prev, [categoria]: valores }));
+      try {
+        await ConfiguracionService.guardarCategoria(categoria, valores);
+        notifications.success('Valores predeterminados restaurados');
+      } catch (error) {
+        console.error('Error al restaurar valores:', error);
+        notifications.error('No se pudieron restaurar los valores');
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -178,8 +199,18 @@ const CoordinadorConfiguracion = () => {
     const confirmado = await confirmations.danger(`¿${nuevoValor ? 'Activar' : 'Desactivar'} modo mantenimiento? Esto afectará a todos los usuarios.`);
     
     if (confirmado) {
-      handleInputChange('avanzada', 'modoMantenimiento', nuevoValor);
-      notifications.warning(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
+      setSaving(true);
+      const valores = { ...configuraciones.avanzada, modoMantenimiento: nuevoValor };
+      setConfiguraciones(prev => ({ ...prev, avanzada: valores }));
+      try {
+        await ConfiguracionService.guardarCategoria('avanzada', valores);
+        notifications.warning(`Modo mantenimiento ${nuevoValor ? 'activado' : 'desactivado'}`);
+      } catch (error) {
+        console.error('Error al alternar modo mantenimiento:', error);
+        setMessage({ type: 'error', text: 'No se pudo actualizar el modo mantenimiento' });
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -315,19 +346,7 @@ const CoordinadorConfiguracion = () => {
                     placeholder="https://ejemplo.com"
                   />
                 </div>
-                
-                <div className="form-group">
-                  <label>Moneda</label>
-                  <select
-                    value={configuraciones.general?.moneda || 'USD'}
-                    onChange={(e) => handleInputChange('general', 'moneda', e.target.value)}
-                    className="select-field"
-                  >
-                    <option value="USD">USD ($)</option>
-                    <option value="MXN">MXN ($)</option>
-                    <option value="EUR">EUR (€)</option>
-                  </select>
-                </div>
+          
                 
                 <div className="form-group">
                   <label>Zona horaria</label>
@@ -343,17 +362,7 @@ const CoordinadorConfiguracion = () => {
                   </select>
                 </div>
                 
-                <div className="form-group">
-                  <label>Idioma del sistema</label>
-                  <select
-                    value={configuraciones.general?.idioma || 'es'}
-                    onChange={(e) => handleInputChange('general', 'idioma', e.target.value)}
-                    className="select-field"
-                  >
-                    <option value="es">Español</option>
-                    <option value="en">Inglés</option>
-                  </select>
-                </div>
+                
               </div>
             </div>
           )}
@@ -387,7 +396,7 @@ const CoordinadorConfiguracion = () => {
                   <label>Duración de sesión predeterminada (minutos)</label>
                   <input
                     type="number"
-                    value={configuraciones.clinica?.duracionSesionDefault || 50}
+                    value={configuraciones.clinica?.duracionSesionDefault ?? 50}
                     onChange={(e) => handleInputChange('clinica', 'duracionSesionDefault', parseInt(e.target.value))}
                     className="input-field"
                     min="30"
@@ -396,7 +405,7 @@ const CoordinadorConfiguracion = () => {
                   />
                 </div>
                 
-                <div className="form-group">
+                {/* <div className="form-group">
                   <label>Sesiones gratuitas iniciales</label>
                   <input
                     type="number"
@@ -406,9 +415,9 @@ const CoordinadorConfiguracion = () => {
                     min="0"
                     max="10"
                   />
-                </div>
+                </div> */}
                 
-                <div className="form-group">
+                {/* <div className="form-group">
                   <label>Edad mínima para atención</label>
                   <input
                     type="number"
@@ -418,13 +427,13 @@ const CoordinadorConfiguracion = () => {
                     min="12"
                     max="100"
                   />
-                </div>
+                </div> */}
                 
                 <div className="form-group">
                   <label>Máx. pacientes por psicólogo</label>
                   <input
                     type="number"
-                    value={configuraciones.clinica?.maxPacientesPsicologo || 15}
+                    value={configuraciones.clinica?.maxPacientesPsicologo ?? 15}
                     onChange={(e) => handleInputChange('clinica', 'maxPacientesPsicologo', parseInt(e.target.value))}
                     className="input-field"
                     min="5"
@@ -436,7 +445,7 @@ const CoordinadorConfiguracion = () => {
                   <label>Máx. pacientes por becario</label>
                   <input
                     type="number"
-                    value={configuraciones.clinica?.maxPacientesBecario || 5}
+                    value={configuraciones.clinica?.maxPacientesBecario ?? 5}
                     onChange={(e) => handleInputChange('clinica', 'maxPacientesBecario', parseInt(e.target.value))}
                     className="input-field"
                     min="1"
@@ -444,7 +453,7 @@ const CoordinadorConfiguracion = () => {
                   />
                 </div>
                 
-                <div className="form-group">
+                {/* <div className="form-group">
                   <label>Frecuencia de supervisión</label>
                   <select
                     value={configuraciones.clinica?.frecuenciaSupervision || 'semanal'}
@@ -455,13 +464,13 @@ const CoordinadorConfiguracion = () => {
                     <option value="quincenal">Quincenal</option>
                     <option value="mensual">Mensual</option>
                   </select>
-                </div>
+                </div> */}
                 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label className="flex-row align-center gap-10">
                     <input
                       type="checkbox"
-                      checked={configuraciones.clinica?.requiereSupervision || true}
+                      checked={configuraciones.clinica?.requiereSupervision ?? true}
                       onChange={(e) => handleInputChange('clinica', 'requiereSupervision', e.target.checked)}
                     />
                     <span>Requerir supervisión para becarios</span>
@@ -474,7 +483,7 @@ const CoordinadorConfiguracion = () => {
                 <ul>
                   <li>Los cambios en la duración de sesiones afectarán a las citas futuras</li>
                   <li>Los límites de pacientes se aplicarán para nuevas asignaciones</li>
-                  <li>La edad mínima debe cumplir con las regulaciones locales</li>
+
                 </ul>
               </div>
             </div>
@@ -509,7 +518,7 @@ const CoordinadorConfiguracion = () => {
                   <label>Horario de inicio</label>
                   <input
                     type="time"
-                    value={configuraciones.citas?.horarioInicio || '09:00'}
+                    value={configuraciones.citas?.horarioInicio ?? '09:00'}
                     onChange={(e) => handleInputChange('citas', 'horarioInicio', e.target.value)}
                     className="input-field"
                   />
@@ -519,43 +528,21 @@ const CoordinadorConfiguracion = () => {
                   <label>Horario de fin</label>
                   <input
                     type="time"
-                    value={configuraciones.citas?.horarioFin || '20:00'}
+                    value={configuraciones.citas?.horarioFin ?? '20:00'}
                     onChange={(e) => handleInputChange('citas', 'horarioFin', e.target.value)}
                     className="input-field"
                   />
                 </div>
                 
-                <div className="form-group">
-                  <label>Intervalo entre citas (minutos)</label>
-                  <select
-                    value={configuraciones.citas?.intervaloCitas || 15}
-                    onChange={(e) => handleInputChange('citas', 'intervaloCitas', parseInt(e.target.value))}
-                    className="select-field"
-                  >
-                    <option value="15">15 minutos</option>
-                    <option value="30">30 minutos</option>
-                    <option value="45">45 minutos</option>
-                    <option value="60">60 minutos</option>
-                  </select>
-                </div>
                 
-                <div className="form-group">
-                  <label>Antelación para reserva (días)</label>
-                  <input
-                    type="number"
-                    value={configuraciones.citas?.antelacionReserva || 30}
-                    onChange={(e) => handleInputChange('citas', 'antelacionReserva', parseInt(e.target.value))}
-                    className="input-field"
-                    min="1"
-                    max="90"
-                  />
-                </div>
+                
+                
                 
                 <div className="form-group">
                   <label>Máximo de citas por día</label>
                   <input
                     type="number"
-                    value={configuraciones.citas?.maxCitasDia || 8}
+                    value={configuraciones.citas?.maxCitasDia ?? 8}
                     onChange={(e) => handleInputChange('citas', 'maxCitasDia', parseInt(e.target.value))}
                     className="input-field"
                     min="1"
@@ -567,7 +554,7 @@ const CoordinadorConfiguracion = () => {
                   <label>Margen para cancelación (horas)</label>
                   <input
                     type="number"
-                    value={configuraciones.citas?.margenCancelacion || 24}
+                    value={configuraciones.citas?.margenCancelacion ?? 24}
                     onChange={(e) => handleInputChange('citas', 'margenCancelacion', parseInt(e.target.value))}
                     className="input-field"
                     min="1"
@@ -579,7 +566,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="flex-row align-center gap-10">
                     <input
                       type="checkbox"
-                      checked={configuraciones.citas?.recordatorio24h || true}
+                      checked={configuraciones.citas?.recordatorio24h ?? true}
                       onChange={(e) => handleInputChange('citas', 'recordatorio24h', e.target.checked)}
                     />
                     <span>Recordatorio 24 horas antes</span>
@@ -590,7 +577,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="flex-row align-center gap-10">
                     <input
                       type="checkbox"
-                      checked={configuraciones.citas?.recordatorio1h || true}
+                      checked={configuraciones.citas?.recordatorio1h ?? true}
                       onChange={(e) => handleInputChange('citas', 'recordatorio1h', e.target.checked)}
                     />
                     <span>Recordatorio 1 hora antes</span>
@@ -633,7 +620,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="switch">
                     <input
                       type="checkbox"
-                      checked={configuraciones.notificaciones?.emailNuevaCita || true}
+                      checked={configuraciones.notificaciones?.emailNuevaCita ?? true}
                       onChange={(e) => handleInputChange('notificaciones', 'emailNuevaCita', e.target.checked)}
                     />
                     <span className="slider"></span>
@@ -648,7 +635,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="switch">
                     <input
                       type="checkbox"
-                      checked={configuraciones.notificaciones?.emailCancelacion || true}
+                      checked={configuraciones.notificaciones?.emailCancelacion ?? true}
                       onChange={(e) => handleInputChange('notificaciones', 'emailCancelacion', e.target.checked)}
                     />
                     <span className="slider"></span>
@@ -663,7 +650,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="switch">
                     <input
                       type="checkbox"
-                      checked={configuraciones.notificaciones?.emailRecordatorio || true}
+                      checked={configuraciones.notificaciones?.emailRecordatorio ?? true}
                       onChange={(e) => handleInputChange('notificaciones', 'emailRecordatorio', e.target.checked)}
                     />
                     <span className="slider"></span>
@@ -678,7 +665,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="switch">
                     <input
                       type="checkbox"
-                      checked={configuraciones.notificaciones?.emailReportes || true}
+                      checked={configuraciones.notificaciones?.emailReportes ?? true}
                       onChange={(e) => handleInputChange('notificaciones', 'emailReportes', e.target.checked)}
                     />
                     <span className="slider"></span>
@@ -693,7 +680,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="switch">
                     <input
                       type="checkbox"
-                      checked={configuraciones.notificaciones?.smsRecordatorio || false}
+                      checked={configuraciones.notificaciones?.smsRecordatorio ?? false}
                       onChange={(e) => handleInputChange('notificaciones', 'smsRecordatorio', e.target.checked)}
                     />
                     <span className="slider"></span>
@@ -708,7 +695,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="switch">
                     <input
                       type="checkbox"
-                      checked={configuraciones.notificaciones?.notificacionesPush || true}
+                      checked={configuraciones.notificaciones?.notificacionesPush ?? true}
                       onChange={(e) => handleInputChange('notificaciones', 'notificacionesPush', e.target.checked)}
                     />
                     <span className="slider"></span>
@@ -758,7 +745,7 @@ const CoordinadorConfiguracion = () => {
                   <label>Intentos de login fallidos</label>
                   <input
                     type="number"
-                    value={configuraciones.seguridad?.intentosLogin || 3}
+                    value={configuraciones.seguridad?.intentosLogin ?? 3}
                     onChange={(e) => handleInputChange('seguridad', 'intentosLogin', parseInt(e.target.value))}
                     className="input-field"
                     min="1"
@@ -770,7 +757,7 @@ const CoordinadorConfiguracion = () => {
                   <label>Bloqueo temporal (minutos)</label>
                   <input
                     type="number"
-                    value={configuraciones.seguridad?.bloqueoTemporal || 30}
+                    value={configuraciones.seguridad?.bloqueoTemporal ?? 30}
                     onChange={(e) => handleInputChange('seguridad', 'bloqueoTemporal', parseInt(e.target.value))}
                     className="input-field"
                     min="5"
@@ -782,7 +769,7 @@ const CoordinadorConfiguracion = () => {
                   <label>Expiración de sesión (minutos)</label>
                   <input
                     type="number"
-                    value={configuraciones.seguridad?.expiracionSesion || 60}
+                    value={configuraciones.seguridad?.expiracionSesion ?? 60}
                     onChange={(e) => handleInputChange('seguridad', 'expiracionSesion', parseInt(e.target.value))}
                     className="input-field"
                     min="15"
@@ -794,7 +781,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="flex-row align-center gap-10">
                     <input
                       type="checkbox"
-                      checked={configuraciones.seguridad?.requerirVerificacionEmail || true}
+                      checked={configuraciones.seguridad?.requerirVerificacionEmail ?? true}
                       onChange={(e) => handleInputChange('seguridad', 'requerirVerificacionEmail', e.target.checked)}
                     />
                     <span>Requerir verificación de email</span>
@@ -805,7 +792,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="flex-row align-center gap-10">
                     <input
                       type="checkbox"
-                      checked={configuraciones.seguridad?.requerir2FA || false}
+                      checked={configuraciones.seguridad?.requerir2FA ?? false}
                       onChange={(e) => handleInputChange('seguridad', 'requerir2FA', e.target.checked)}
                     />
                     <span>Requerir autenticación de dos factores</span>
@@ -816,7 +803,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="flex-row align-center gap-10">
                     <input
                       type="checkbox"
-                      checked={configuraciones.seguridad?.registroIP || true}
+                      checked={configuraciones.seguridad?.registroIP ?? true}
                       onChange={(e) => handleInputChange('seguridad', 'registroIP', e.target.checked)}
                     />
                     <span>Registrar direcciones IP</span>
@@ -827,7 +814,7 @@ const CoordinadorConfiguracion = () => {
                   <label className="flex-row align-center gap-10">
                     <input
                       type="checkbox"
-                      checked={configuraciones.seguridad?.politicasAceptadas || true}
+                      checked={configuraciones.seguridad?.politicasAceptadas ?? true}
                       onChange={(e) => handleInputChange('seguridad', 'politicasAceptadas', e.target.checked)}
                     />
                     <span>Requerir aceptación de políticas</span>
@@ -889,7 +876,7 @@ const CoordinadorConfiguracion = () => {
                 <div className="form-group">
                   <label>Frecuencia de backup</label>
                   <select
-                    value={configuraciones.avanzada?.frecuenciaBackup || 'diario'}
+                    value={configuraciones.avanzada?.frecuenciaBackup ?? 'diario'}
                     onChange={(e) => handleInputChange('avanzada', 'frecuenciaBackup', e.target.value)}
                     className="select-field"
                   >
@@ -903,7 +890,7 @@ const CoordinadorConfiguracion = () => {
                   <label>Retención de backups (días)</label>
                   <input
                     type="number"
-                    value={configuraciones.avanzada?.retencionBackups || 30}
+                    value={configuraciones.avanzada?.retencionBackups ?? 30}
                     onChange={(e) => handleInputChange('avanzada', 'retencionBackups', parseInt(e.target.value))}
                     className="input-field"
                     min="7"
@@ -915,48 +902,27 @@ const CoordinadorConfiguracion = () => {
                   <label>Versión de API</label>
                   <input
                     type="text"
-                    value={configuraciones.avanzada?.versionAPI || '1.0.0'}
+                    value={configuraciones.avanzada?.versionAPI ?? '1.0.0'}
                     onChange={(e) => handleInputChange('avanzada', 'versionAPI', e.target.value)}
                     className="input-field"
                     readOnly
                   />
                 </div>
                 
-                <div className="form-group">
-                  <label className="flex-row align-center gap-10">
-                    <input
-                      type="checkbox"
-                      checked={configuraciones.avanzada?.logsDetallados || true}
-                      onChange={(e) => handleInputChange('avanzada', 'logsDetallados', e.target.checked)}
-                    />
-                    <span>Logs detallados</span>
-                  </label>
-                </div>
+                
                 
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
                       type="checkbox"
-                      checked={configuraciones.avanzada?.debugMode || false}
+                      checked={configuraciones.avanzada?.debugMode ?? false}
                       onChange={(e) => handleInputChange('avanzada', 'debugMode', e.target.checked)}
                     />
                     <span>Modo debug</span>
                   </label>
                 </div>
                 
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label className="flex-row align-center gap-10">
-                    <input
-                      type="checkbox"
-                      checked={configuraciones.avanzada?.modoMantenimiento || false}
-                      onChange={() => {}}
-                      disabled
-                    />
-                    <span style={{ color: configuraciones.avanzada?.modoMantenimiento ? 'var(--yy)' : 'inherit' }}>
-                      Modo mantenimiento {configuraciones.avanzada?.modoMantenimiento ? 'ACTIVADO' : 'desactivado'}
-                    </span>
-                  </label>
-                </div>
+                
               </div>
               
               <div className="advanced-actions mt-30">
@@ -971,9 +937,7 @@ const CoordinadorConfiguracion = () => {
                   <button className="btn-danger">
                     Vaciar logs antiguos
                   </button>
-                  <button className="btn-primary">
-                    <FiGlobe /> Revisar updates
-                  </button>
+                  
                 </div>
               </div>
               

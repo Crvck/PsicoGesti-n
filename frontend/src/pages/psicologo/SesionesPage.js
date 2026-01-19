@@ -9,6 +9,7 @@ const PsicologoSesiones = () => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     paciente_id: '',
+    cita_id: '',
     fecha: new Date().toISOString().split('T')[0],
     hora_inicio: '10:00',
     hora_fin: '11:00',
@@ -19,6 +20,7 @@ const PsicologoSesiones = () => {
     proxima_sesion: ''
   });
   const [pacientes, setPacientes] = useState([]);
+  const [citasPaciente, setCitasPaciente] = useState([]);
   const [expandedIds, setExpandedIds] = useState([]);
   const [recientesLimit, setRecientesLimit] = useState(50);
   const [recientesOffset, setRecientesOffset] = useState(0);
@@ -38,6 +40,19 @@ const PsicologoSesiones = () => {
   const closeSesionModal = () => {
     setSelectedSesion(null);
     setShowSesionModal(false);
+  };
+
+  const calcularHoraFin = (horaInicio, duracionMinutos = 50) => {
+    try {
+      const [horas, minutos] = horaInicio.split(':').map(Number);
+      const fecha = new Date();
+      fecha.setHours(horas, minutos, 0, 0);
+      fecha.setMinutes(fecha.getMinutes() + duracionMinutos);
+      return `${String(fecha.getHours()).padStart(2, '0')}:${String(fecha.getMinutes()).padStart(2, '0')}`;
+    } catch (e) {
+      console.warn('Error calculando hora fin:', e);
+      return '11:00';
+    }
   };
 
   // Ensure numbering uses chronological order (newest = Sesión 1)
@@ -118,10 +133,15 @@ const PsicologoSesiones = () => {
 
   // Cargar sesiones cuando se selecciona un paciente o mostrar recientes si no
   useEffect(() => {
+    console.log('🔄 useEffect - paciente_id cambió a:', formData.paciente_id);
     if (formData.paciente_id) {
+      console.log('✅ Hay paciente seleccionado, cargando sesiones y citas...');
       fetchSesiones(formData.paciente_id);
+      fetchCitasPaciente(formData.paciente_id);
     } else {
+      console.log('❌ No hay paciente seleccionado, mostrando recientes');
       fetchRecientes();
+      setCitasPaciente([]);
     }
   }, [formData.paciente_id]);
 
@@ -247,6 +267,49 @@ const PsicologoSesiones = () => {
     }
   };
 
+  // Obtener citas existentes del paciente para ligar la sesión
+  const fetchCitasPaciente = async (pacienteId) => {
+    try {
+      console.log('🔍 Obteniendo citas para paciente_id:', pacienteId);
+      const token = localStorage.getItem('token');
+      const url = `http://localhost:3000/api/citas/paciente/${pacienteId}`;
+      console.log('📡 URL:', url);
+      
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+
+      console.log('📥 Respuesta status:', res.status);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Error en servidor' }));
+        console.error('❌ Error fetching citas del paciente:', err);
+        setCitasPaciente([]);
+        return;
+      }
+
+      const json = await res.json();
+      console.log('📦 Respuesta JSON completa:', json);
+      
+      const data = Array.isArray(json) ? json : (json.data || []);
+      console.log('📋 Data extraída:', data);
+      
+      const normalized = data.map(c => ({
+        id: c.id,
+        fecha: c.fecha || c.dia || null,
+        hora: c.hora || c.hora_inicio || '',
+        estado: c.estado || 'pendiente',
+        tipo_consulta: c.tipo_consulta || 'presencial'
+      }));
+
+      console.log('✅ Citas normalizadas:', normalized);
+      setCitasPaciente(normalized);
+    } catch (error) {
+      console.error('💥 Error al cargar citas del paciente:', error);
+      setCitasPaciente([]);
+    }
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({
@@ -277,47 +340,20 @@ const PsicologoSesiones = () => {
         return;
       }
 
-      const citaBody = {
-        paciente: { nombre: firstName, apellido: lastName, email: null, telefono: null },
-        fecha: formData.fecha,
-        hora: formData.hora_inicio,
-        tipo_consulta: 'presencial',
-        duracion: 50,
-        notas: 'Sesión registrada desde Registro de Sesiones'
-      };
-
-      // Crear cita
-      const resCita = await fetch('http://localhost:3000/api/citas/nueva', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-        body: JSON.stringify(citaBody)
-      });
-
-      const jsonCita = await resCita.json().catch(() => ({}));
-      console.log('POST /api/citas/nueva ->', resCita.status, jsonCita);
-      if (!resCita.ok || !jsonCita.success) {
-        notifications.error(jsonCita.message || 'Error creando cita temporal');
+      if (!formData.cita_id) {
+        notifications.error('Selecciona la cita correspondiente para registrar la sesión');
         return;
       }
 
-      const citaCreada = jsonCita.data;
-      // Marcar completada
-      const resPut = await fetch(`http://localhost:3000/api/citas/cita/${citaCreada.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-        body: JSON.stringify({ estado: 'completada' })
-      });
-
-      const jsonPut = await resPut.json().catch(() => ({}));
-      console.log('PUT /api/citas/cita/:id ->', resPut.status, jsonPut);
-      if (!resPut.ok || !jsonPut.success) {
-        notifications.error(jsonPut.message || 'Error marcando cita como completada');
+      const citaIdNumber = Number(formData.cita_id);
+      if (Number.isNaN(citaIdNumber)) {
+        notifications.error('La cita seleccionada no es válida');
         return;
       }
 
       // Registrar sesión
       const sesionBody = {
-        cita_id: citaCreada.id,
+        cita_id: citaIdNumber,
         desarrollo: formData.contenido_sesion,
         conclusion: '',
         tareas_asignadas: formData.tareas_asignadas,
@@ -361,6 +397,7 @@ const PsicologoSesiones = () => {
   const resetForm = () => {
     setFormData({
       paciente_id: '',
+      cita_id: '',
       fecha: new Date().toISOString().split('T')[0],
       hora_inicio: '10:00',
       hora_fin: '11:00',
@@ -421,6 +458,57 @@ const PsicologoSesiones = () => {
                       {paciente.nombre_completo || `${paciente.nombre} ${paciente.apellido}`.trim()}
                     </option>
                   ))} 
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Cita del paciente</label>
+                <select
+                  name="cita_id"
+                  value={formData.cita_id}
+                  onChange={(e) => {
+                    console.log('📝 Cita seleccionada:', e.target.value);
+                    handleInputChange(e);
+                    
+                    // Auto-rellenar fecha y hora de la cita seleccionada
+                    const citaId = e.target.value;
+                    if (citaId) {
+                      const citaSeleccionada = citasPaciente.find(c => String(c.id) === String(citaId));
+                      if (citaSeleccionada) {
+                        console.log('🔄 Auto-rellenando fecha/hora desde cita:', citaSeleccionada);
+                        // Convertir fecha a formato local (YYYY-MM-DD) sin conversión de zona horaria
+                        let fechaLocal = citaSeleccionada.fecha;
+                        if (fechaLocal && fechaLocal.includes('T')) {
+                          // Si viene con timestamp, extraer solo la parte de fecha
+                          fechaLocal = fechaLocal.split('T')[0];
+                        }
+                        setFormData(prev => ({
+                          ...prev,
+                          cita_id: citaId,
+                          fecha: fechaLocal || prev.fecha,
+                          hora_inicio: citaSeleccionada.hora || prev.hora_inicio,
+                          hora_fin: citaSeleccionada.hora ? calcularHoraFin(citaSeleccionada.hora, 50) : prev.hora_fin
+                        }));
+                      }
+                    }
+                  }}
+                  className="select-field"
+                  required
+                  disabled={!formData.paciente_id}
+                  onClick={() => console.log('👆 Click en selector. Citas disponibles:', citasPaciente.length, citasPaciente)}
+                >
+                  <option value="">Seleccionar cita</option>
+                  {citasPaciente.map(cita => {
+                    console.log('🔖 Renderizando opción de cita:', cita);
+                    return (
+                      <option key={cita.id} value={cita.id}>
+                        {cita.fecha ? new Date(cita.fecha).toLocaleDateString() : 'Fecha'} {cita.hora ? `• ${cita.hora}` : ''} ({cita.estado || 'pendiente'}) {cita.tipo_consulta ? `• ${cita.tipo_consulta}` : ''}
+                      </option>
+                    );
+                  })}
+                  {formData.paciente_id && citasPaciente.length === 0 && (
+                    <option value="" disabled>No hay citas para este paciente</option>
+                  )}
                 </select>
               </div>
               
@@ -498,7 +586,7 @@ const PsicologoSesiones = () => {
                 />
               </div>
               
-              <div className="form-group">
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
                 <label>Tareas asignadas</label>
                 <textarea
                   name="tareas_asignadas"
@@ -507,18 +595,6 @@ const PsicologoSesiones = () => {
                   className="textarea-field"
                   rows="3"
                   placeholder="Tareas o ejercicios para el paciente..."
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Próxima sesión</label>
-                <input
-                  type="date"
-                  name="proxima_sesion"
-                  value={formData.proxima_sesion}
-                  onChange={handleInputChange}
-                  className="input-field"
-                  placeholder="Fecha de próxima sesión"
                 />
               </div>
             </div>
@@ -616,21 +692,18 @@ const PsicologoSesiones = () => {
                 <div>
                   <h4>Próxima sesión</h4>
                   <p>{selectedSesion.proxima_sesion ? new Date(selectedSesion.proxima_sesion).toLocaleDateString() : '—'}</p>
-
-                  <h4 className="mt-10">Observaciones</h4>
-                  <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.observaciones || '—'}</p>
-                </div>
               </div>
+            </div>
 
-              <div className="mt-10">
-                <h4>Motivo de consulta</h4>
-                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.motivo_consulta || '—'}</p>
+            <div className="mt-10">
+              <h4>Motivo de consulta</h4>
+              <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.motivo_consulta || '—'}</p>
 
-                <h4 className="mt-10">Contenido de la sesión</h4>
-                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.contenido_sesion || '—'}</p>
+              <h4 className="mt-10">Contenido de la sesión</h4>
+              <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.contenido_sesion || '—'}</p>
 
-                <h4 className="mt-10">Tareas asignadas</h4>
-                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.tareas_asignadas || '—'}</p>
+              <h4 className="mt-10">Observaciones</h4>
+              <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.observaciones || '—'}</p>
 
                 {selectedSesion.riesgo_suicida && (
                   <>

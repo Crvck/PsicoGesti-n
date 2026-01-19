@@ -5,6 +5,7 @@ import {
 } from 'react-icons/fi';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 
@@ -20,6 +21,9 @@ const BecarioDashboard = () => {
   const [citasHoy, setCitasHoy] = useState([]);
   const [notificaciones, setNotificaciones] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState(null);
+  const [misPacientes, setMisPacientes] = useState([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchDashboardData();
@@ -28,44 +32,76 @@ const BecarioDashboard = () => {
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
-      
-      // Obtener estadísticas
-      const statsResponse = await fetch('http://localhost:3000/api/roles/my-role-info', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setEstadisticas(statsData.data.estadisticas || {
-          citasHoy: 3,
-          pacientesAsignados: 2,
-          observacionesPendientes: 1
-        });
+      const headers = { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' };
+
+      // Decode userId from JWT
+      try {
+        const payload = token?.split('.')[1];
+        const json = payload ? JSON.parse(atob(payload)) : null;
+        setUserId(json?.id || json?.userId || null);
+      } catch (_) {
+        setUserId(null);
       }
-      
-      // Obtener citas de hoy
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const citasResponse = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${today}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (citasResponse.ok) {
-        const citasData = await citasResponse.json();
-        setCitasHoy(citasData.data || []);
+
+      // Mis pacientes (asignaciones)
+      const misPacRes = await fetch('http://localhost:3000/api/asignaciones/mis-pacientes', { headers });
+      const misPacJson = await misPacRes.json().catch(() => ({}));
+      const misPacArr = Array.isArray(misPacJson) ? misPacJson : (Array.isArray(misPacJson?.data) ? misPacJson.data : []);
+      const pacientesAsignados = misPacArr.length;
+      setMisPacientes(misPacArr);
+
+      // Notificaciones del becario
+      const notifRes = await fetch('http://localhost:3000/api/notificaciones', { headers });
+      const notifJson = await notifRes.json().catch(() => ({}));
+      const notifArr = Array.isArray(notifJson) ? notifJson : (Array.isArray(notifJson?.data) ? notifJson.data : []);
+      const notificacionesSinLeer = notifJson?.countNoLeidas ?? notifArr.filter(n => n.leido === false).length;
+      setNotificaciones(notifArr);
+
+      // Citas de hoy (filtradas al becario actual)
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const citasHoyRes = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers });
+      const citasHoyJson = await citasHoyRes.json().catch(() => ({}));
+      const citasHoyArr = Array.isArray(citasHoyJson) ? citasHoyJson : (Array.isArray(citasHoyJson?.data) ? citasHoyJson.data : []);
+      const citasHoyFiltradas = userId ? citasHoyArr.filter(c => String(c.becario_id) === String(userId)) : citasHoyArr;
+      setCitasHoy(citasHoyFiltradas);
+
+      // Próximas citas (próximos 7 días) para el becario
+      let citasProximas = 0;
+      for (let i = 1; i <= 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        const dStr = format(d, 'yyyy-MM-dd');
+        const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${dStr}`, { headers });
+        const j = await res.json().catch(() => ({}));
+        const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
+        citasProximas += (userId ? arr.filter(c => String(c.becario_id) === String(userId)).length : arr.length);
       }
-      
-      // Obtener notificaciones
-      const notifResponse = await fetch('http://localhost:3000/api/notificaciones/mis-notificaciones', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (notifResponse.ok) {
-        const notifData = await notifResponse.json();
-        setNotificaciones(notifData.data || []);
+
+      // Observaciones pendientes del becario
+      let observacionesPendientes = 0;
+      if (userId) {
+        const obsRes = await fetch(`http://localhost:3000/api/observaciones/becario/${userId}`, { headers });
+        const obsJson = await obsRes.json().catch(() => ({}));
+        const obsArr = Array.isArray(obsJson) ? obsJson : (Array.isArray(obsJson?.data) ? obsJson.data : []);
+        observacionesPendientes = obsArr.filter(o => o.tipo_observacion !== 'retroalimentacion').length;
       }
-      
+
+      // Citas completadas (últimos 7 días)
+      let citasCompletadas = 0;
+      for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dStr = format(d, 'yyyy-MM-dd');
+        const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${dStr}`, { headers });
+        const j = await res.json().catch(() => ({}));
+        const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
+        citasCompletadas += (userId ? arr.filter(c => String(c.becario_id) === String(userId) && c.estado === 'completada').length : arr.filter(c => c.estado === 'completada').length);
+      }
+
+      setEstadisticas({ citasHoy: citasHoyFiltradas.length, pacientesAsignados, observacionesPendientes, notificacionesSinLeer, citasProximas, citasCompletadas });
     } catch (error) {
       console.error('Error cargando dashboard:', error);
+      notifications.error('Error cargando panel del becario');
     } finally {
       setLoading(false);
     }
@@ -88,14 +124,14 @@ const BecarioDashboard = () => {
     },
     {
       title: 'Próximas Citas',
-      value: estadisticas.citasProximas || 5,
+      value: estadisticas.citasProximas,
       icon: <FiClock />,
       color: 'var(--yy)',
       change: 'Próximos 7 días'
     },
     {
       title: 'Notificaciones',
-      value: estadisticas.notificacionesSinLeer || notificaciones.filter(n => !n.leida).length,
+      value: estadisticas.notificacionesSinLeer,
       icon: <FiBell />,
       color: 'var(--rr)',
       change: 'Sin leer'
@@ -109,7 +145,7 @@ const BecarioDashboard = () => {
     },
     {
       title: 'Citas Completadas',
-      value: estadisticas.citasCompletadas || 12,
+      value: estadisticas.citasCompletadas,
       icon: <FiAlertCircle />,
       color: 'var(--grnl)',
       change: 'Este mes'
@@ -159,7 +195,7 @@ const BecarioDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Citas de Hoy</h3>
-            <button className="btn-text">Ver Calendario</button>
+            <button className="btn-text" onClick={() => navigate('/becario/citas')}>Ver Calendario</button>
           </div>
           
           <div className="citas-list">
@@ -192,7 +228,7 @@ const BecarioDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Notificaciones Recientes</h3>
-            <button className="btn-text">Ver todas</button>
+            <button className="btn-text" onClick={() => navigate('/becario/notificaciones')}>Ver todas</button>
           </div>
           
           <div className="notifications-list">
@@ -201,7 +237,7 @@ const BecarioDashboard = () => {
                 <div>
                   <h4>{notif.titulo}</h4>
                   <p>{notif.mensaje}</p>
-                  <small>{new Date(notif.fecha_notificacion).toLocaleTimeString()}</small>
+                  <small>{new Date(notif.created_at || notif.fecha_notificacion || Date.now()).toLocaleTimeString()}</small>
                 </div>
                 {!notif.leida && <span className="badge badge-info">Nuevo</span>}
               </div>
@@ -224,45 +260,28 @@ const BecarioDashboard = () => {
           </div>
           
           <div className="pacientes-list">
-            {[
-              { id: 1, nombre: 'Carlos Gómez', ultimaSesion: '2024-01-10' },
-              { id: 2, nombre: 'Mariana López', ultimaSesion: '2024-01-09' },
-              { id: 3, nombre: 'Ana Martínez', ultimaSesion: '2024-01-08' }
-            ].map((paciente) => (
-              <div key={paciente.id} className="paciente-item">
-                <div className="paciente-info">
-                  <div className="paciente-nombre">{paciente.nombre}</div>
-                  <div className="paciente-fecha">
-                    Última sesión: {new Date(paciente.ultimaSesion).toLocaleDateString()}
+            {misPacientes.length > 0 ? (
+              misPacientes.slice(0, 6).map((p) => (
+                <div key={p.id} className="paciente-item">
+                  <div className="paciente-info">
+                    <div className="paciente-nombre">{`${p.nombre} ${p.apellido}`.trim()}</div>
+                    <div className="paciente-fecha">
+                      Última sesión: {p.ultima_sesion ? new Date(p.ultima_sesion).toLocaleDateString() : '—'}
+                    </div>
                   </div>
+                  <button className="btn-text">Ver</button>
                 </div>
-                <button className="btn-text">Ver</button>
+              ))
+            ) : (
+              <div className="no-citas">
+                <div className="no-citas-icon">👥</div>
+                <div>No tienes pacientes asignados</div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Acciones Rápidas</h3>
-          </div>
-          
-          <div className="quick-actions">
-            <button className="btn-primary w-100 mb-10">
-              Ver Mis Citas
-            </button>
-            <button className="btn-secondary w-100 mb-10">
-              Registrar Observación
-            </button>
-            <button className="btn-warning w-100 mb-10">
-              Marcar Cita como Completada
-            </button>
-            <button className="btn-text w-100">
-              Ver Calendario Completo
-            </button>
-          </div>
-        </div>
+        
       </div>
     </div>
   );

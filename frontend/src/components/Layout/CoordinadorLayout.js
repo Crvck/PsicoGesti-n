@@ -89,22 +89,7 @@ const CoordinadorLayout = () => {
             ))}
           </nav>
           
-          {sidebarOpen && (
-            <div className="sidebar-info">
-              <div className="sidebar-info-item">
-                <FiClock />
-                <span>Citas hoy: Cargando...</span>
-              </div>
-              <div className="sidebar-info-item">
-                <FiUsers />
-                <span>Becarios activos: Cargando...</span>
-              </div>
-              <div className="sidebar-info-item">
-                <FiBarChart2 />
-                <span>Altas este mes: Cargando...</span>
-              </div>
-            </div>
-          )}
+          
         </aside>
 
         <main className="main-content">

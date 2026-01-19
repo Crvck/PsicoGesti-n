@@ -431,10 +431,45 @@ class AsignacionController {
                 type: QueryTypes.SELECT
             });
 
+            // Obtener horas acumuladas por becario si existe la tabla
+            let horasMap = {};
+            if (becarios.length > 0) {
+                const becarioIds = becarios.map(b => b.id);
+                try {
+                    await sequelize.query(`
+                        CREATE TABLE IF NOT EXISTS becario_horas (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            becario_id INT NOT NULL,
+                            horas DECIMAL(6,2) NOT NULL DEFAULT 0,
+                            comentario TEXT NULL,
+                            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                            INDEX idx_becario (becario_id)
+                        ) ENGINE=InnoDB;
+                    `);
+
+                    const horasRows = await sequelize.query(
+                        'SELECT becario_id, COALESCE(SUM(horas), 0) as horas_acumuladas FROM becario_horas WHERE becario_id IN (:ids) GROUP BY becario_id',
+                        {
+                            replacements: { ids: becarioIds },
+                            type: QueryTypes.SELECT
+                        }
+                    );
+                    horasRows.forEach(r => { horasMap[r.becario_id] = parseFloat(r.horas_acumuladas) || 0; });
+                } catch (err) {
+                    console.warn('No se pudieron obtener horas acumuladas:', err.message);
+                }
+            }
+
+            const becariosConHoras = becarios.map(b => ({
+                ...b,
+                horas_acumuladas: horasMap[b.id] ?? 0
+            }));
+
             res.json({
                 success: true,
-                data: becarios,
-                count: becarios.length
+                data: becariosConHoras,
+                count: becariosConHoras.length
             });
 
         } catch (error) {
@@ -443,6 +478,58 @@ class AsignacionController {
                 success: false,
                 message: 'Error al obtener becarios asignados'
             });
+        }
+    }
+
+    static async registrarHorasBecario(req, res) {
+        try {
+            const becarioId = parseInt(req.params.id, 10);
+            const valorHoras = parseFloat(req.body.horas);
+            const comentario = req.body.comentario || null;
+
+            if (!becarioId || Number.isNaN(becarioId)) {
+                return res.status(400).json({ success: false, message: 'Becario inválido' });
+            }
+            if (!valorHoras || Number.isNaN(valorHoras) || valorHoras <= 0) {
+                return res.status(400).json({ success: false, message: 'Horas debe ser mayor a 0' });
+            }
+
+            // Crear tabla si no existe
+            await sequelize.query(`
+                CREATE TABLE IF NOT EXISTS becario_horas (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    becario_id INT NOT NULL,
+                    horas DECIMAL(6,2) NOT NULL DEFAULT 0,
+                    comentario TEXT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_becario (becario_id)
+                ) ENGINE=InnoDB;
+            `);
+
+            await sequelize.query(
+                'INSERT INTO becario_horas (becario_id, horas, comentario, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
+                { replacements: [becarioId, valorHoras, comentario] }
+            );
+
+            const totalRow = await sequelize.query(
+                'SELECT COALESCE(SUM(horas), 0) as horas_acumuladas FROM becario_horas WHERE becario_id = ?',
+                { replacements: [becarioId], type: QueryTypes.SELECT }
+            );
+
+            return res.json({
+                success: true,
+                message: 'Horas registradas',
+                data: {
+                    becario_id: becarioId,
+                    horas: valorHoras,
+                    horas_acumuladas: parseFloat(totalRow[0]?.horas_acumuladas) || 0
+                }
+            });
+
+        } catch (error) {
+            console.error('Error en registrarHorasBecario:', error);
+            res.status(500).json({ success: false, message: 'Error al registrar horas', error: error.message });
         }
     }
 }

@@ -8,6 +8,7 @@ router.use(verifyToken);
 
 // Rutas de consulta
 router.get('/citas-por-fecha', CitaController.obtenerCitasPorFecha);
+router.get('/paciente/:paciente_id', CitaController.obtenerCitasPorPaciente);
 router.get('/reporte-mensual', CitaController.generarReporteMensual);
 router.get('/estadisticas', CitaController.obtenerEstadisticas);
 

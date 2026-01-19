@@ -173,7 +173,7 @@ class AltaController {
     
     static async obtenerAltas(req, res) {
         try {
-            const { fecha_inicio, fecha_fin, tipo_alta, psicologo_id } = req.query;
+            const { fecha_inicio, fecha_fin, tipo_alta, psicologo_id, estado } = req.query;
             
             let query = `
                 SELECT 
@@ -192,6 +192,11 @@ class AltaController {
             `;
             
             const replacements = [];
+            
+            if (estado) {
+                query += ` AND a.estado = ?`;
+                replacements.push(estado);
+            }
             
             if (fecha_inicio) {
                 query += ` AND a.fecha_alta >= ?`;
@@ -413,6 +418,262 @@ class AltaController {
         );
         
         return usuario?.rol;
+    }
+
+    // Nuevo método: Psicólogo propone un paciente para alta
+    static async proponerAlta(req, res) {
+        try {
+            const paciente_id = req.params.paciente_id; // Leer del parámetro de URL
+            const { evaluacion_final, recomendaciones } = req.body;
+            const psicologo_id = req.user.id;
+
+            console.log(`📋 Propuesta de alta - Paciente ID: ${paciente_id}, Psicólogo ID: ${psicologo_id}`);
+
+            // Verificar que el paciente existe y está activo
+            const paciente = await Paciente.findByPk(paciente_id);
+            if (!paciente || !paciente.activo) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Paciente no encontrado o ya dado de alta'
+                });
+            }
+
+            // Verificar que el psicólogo tiene asignado este paciente
+            const asignacion = await Asignacion.findOne({
+                where: { paciente_id, psicologo_id, estado: 'activa' }
+            });
+
+            if (!asignacion) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'No tienes asignado este paciente'
+                });
+            }
+
+            // Verificar si ya hay una propuesta pendiente
+            const propuestaExistente = await Alta.findOne({
+                where: { paciente_id, estado: 'propuesta' }
+            });
+
+            if (propuestaExistente) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'Ya existe una propuesta de alta pendiente para este paciente'
+                });
+            }
+
+            // Obtener estadísticas del paciente
+            const [estadisticas] = await sequelize.query(`
+                SELECT 
+                    COUNT(CASE WHEN estado = 'completada' THEN 1 END) as sesiones_completadas
+                FROM citas 
+                WHERE paciente_id = ?
+                AND estado = 'completada'
+            `, {
+                replacements: [paciente_id],
+                type: QueryTypes.SELECT
+            });
+
+            // Crear propuesta de alta
+            const propuesta = await Alta.create({
+                paciente_id,
+                psicologo_id,
+                usuario_id: psicologo_id, // Por defecto el psicólogo
+                tipo_alta: 'terapeutica',
+                estado: 'propuesta',
+                fecha_propuesta: new Date().toISOString().split('T')[0],
+                evaluacion_final: evaluacion_final || null,
+                recomendaciones: recomendaciones || null,
+                sesiones_totales: estadisticas?.sesiones_completadas || 0
+            });
+
+            // Crear notificación para coordinador
+            await sequelize.query(`
+                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                SELECT u.id, 'alerta_sistema', 
+                       'Nueva propuesta de alta',
+                       CONCAT('${paciente.nombre} ${paciente.apellido} ha sido propuesto para alta por su psicólogo'),
+                       NOW()
+                FROM users u
+                WHERE u.rol = 'coordinador' AND u.activo = TRUE
+            `);
+
+            res.json({
+                success: true,
+                message: 'Propuesta de alta enviada exitosamente',
+                data: propuesta
+            });
+
+        } catch (error) {
+            console.error('Error en proponerAlta:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al proponer alta',
+                error: error.message
+            });
+        }
+    }
+
+    // Nuevo método: Coordinador aprueba o rechaza propuesta
+    static async procesarPropuesta(req, res) {
+        try {
+            const { id } = req.params;
+            const { accion, motivo_rechazo, tipo_alta, evaluacion_final, recomendaciones } = req.body;
+            const coordinador_id = req.user.id;
+
+            // Verificar que es coordinador
+            if (req.user.rol !== 'coordinador') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Solo coordinadores pueden procesar propuestas'
+                });
+            }
+
+            // Obtener propuesta
+            const propuesta = await Alta.findByPk(id);
+            if (!propuesta || propuesta.estado !== 'propuesta') {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Propuesta no encontrada o ya procesada'
+                });
+            }
+
+            const paciente = await Paciente.findByPk(propuesta.paciente_id);
+
+            if (accion === 'aprobar') {
+                // Iniciar transacción
+                const transaction = await sequelize.transaction();
+
+                try {
+                    // 1. Actualizar propuesta a aprobada
+                    await propuesta.update({
+                        estado: 'aprobada',
+                        usuario_id: coordinador_id,
+                        tipo_alta: tipo_alta || 'terapeutica',
+                        evaluacion_final: evaluacion_final || null,
+                        recomendaciones: recomendaciones || null,
+                        fecha_alta: new Date().toISOString().split('T')[0]
+                    }, { transaction });
+
+                    // 2. Desactivar paciente
+                    await paciente.update({
+                        activo: false,
+                        estado: `alta_${tipo_alta || 'terapeutica'}`,
+                        updated_at: new Date()
+                    }, { transaction });
+
+                    // 3. Finalizar asignaciones activas
+                    await Asignacion.update({
+                        estado: 'finalizada',
+                        fecha_fin: new Date().toISOString().split('T')[0],
+                        motivo_fin: `Paciente dado de alta por coordinador`
+                    }, {
+                        where: { paciente_id: propuesta.paciente_id, estado: 'activa' },
+                        transaction
+                    });
+
+                    // 4. Cancelar citas futuras
+                    const fechaHoy = new Date().toISOString().split('T')[0];
+                    await Cita.update({
+                        estado: 'cancelada',
+                        motivo_cancelacion: `Paciente dado de alta`,
+                        updated_at: new Date()
+                    }, {
+                        where: {
+                            paciente_id: propuesta.paciente_id,
+                            fecha: { [Op.gte]: fechaHoy },
+                            estado: { [Op.in]: ['programada', 'confirmada'] }
+                        },
+                        transaction
+                    });
+
+                    // 5. Notificar a psicólogo y becario
+                    const [profesionales] = await sequelize.query(`
+                        SELECT DISTINCT 
+                            a.psicologo_id,
+                            a.becario_id
+                        FROM asignaciones a
+                        WHERE a.paciente_id = ?
+                        LIMIT 1
+                    `, {
+                        replacements: [propuesta.paciente_id],
+                        type: QueryTypes.SELECT,
+                        transaction
+                    });
+
+                    if (profesionales) {
+                        const notificaciones = [];
+                        const titulo = 'Paciente dado de alta';
+                        const mensaje = `La propuesta de alta para ${paciente.nombre} ${paciente.apellido} ha sido aprobada.`;
+
+                        if (profesionales.psicologo_id) {
+                            notificaciones.push([profesionales.psicologo_id, 'alerta_sistema', titulo, mensaje]);
+                        }
+                        if (profesionales.becario_id) {
+                            notificaciones.push([profesionales.becario_id, 'alerta_sistema', titulo, mensaje]);
+                        }
+
+                        for (const [usuarioId, tipo, tit, mens] of notificaciones) {
+                            await sequelize.query(`
+                                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                                VALUES (?, ?, ?, ?, NOW())
+                            `, {
+                                replacements: [usuarioId, tipo, tit, mens],
+                                transaction
+                            });
+                        }
+                    }
+
+                    await transaction.commit();
+
+                    res.json({
+                        success: true,
+                        message: 'Propuesta aprobada y paciente dado de alta',
+                        data: propuesta
+                    });
+
+                } catch (error) {
+                    await transaction.rollback();
+                    throw error;
+                }
+
+            } else if (accion === 'rechazar') {
+                // Rechazar propuesta
+                await propuesta.update({
+                    estado: 'rechazada',
+                    motivo_rechazo: motivo_rechazo || 'Sin motivo especificado'
+                });
+
+                // Notificar a psicólogo
+                await sequelize.query(`
+                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
+                    VALUES (?, 'alerta_sistema', 'Propuesta de alta rechazada',
+                            CONCAT('Tu propuesta de alta para ${paciente.nombre} ${paciente.apellido} ha sido rechazada. Motivo: ${motivo_rechazo || 'Sin especificar'}'),
+                            NOW())
+                `, {
+                    replacements: [propuesta.psicologo_id]
+                });
+
+                res.json({
+                    success: true,
+                    message: 'Propuesta rechazada',
+                    data: propuesta
+                });
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Acción inválida. Use "aprobar" o "rechazar"'
+                });
+            }
+
+        } catch (error) {
+            console.error('Error en procesarPropuesta:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al procesar propuesta',
+                error: error.message
+            });
+        }
     }
 }
 

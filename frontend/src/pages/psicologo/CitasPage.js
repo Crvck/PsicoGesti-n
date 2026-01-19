@@ -8,6 +8,7 @@ import { format, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import ConfiguracionService from '../../services/configuracionService';
 
 const PsicologoCitas = () => {
   const [citas, setCitas] = useState([]);
@@ -16,23 +17,51 @@ const PsicologoCitas = () => {
   const [filterBecario, setFilterBecario] = useState('');
   const [filterEstado, setFilterEstado] = useState('');
   const [becarios, setBecarios] = useState([]);
+  const [userId, setUserId] = useState(null);
+  const [misBecarioIds, setMisBecarioIds] = useState([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [citaEnEdicion, setCitaEnEdicion] = useState(null);
   const [nuevoEstado, setNuevoEstado] = useState('');
+  const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
 
   useEffect(() => {
     fetchData();
+    fetchConfigCitas();
   }, [selectedDate]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' };
+      
+      // Decodificar userId del token
+      try {
+        const payload = token?.split('.')[1];
+        const json = payload ? JSON.parse(atob(payload)) : null;
+        const decodedUserId = json?.id || json?.userId || null;
+        setUserId(decodedUserId);
+      } catch (_) {
+        setUserId(null);
+      }
+
+      // Obtener becarios del psicólogo actual
+      try {
+        const resBecarios = await fetch('http://localhost:3000/api/asignaciones/mis-becarios', { headers });
+        const dataBecarios = await resBecarios.json().catch(() => ({}));
+        const becariosList = Array.isArray(dataBecarios) ? dataBecarios : (dataBecarios.data || []);
+        const becarioIds = becariosList.map(b => b.id);
+        setMisBecarioIds(becarioIds);
+      } catch (err) {
+        console.warn('Error obteniendo becarios:', err);
+        setMisBecarioIds([]);
+      }
+
       const fechaStr = format(selectedDate, 'yyyy-MM-dd');
 
       // Obtener citas del backend
       const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${fechaStr}`, {
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+        headers
       });
 
       if (!res.ok) {
@@ -43,13 +72,21 @@ const PsicologoCitas = () => {
       } else {
         const json = await res.json();
         const data = Array.isArray(json) ? json : (json.data || []);
-        setCitas(data);
+        
+        // Filtrar para mostrar solo citas del psicólogo actual y sus becarios
+        const currentUserId = userId;
+        const filteredData = data.filter(cita => 
+          String(cita.psicologo_id) === String(currentUserId) ||
+          (cita.becario_id && misBecarioIds.includes(cita.becario_id))
+        );
+        
+        setCitas(filteredData);
       }
 
       // Obtener lista de becarios para filtro
       try {
         const resB = await fetch('http://localhost:3000/api/users/becarios', {
-          headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+          headers
         });
         const dataB = await resB.json();
         const normalized = (dataB || []).map(b => ({
@@ -138,6 +175,31 @@ const PsicologoCitas = () => {
 
   const formatDateSpanish = (date) => {
     return format(date, "EEEE d 'de' MMMM, yyyy", { locale: es });
+  };
+
+  const fetchConfigCitas = async () => {
+    try {
+      const response = await ConfiguracionService.obtenerPorCategoria('citas');
+      const data = response?.data || response || {};
+      setConfigCitas({
+        horarioInicio: data.horarioInicio || '09:00',
+        horarioFin: data.horarioFin || '20:00'
+      });
+    } catch (error) {
+      console.error('Error cargando configuración de citas (psicólogo):', error);
+    }
+  };
+
+  const generateHours = () => {
+    const startHour = parseInt((configCitas.horarioInicio || '09:00').split(':')[0], 10);
+    const endHour = parseInt((configCitas.horarioFin || '20:00').split(':')[0], 10);
+    const safeStart = Number.isNaN(startHour) ? 9 : startHour;
+    const safeEnd = Number.isNaN(endHour) ? 20 : endHour;
+    const hours = [];
+    for (let i = safeStart; i <= safeEnd; i++) {
+      hours.push(i);
+    }
+    return hours;
   };
 
   const handleEstadoCita = (citaId, nuevoEstado) => {
@@ -342,7 +404,7 @@ const PsicologoCitas = () => {
       {/* Vista de Calendario */}
       <div className="calendar-day-view mb-20">
         <div className="time-column">
-          {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => (
+          {generateHours().map(hour => (
             <div key={hour} className="time-slot">
               <span className="time-label">{hour}:00</span>
             </div>
@@ -350,7 +412,7 @@ const PsicologoCitas = () => {
         </div>
 
         <div className="events-column">
-          {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
+          {generateHours().map(hour => {
             const hourCitas = filteredCitas.filter(cita => 
               parseInt(cita.hora.split(':')[0]) === hour
             );
@@ -521,7 +583,7 @@ const PsicologoCitas = () => {
       {/* Modal para Editar Estado */}
       {showEditModal && citaEnEdicion && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="modal-content" style={{width: '400px'}}>
             <div className="modal-header">
               <h2>Editar Estado de Cita</h2>
               <button 
@@ -532,7 +594,7 @@ const PsicologoCitas = () => {
               </button>
             </div>
 
-            <div className="modal-body">
+            <div className="modal-body" >
               <div className="form-group mb-20">
                 <label className="font-bold">Cita de: {citaEnEdicion.paciente_nombre}</label>
                 <p className="text-small mt-5">

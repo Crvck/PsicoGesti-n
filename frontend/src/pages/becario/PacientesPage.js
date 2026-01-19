@@ -289,16 +289,7 @@ const BecarioPacientes = () => {
                       >
                         <FiFileText />
                       </button>
-                      <button 
-                        className="btn-text"
-                        title="Agendar cita"
-                        onClick={() => {
-                          setSelectedPaciente(paciente);
-                          setShowAgendarModal(true);
-                        }}
-                      >
-                        <FiCalendar />
-                      </button>
+                      
                     </div>
                   </td>
                 </tr>

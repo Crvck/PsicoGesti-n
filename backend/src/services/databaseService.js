@@ -3,6 +3,82 @@ const { QueryTypes } = require('sequelize');
 
 class DatabaseService {
     
+    static async obtenerCitasPorPaciente(pacienteId) {
+        try {
+            console.log('🔍 obtenerCitasPorPaciente - pacienteId recibido:', pacienteId, 'tipo:', typeof pacienteId);
+            
+            // Primero obtener el paciente
+            const [paciente] = await sequelize.query(
+                'SELECT id, nombre, apellido FROM pacientes WHERE id = :pacienteId',
+                { replacements: { pacienteId }, type: QueryTypes.SELECT }
+            );
+            
+            if (!paciente) {
+                console.log('❌ Paciente no encontrado');
+                return [];
+            }
+            
+            console.log('👤 Paciente encontrado:', paciente);
+            
+            // Buscar todos los IDs de pacientes duplicados (mismo nombre y apellido)
+            const duplicados = await sequelize.query(
+                `SELECT id FROM pacientes 
+                 WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(:nombre)) 
+                 AND LOWER(TRIM(apellido)) = LOWER(TRIM(:apellido))`,
+                { 
+                    replacements: { 
+                        nombre: paciente.nombre, 
+                        apellido: paciente.apellido 
+                    }, 
+                    type: QueryTypes.SELECT 
+                }
+            );
+            
+            const pacienteIds = duplicados.map(p => p.id);
+            console.log('🔄 IDs de pacientes duplicados:', pacienteIds);
+            
+            // Buscar citas de cualquiera de los pacientes duplicados
+            const query = `
+                SELECT 
+                    c.id,
+                    c.paciente_id,
+                    c.fecha,
+                    TIME_FORMAT(c.hora, '%H:%i') AS hora,
+                    c.estado,
+                    c.tipo_consulta,
+                    c.duracion,
+                    c.notas,
+                    CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+                    u_psi.nombre AS psicologo_nombre,
+                    u_bec.nombre AS becario_nombre
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                WHERE c.paciente_id IN (:pacienteIds)
+                ORDER BY c.fecha DESC, c.hora DESC
+            `;
+            
+            console.log('📝 Ejecutando query con pacienteIds:', pacienteIds);
+            
+            const results = await sequelize.query(query, {
+                replacements: { pacienteIds },
+                type: QueryTypes.SELECT
+            });
+            
+            console.log('✅ Resultados obtenidos:', results.length);
+            if (results.length > 0) {
+                console.log('📋 Primera cita encontrada:', results[0]);
+            }
+            
+            return results;
+            
+        } catch (error) {
+            console.error('Error en obtenerCitasPorPaciente:', error);
+            throw error;
+        }
+    }
+    
     static async obtenerCitasPorFechaBecario(fecha, becarioId = null) {
         try {
             let query = `
@@ -62,11 +138,11 @@ class DatabaseService {
             // 1. Buscar o crear el paciente
             let paciente;
             
-            // Primero intentar buscar por nombre y apellido
+            // Primero intentar buscar por nombre y apellido con TRIM
             const [pacienteExistente] = await sequelize.query(`
                 SELECT id FROM pacientes 
-                WHERE LOWER(nombre) = LOWER(:nombre) 
-                AND LOWER(apellido) = LOWER(:apellido)
+                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(:nombre)) 
+                AND LOWER(TRIM(apellido)) = LOWER(TRIM(:apellido))
                 LIMIT 1
             `, {
                 replacements: {

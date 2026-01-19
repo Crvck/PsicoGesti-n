@@ -10,17 +10,15 @@ const BecarioObservaciones = () => {
   const [formData, setFormData] = useState({
     paciente_id: '',
     fecha: new Date().toISOString().split('T')[0],
-    hora_inicio: '10:00',
-    hora_fin: '11:00',
+    hora_inicio: '',
+    hora_fin: '',
     motivo_consulta: '',
     contenido_sesion: '',
     observaciones: '',
-    dificultades: '',
-    logros: '',
-    preguntas_supervisor: '',
-    tareas_asignadas: '',
-    proxima_sesion: ''
+    tareas_asignadas: ''
   });
+  const [citasPaciente, setCitasPaciente] = useState([]);
+  const [selectedCitaId, setSelectedCitaId] = useState('');
   const [pacientes, setPacientes] = useState([]);
   const [selectedSesion, setSelectedSesion] = useState(null);
   const [showSesionModal, setShowSesionModal] = useState(false);
@@ -52,7 +50,7 @@ const BecarioObservaciones = () => {
         setPacientes(normalized);
       }
 
-      // Obtener sesiones recientes (para becarios, quizás asignadas)
+      // Obtener sesiones recientes (para becarios, muestra últimas registradas)
       const resSesiones = await fetch('http://localhost:3000/api/sesiones/recientes?limit=50', {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
@@ -71,11 +69,7 @@ const BecarioObservaciones = () => {
           motivo_consulta: s.tipo_consulta || '',
           contenido_sesion: s.desarrollo || s.conclusion || '',
           observaciones: s.observaciones || '',
-          dificultades: s.dificultades || '',
-          logros: s.logros || '',
-          preguntas_supervisor: s.preguntas_supervisor || '',
-          tareas_asignadas: s.tareas_asignadas || '',
-          proxima_sesion: s.siguiente_cita || null
+          tareas_asignadas: s.tareas_asignadas || ''
         }));
         setSesiones(normalized);
       }
@@ -95,71 +89,54 @@ const BecarioObservaciones = () => {
     });
   };
 
+  // Calcular hora fin agregando 50 minutos a hora inicio
+  const calcularHoraFin = (horaInicio, duracionMin = 50) => {
+    if (!horaInicio) return '';
+    const [h, m] = horaInicio.split(':').map(n => parseInt(n, 10));
+    const total = h * 60 + m + duracionMin;
+    const hh = Math.floor(total / 60) % 24;
+    const mm = total % 60;
+    return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+  };
+
+  // Cargar citas del paciente seleccionado
+  const fetchCitasPaciente = async (pacienteId) => {
+    try {
+      if (!pacienteId) { setCitasPaciente([]); return; }
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/citas/paciente/${pacienteId}`, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+      });
+      if (!res.ok) { setCitasPaciente([]); return; }
+      const json = await res.json().catch(() => ({ data: [] }));
+      const citas = Array.isArray(json) ? json : (json.data || []);
+      setCitasPaciente(citas);
+    } catch (err) {
+      console.warn('Error obteniendo citas del paciente:', err);
+      setCitasPaciente([]);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       notifications.info('Registrando sesión...');
       const token = localStorage.getItem('token');
-      const paciente = pacientes.find(p => p.id == formData.paciente_id);
-
-      let firstName = paciente?.nombre || '';
-      let lastName = paciente?.apellido || '';
-      if ((!firstName || !lastName) && paciente?.nombre_completo) {
-        const parts = paciente.nombre_completo.split(' ').filter(Boolean);
-        firstName = parts.shift() || '';
-        lastName = parts.join(' ') || '';
-      }
-
-      if (!firstName || !lastName || !formData.fecha || !formData.hora_inicio) {
-        notifications.error('Faltan campos requeridos: paciente, fecha y hora');
+      if (!formData.paciente_id || !selectedCitaId) {
+        notifications.error('Selecciona el paciente y una cita programada');
         return;
       }
-
-      // Crear cita
-      const citaBody = {
-        paciente: { nombre: firstName, apellido: lastName, email: null, telefono: null },
-        fecha: formData.fecha,
-        hora: formData.hora_inicio,
-        tipo_consulta: 'presencial',
-        duracion: 50,
-        notas: 'Sesión registrada por becario'
-      };
-
-      const resCita = await fetch('http://localhost:3000/api/citas/nueva', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-        body: JSON.stringify(citaBody)
-      });
-
-      const jsonCita = await resCita.json().catch(() => ({}));
-      if (!resCita.ok || !jsonCita.success) {
-        notifications.error(jsonCita.message || 'Error creando cita');
-        return;
-      }
-
-      const citaCreada = jsonCita.data;
-
-      // Marcar completada
-      await fetch(`http://localhost:3000/api/citas/cita/${citaCreada.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-        body: JSON.stringify({ estado: 'completada' })
-      });
 
       // Registrar sesión con observaciones
       const sesionBody = {
-        cita_id: citaCreada.id,
+        cita_id: selectedCitaId,
         desarrollo: formData.contenido_sesion,
         conclusion: formData.observaciones,
         tareas_asignadas: formData.tareas_asignadas,
         emocion_predominante: '',
         riesgo_suicida: 'ninguno',
         escalas_aplicadas: null,
-        siguiente_cita: formData.proxima_sesion || null,
-        privado: false,
-        dificultades: formData.dificultades,
-        logros: formData.logros,
-        preguntas_supervisor: formData.preguntas_supervisor
+        privado: false
       };
 
       const resSesion = await fetch('http://localhost:3000/api/sesiones', {
@@ -175,10 +152,6 @@ const BecarioObservaciones = () => {
       }
 
       const nueva = jsonSesion.data;
-      nueva.paciente_nombre = paciente.nombre_completo;
-      nueva.dificultades = formData.dificultades;
-      nueva.logros = formData.logros;
-      nueva.preguntas_supervisor = formData.preguntas_supervisor;
 
       setSesiones([nueva, ...sesiones]);
       setShowForm(false);
@@ -195,17 +168,15 @@ const BecarioObservaciones = () => {
     setFormData({
       paciente_id: '',
       fecha: new Date().toISOString().split('T')[0],
-      hora_inicio: '10:00',
-      hora_fin: '11:00',
+      hora_inicio: '',
+      hora_fin: '',
       motivo_consulta: '',
       contenido_sesion: '',
       observaciones: '',
-      dificultades: '',
-      logros: '',
-      preguntas_supervisor: '',
-      tareas_asignadas: '',
-      proxima_sesion: ''
+      tareas_asignadas: ''
     });
+    setSelectedCitaId('');
+    setCitasPaciente([]);
   };
 
   const openSesionModal = (sesion) => {
@@ -226,12 +197,10 @@ const BecarioObservaciones = () => {
       // Aquí podrías llamar a la API para eliminar
     }
   };
-
   if (loading) {
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
-        <div className="loading-text">Cargando observaciones...</div>
       </div>
     );
   }
@@ -251,7 +220,6 @@ const BecarioObservaciones = () => {
         </button>
       </div>
 
-      {/* Formulario de Nueva Sesión */}
       {showForm && (
         <div className="card mb-20">
           <div className="modal-header">
@@ -266,7 +234,7 @@ const BecarioObservaciones = () => {
                 <select
                   name="paciente_id"
                   value={formData.paciente_id}
-                  onChange={handleInputChange}
+                  onChange={(e) => { handleInputChange(e); fetchCitasPaciente(e.target.value); setSelectedCitaId(''); }}
                   className="select-field"
                   required
                 >
@@ -274,6 +242,38 @@ const BecarioObservaciones = () => {
                   {pacientes.map(paciente => (
                     <option key={paciente.id} value={paciente.id}>
                       {paciente.nombre_completo || `${paciente.nombre} ${paciente.apellido}`.trim()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Cita programada</label>
+                <select
+                  value={selectedCitaId}
+                  onChange={(e) => {
+                    const cid = e.target.value;
+                    setSelectedCitaId(cid);
+                    const cita = citasPaciente.find(c => String(c.id) === String(cid));
+                    if (cita) {
+                      const fechaISO = typeof cita.fecha === 'string' ? cita.fecha.split('T')[0] : new Date(cita.fecha).toISOString().split('T')[0];
+                      const horaInicio = cita.hora || cita.hora_inicio || '';
+                      setFormData(prev => ({
+                        ...prev,
+                        fecha: fechaISO,
+                        hora_inicio: horaInicio,
+                        hora_fin: calcularHoraFin(horaInicio)
+                      }));
+                    }
+                  }}
+                  className="select-field"
+                  required
+                  disabled={!formData.paciente_id}
+                >
+                  <option value="">Seleccionar cita</option>
+                  {citasPaciente.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {`${(c.fecha || '').toString().split('T')[0]} ${c.hora || c.hora_inicio || ''} (${c.estado})`}
                     </option>
                   ))}
                 </select>
@@ -288,6 +288,7 @@ const BecarioObservaciones = () => {
                   onChange={handleInputChange}
                   className="input-field"
                   required
+                  disabled
                 />
               </div>
               
@@ -297,9 +298,14 @@ const BecarioObservaciones = () => {
                   type="time"
                   name="hora_inicio"
                   value={formData.hora_inicio}
-                  onChange={handleInputChange}
+                  onChange={(e) => {
+                    handleInputChange(e);
+                    const nuevaFin = calcularHoraFin(e.target.value);
+                    setFormData(prev => ({ ...prev, hora_fin: nuevaFin }));
+                  }}
                   className="input-field"
                   required
+                  disabled
                 />
               </div>
               
@@ -312,6 +318,7 @@ const BecarioObservaciones = () => {
                   onChange={handleInputChange}
                   className="input-field"
                   required
+                  disabled
                 />
               </div>
               
@@ -341,7 +348,7 @@ const BecarioObservaciones = () => {
                 />
               </div>
               
-              <div className="form-group">
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
                 <label>Observaciones generales</label>
                 <textarea
                   name="observaciones"
@@ -350,42 +357,6 @@ const BecarioObservaciones = () => {
                   className="textarea-field"
                   rows="3"
                   placeholder="Observaciones relevantes..."
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Dificultades encontradas</label>
-                <textarea
-                  name="dificultades"
-                  value={formData.dificultades}
-                  onChange={handleInputChange}
-                  className="textarea-field"
-                  rows="3"
-                  placeholder="Dificultades o resistencias observadas..."
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Logros del paciente</label>
-                <textarea
-                  name="logros"
-                  value={formData.logros}
-                  onChange={handleInputChange}
-                  className="textarea-field"
-                  rows="3"
-                  placeholder="Avances y logros observados..."
-                />
-              </div>
-              
-              <div className="form-group">
-                <label>Preguntas para el supervisor</label>
-                <textarea
-                  name="preguntas_supervisor"
-                  value={formData.preguntas_supervisor}
-                  onChange={handleInputChange}
-                  className="textarea-field"
-                  rows="3"
-                  placeholder="Dudas o preguntas para la supervisión..."
                 />
               </div>
               
@@ -401,16 +372,6 @@ const BecarioObservaciones = () => {
                 />
               </div>
               
-              <div className="form-group">
-                <label>Próxima sesión</label>
-                <input
-                  type="date"
-                  name="proxima_sesion"
-                  value={formData.proxima_sesion}
-                  onChange={handleInputChange}
-                  className="input-field"
-                />
-              </div>
             </div>
             
             <div className="form-actions">
@@ -495,10 +456,7 @@ const BecarioObservaciones = () => {
                   <div className="detail-row"><strong>Motivo:</strong> {selectedSesion.motivo_consulta || '—'}</div>
                 </div>
 
-                <div>
-                  <h4>Próxima sesión</h4>
-                  <p>{selectedSesion.proxima_sesion ? new Date(selectedSesion.proxima_sesion).toLocaleDateString() : '—'}</p>
-                </div>
+                
               </div>
 
               <div className="mt-10">
@@ -508,14 +466,7 @@ const BecarioObservaciones = () => {
                 <h4 className="mt-10">Observaciones</h4>
                 <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.observaciones || '—'}</p>
 
-                <h4 className="mt-10">Dificultades</h4>
-                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.dificultades || '—'}</p>
-
-                <h4 className="mt-10">Logros</h4>
-                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.logros || '—'}</p>
-
-                <h4 className="mt-10">Preguntas para supervisor</h4>
-                <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.preguntas_supervisor || '—'}</p>
+                
 
                 <h4 className="mt-10">Tareas asignadas</h4>
                 <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{selectedSesion.tareas_asignadas || '—'}</p>

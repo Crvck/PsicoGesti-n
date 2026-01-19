@@ -306,6 +306,33 @@ body {
   color: var(--blub);
 }
 
+/* Botón info (azul claro) */
+.btn-info {
+  background: var(--blu);
+  color: var(--white);
+  border: none;
+  border-radius: 5px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.btn-info:hover:not(:disabled) {
+  background: var(--bludd);
+  color: var(--white);
+}
+
+.btn-info:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-info:disabled:hover {
+  background: var(--blu);
+  color: var(--white);
+}
+
 /* Botón con texto sin fondo */
 .btn-text {
   background: none;
@@ -321,6 +348,23 @@ body {
 .btn-text:hover {
   color: var(--white);
   text-decoration: none;
+}
+
+/* Variantes de botón con texto */
+.btn-text.btn-success {
+  color: var(--grnd);
+}
+
+.btn-text.btn-success:hover {
+  color: var(--grnl);
+}
+
+.btn-text.btn-info {
+  color: var(--blu);
+}
+
+.btn-text.btn-info:hover {
+  color: var(--bludd);
 }
 
 /* Badge pequeño para indicar sesiones nuevas */
@@ -497,7 +541,7 @@ body {
   padding: 30px;
   color: var(--white);
   backdrop-filter: blur(10px);
-  max-width: 500px;
+  max-width: 600px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;

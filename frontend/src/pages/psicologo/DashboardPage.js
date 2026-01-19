@@ -3,6 +3,7 @@ import {
   FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
   FiUserCheck, FiClock, FiRefreshCw
 } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 
@@ -11,13 +12,12 @@ const PsicologoDashboard = () => {
     pacientesActivos: 0,
     citasHoy: 0,
     citasSemana: 0,
-    becariosAsignados: 0,
-    sesionesMes: 0,
-    altasMes: 0
+    becariosAsignados: 0
   });
   const [citasHoy, setCitasHoy] = useState([]);
   const [becarios, setBecarios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchDashboardData();
@@ -25,33 +25,62 @@ const PsicologoDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      // Simulación de datos
-      setTimeout(() => {
-        setEstadisticas({
-          pacientesActivos: 12,
-          citasHoy: 4,
-          citasSemana: 15,
-          becariosAsignados: 2,
-          sesionesMes: 48,
-          altasMes: 2
-        });
-        
-        setCitasHoy([
-          { id: 1, paciente: 'Carlos Gómez', hora: '10:00 AM', tipo: 'presencial' },
-          { id: 2, paciente: 'Mariana López', hora: '11:30 AM', tipo: 'virtual' },
-          { id: 3, paciente: 'Roberto Sánchez', hora: '02:00 PM', tipo: 'presencial' },
-          { id: 4, paciente: 'Ana Rodríguez', hora: '04:30 PM', tipo: 'virtual' }
-        ]);
-        
-        setBecarios([
-          { id: 1, nombre: 'Juan Pérez', pacientes: 3, observaciones: 5 },
-          { id: 2, nombre: 'Sofía Ramírez', pacientes: 2, observaciones: 3 }
-        ]);
-        
-        setLoading(false);
-      }, 1000);
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' };
+
+      const today = new Date();
+      const toISODate = (d) => new Date(d).toISOString().split('T')[0];
+      const todayStr = toISODate(today);
+
+      const safeJson = async (res) => {
+        try { const j = await res.json(); return j; } catch { return {}; }
+      };
+      const normalizeArray = (j) => Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
+
+      // Pacientes activos
+      const pacRes = await fetch('http://localhost:3000/api/pacientes/activos', { headers });
+      const pacJson = await safeJson(pacRes);
+      const pacientesActivos = normalizeArray(pacJson).length;
+
+      // Becarios asignados al psicólogo
+      const becRes = await fetch('http://localhost:3000/api/asignaciones/mis-becarios', { headers });
+      const becJson = await safeJson(becRes);
+      const becLista = normalizeArray(becJson).map(b => ({
+        id: b.id,
+        nombre: `${b.nombre || ''} ${b.apellido || ''}`.trim(),
+        pacientes: b.pacientes_asignados ?? 0,
+        observaciones: b.observaciones_count ?? 0
+      }));
+      const becariosAsignados = becLista.length;
+      setBecarios(becLista);
+
+      // Citas hoy
+      const citasHoyRes = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers });
+      const citasHoyJson = await safeJson(citasHoyRes);
+      const citasHoyArr = normalizeArray(citasHoyJson).map(c => ({
+        id: c.id,
+        paciente: c.paciente_nombre || `${c.paciente?.nombre || ''} ${c.paciente?.apellido || ''}`.trim(),
+        hora: c.hora || c.hora_inicio || '',
+        tipo: c.tipo_consulta || 'presencial'
+      }));
+      setCitasHoy(citasHoyArr);
+
+      // Citas semana (hoy + próximos 6 días)
+      let citasSemana = 0;
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${toISODate(d)}`, { headers });
+        const j = await safeJson(res);
+        citasSemana += normalizeArray(j).length;
+      }
+
+      setEstadisticas({ pacientesActivos, citasHoy: citasHoyArr.length, citasSemana, becariosAsignados });
     } catch (error) {
       console.error('Error cargando dashboard:', error);
+      notifications.error('Error cargando panel');
+    } finally {
       setLoading(false);
     }
   };
@@ -85,20 +114,7 @@ const PsicologoDashboard = () => {
       color: 'var(--grnd)',
       change: 'En supervisión'
     },
-    {
-      title: 'Sesiones Mes',
-      value: estadisticas.sesionesMes,
-      icon: <FiTrendingUp />,
-      color: 'var(--grnl)',
-      change: 'Realizadas'
-    },
-    {
-      title: 'Altas Este Mes',
-      value: estadisticas.altasMes,
-      icon: <FiBarChart2 />,
-      color: 'var(--rr)',
-      change: 'Pacientes dados de alta'
-    }
+    
   ];
 
   if (loading) {
@@ -144,7 +160,7 @@ const PsicologoDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Citas de Hoy</h3>
-            <button className="btn-text">Ver Agenda</button>
+            <button className="btn-text" onClick={() => navigate('/psicologo/citas')}>Ver Agenda</button>
           </div>
           
           <div className="citas-list">
@@ -164,7 +180,7 @@ const PsicologoDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Becarios en Supervisión</h3>
-            <button className="btn-text">Ver todos</button>
+            <button className="btn-text" onClick={() => navigate('/psicologo/supervision')}>Ver todos</button>
           </div>
           
           <div className="pacientes-list">
@@ -177,67 +193,15 @@ const PsicologoDashboard = () => {
                   </div>
                 </div>
                 <div className="paciente-progreso">
-                  <div className="progress-container">
-                    <div 
-                      className="progress-bar"
-                      style={{ width: `${(becario.observaciones / 10) * 100}%` }}
-                    ></div>
-                  </div>
                   <span className="progreso-text">
-                    {Math.round((becario.observaciones / 10) * 100)}%
+                    {becario.observaciones} registradas
                   </span>
                 </div>
               </div>
             ))}
           </div>
         </div>
-
-        {/* Estadísticas Mensuales */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Estadísticas del Mes</h3>
-          </div>
-          
-          <div className="activity-chart">
-            <div className="chart-placeholder">
-              <div className="chart-bars">
-                {[65, 80, 45, 90, 75, 60, 85, 70, 95, 50, 65, 80].map((height, index) => (
-                  <div key={index} className="chart-bar">
-                    <div 
-                      className="bar-fill"
-                      style={{ height: `${height}%` }}
-                    ></div>
-                    <div className="bar-label">
-                      {['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][index]}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Acciones Rápidas</h3>
-          </div>
-          
-          <div className="quick-actions">
-            <button className="btn-primary w-100 mb-10">
-              Ver Mis Pacientes
-            </button>
-            <button className="btn-secondary w-100 mb-10">
-              Registrar Sesión
-            </button>
-            <button className="btn-warning w-100 mb-10">
-              Revisar Observaciones
-            </button>
-            <button className="btn-text w-100">
-              Generar Reporte Mensual
-            </button>
-          </div>
-        </div>
+        
       </div>
     </div>
   );

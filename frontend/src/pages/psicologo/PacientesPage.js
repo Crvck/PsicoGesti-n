@@ -15,6 +15,7 @@ const PsicologoPacientes = () => {
 
   // Estados para agendar cita
   const [showAgendarModal, setShowAgendarModal] = useState(false);
+  const [tipoCitaAgendar, setTipoCitaAgendar] = useState('psicologo'); // 'psicologo' o 'becario'
   const [becarios, setBecarios] = useState([]);
   const [scheduleForm, setScheduleForm] = useState({
     fecha: new Date().toISOString().slice(0,10),
@@ -136,8 +137,9 @@ const PsicologoPacientes = () => {
 
       const mapped = data.map(p => ({
         id: p.id,
-        nombre: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim(),
-        apellido: p.apellido,
+        nombre: p.nombre || '',
+        apellido: p.apellido || '',
+        nombre_completo: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim(),
         edad: p.edad,
         telefono: p.telefono,
         email: p.email,
@@ -161,7 +163,7 @@ const PsicologoPacientes = () => {
 
   const filteredPacientes = pacientes.filter(paciente => {
     const matchesSearch = 
-      paciente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      paciente.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       paciente.diagnostico.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -315,10 +317,10 @@ const PsicologoPacientes = () => {
                   <td>
                     <div className="flex-row align-center gap-10">
                       <div className="avatar">
-                        {paciente.nombre.split(' ').map(n => n[0]).join('')}
+                        {paciente.nombre_completo.split(' ').map(n => n[0]).join('')}
                       </div>
                       <div>
-                        <div className="font-bold">{paciente.nombre}</div>
+                        <div className="font-bold">{paciente.nombre_completo}</div>
                         <div className="text-small">{paciente.edad} años</div>
                       </div>
                     </div>
@@ -363,16 +365,41 @@ const PsicologoPacientes = () => {
                         <FiFileText />
                       </button>
                       <button 
-                        className="btn-text"
-                        title="Agendar cita"
+                        className="btn-text btn-success"
+                        title="Agendar cita con psicólogo"
                         onClick={() => {
                           setSelectedPaciente(paciente);
-                          // rellenar fecha/hora por defecto
-                          setScheduleForm(prev => ({ ...prev, fecha: new Date().toISOString().slice(0,10), hora: '10:00', notas: '' }));
+                          setTipoCitaAgendar('psicologo');
+                          setScheduleForm(prev => ({ 
+                            ...prev, 
+                            fecha: new Date().toISOString().slice(0,10), 
+                            hora: '10:00', 
+                            notas: '', 
+                            becario_id: null 
+                          }));
                           setShowAgendarModal(true);
                         }}
                       >
                         <FiCalendar />
+                      </button>
+                      {/* Opción para agendar cita solo para becario - comentar si no se necesita */}
+                      <button 
+                        className="btn-text btn-info"
+                        title="Agendar cita para becario"
+                        onClick={() => {
+                          setSelectedPaciente(paciente);
+                          setTipoCitaAgendar('becario');
+                          setScheduleForm(prev => ({ 
+                            ...prev, 
+                            fecha: new Date().toISOString().slice(0,10), 
+                            hora: '10:00', 
+                            notas: '',
+                            becario_id: paciente.becario_id || null
+                          }));
+                          setShowAgendarModal(true);
+                        }}
+                      >
+                        <FiUser />
                       </button>
                     </div>
                   </td>
@@ -426,7 +453,7 @@ const PsicologoPacientes = () => {
               <div>
                 <h3>Expediente Clínico</h3>
                 <p className="text-small" style={{ marginTop: '5px', color: 'var(--gray)' }}>
-                  {selectedPaciente.nombre} • {selectedPaciente.edad} años
+                  {selectedPaciente.nombre_completo} • {selectedPaciente.edad} años
                 </p>
               </div>
               <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
@@ -458,7 +485,7 @@ const PsicologoPacientes = () => {
                 <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
                   <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Datos Personales</h4>
                   <div className="detail-row">
-                    <strong>Nombre completo:</strong> {selectedPaciente.nombre}
+                    <strong>Nombre completo:</strong> {selectedPaciente.nombre_completo}
                   </div>
                   <div className="detail-row">
                     <strong>Edad:</strong> {selectedPaciente.edad} años
@@ -541,9 +568,33 @@ const PsicologoPacientes = () => {
               <button className="btn-primary" onClick={() => {
                 setShowDetalles(false);
                 setSelectedPaciente(selectedPaciente);
+                setTipoCitaAgendar('psicologo');
+                setScheduleForm(prev => ({ 
+                  ...prev, 
+                  fecha: new Date().toISOString().slice(0,10), 
+                  hora: '10:00', 
+                  notas: '', 
+                  becario_id: null 
+                }));
                 setShowAgendarModal(true);
               }}>
-                <FiCalendar /> Agendar Cita
+                <FiCalendar /> Agendar Cita (Psicólogo)
+              </button>
+              {/* Opción para agendar cita solo para becario - comentar si no se necesita */}
+              <button className="btn-info" onClick={() => {
+                setShowDetalles(false);
+                setSelectedPaciente(selectedPaciente);
+                setTipoCitaAgendar('becario');
+                setScheduleForm(prev => ({ 
+                  ...prev, 
+                  fecha: new Date().toISOString().slice(0,10), 
+                  hora: '10:00', 
+                  notas: '',
+                  becario_id: selectedPaciente.becario_id || null
+                }));
+                setShowAgendarModal(true);
+              }}>
+                <FiUser /> Agendar Cita (Becario)
               </button>
               <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
                 Cerrar
@@ -558,7 +609,12 @@ const PsicologoPacientes = () => {
         <div className="modal-overlay">
           <div className="modal-container modal-medium">
             <div className="modal-header">
-              <h3>Agendar cita para {selectedPaciente.nombre}</h3>
+              <h3>
+                {tipoCitaAgendar === 'psicologo' 
+                  ? `Agendar cita (Psicólogo) para ${selectedPaciente.nombre_completo}`
+                  : `Agendar cita (Becario) para ${selectedPaciente.nombre_completo}`
+                }
+              </h3>
               <button className="modal-close" onClick={() => setShowAgendarModal(false)}>×</button>
             </div>
 
@@ -587,15 +643,42 @@ const PsicologoPacientes = () => {
                   <input type="number" className="input-field" value={scheduleForm.duracion} onChange={(e) => setScheduleForm({...scheduleForm, duracion: Number(e.target.value)})} />
                 </div>
 
-                <div className="form-group">
-                  <label>Becario (opcional)</label>
-                  <select className="select-field" value={scheduleForm.becario_id || ''} onChange={(e) => setScheduleForm({...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null})}>
-                    <option value="">Sin becario</option>
-                    {becarios.map(b => (
-                      <option key={b.id} value={b.id}>{b.nombre_completo}</option>
-                    ))}
-                  </select>
-                </div>
+                {/* Mostrar selector de becario solo si es cita de psicólogo (opcional) o si es cita de becario (obligatorio) */}
+                {tipoCitaAgendar === 'becario' && (
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label>Becario *</label>
+                    <select 
+                      className="select-field" 
+                      value={scheduleForm.becario_id || ''} 
+                      onChange={(e) => setScheduleForm({...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null})}
+                      required
+                    >
+                      <option value="">Seleccionar becario</option>
+                      {becarios.map(b => (
+                        <option key={b.id} value={b.id}>{b.nombre_completo}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {tipoCitaAgendar === 'psicologo' && (
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label>Becario observador (opcional)</label>
+                    <select 
+                      className="select-field" 
+                      value={scheduleForm.becario_id || ''} 
+                      onChange={(e) => setScheduleForm({...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null})}
+                    >
+                      <option value="">Sin becario</option>
+                      {becarios.map(b => (
+                        <option key={b.id} value={b.id}>{b.nombre_completo}</option>
+                      ))}
+                    </select>
+                    <small className="text-small" style={{ marginTop: '5px', display: 'block', color: 'var(--gray)' }}>
+                      El becario podrá observar la sesión pero el psicólogo será el responsable
+                    </small>
+                  </div>
+                )}
 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Notas</label>
@@ -607,6 +690,12 @@ const PsicologoPacientes = () => {
             <div className="modal-footer">
               <button className="btn-primary" onClick={async () => {
                 try {
+                  // Validación: si es cita de becario, debe seleccionar un becario
+                  if (tipoCitaAgendar === 'becario' && !scheduleForm.becario_id) {
+                    notifications.error('Debe seleccionar un becario para este tipo de cita');
+                    return;
+                  }
+
                   notifications.info('Creando cita...');
                   const token = localStorage.getItem('token');
                   const body = {
@@ -616,7 +705,9 @@ const PsicologoPacientes = () => {
                     tipo_consulta: scheduleForm.tipo_consulta,
                     duracion: scheduleForm.duracion,
                     notas: scheduleForm.notas,
-                    becario_id: scheduleForm.becario_id || null
+                    becario_id: scheduleForm.becario_id || null,
+                    // Indicar si la cita es para el becario o para el psicólogo
+                    tipo_asignacion: tipoCitaAgendar // 'psicologo' o 'becario'
                   };
 
                   // Debug: registrar body que vamos a enviar
@@ -645,7 +736,7 @@ const PsicologoPacientes = () => {
                     return;
                   }
 
-                  notifications.success('Cita creada exitosamente');
+                  notifications.success(`Cita para ${tipoCitaAgendar === 'psicologo' ? 'psicólogo' : 'becario'} creada exitosamente`);
                   setShowAgendarModal(false);
 
                   // Emitir evento para que calendario y otras vistas sincronicen
@@ -672,7 +763,7 @@ const PsicologoPacientes = () => {
         <div className="modal-overlay">
           <div className="modal-container modal-medium">
             <div className="modal-header">
-              <h3>Registrar sesión para {selectedPaciente.nombre}</h3>
+              <h3>Registrar sesión para {selectedPaciente.nombre_completo}</h3>
               <button className="modal-close" onClick={() => setShowRegistrarSesionModal(false)}>×</button>
             </div>
 

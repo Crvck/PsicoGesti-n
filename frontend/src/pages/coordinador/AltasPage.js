@@ -13,6 +13,7 @@ import ApiService from '../../services/api';
 
 const CoordinadorAltas = () => {
   const [altas, setAltas] = useState([]);
+  const [propuestas, setPropuestas] = useState([]);
   const [candidatosAlta, setCandidatosAlta] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('');
@@ -25,6 +26,16 @@ const CoordinadorAltas = () => {
   // Estados para el modal de ver detalles
   const [showModalDetalles, setShowModalDetalles] = useState(false);
   const [selectedAltaDetalles, setSelectedAltaDetalles] = useState(null);
+  
+  // Estados para procesar propuestas
+  const [showModalProcesarPropuesta, setShowModalProcesarPropuesta] = useState(false);
+  const [selectedPropuesta, setSelectedPropuesta] = useState(null);
+  const [procesarData, setProcesarData] = useState({
+    accion: 'aprobar',
+    tipo_alta: 'terapeutica',
+    evaluacion_final: '',
+    motivo_rechazo: ''
+  });
   
   const [estadisticas, setEstadisticas] = useState({});
   const [formData, setFormData] = useState({
@@ -41,7 +52,19 @@ const CoordinadorAltas = () => {
     fetchAltas();
     fetchEstadisticas();
     fetchCandidatosAlta();
+    fetchPropuestas();
   }, []);
+
+  const fetchPropuestas = async () => {
+    try {
+      const response = await ApiService.get('/altas?estado=propuesta');
+      if (response.success) {
+        setPropuestas(response.data);
+      }
+    } catch (error) {
+      console.error('Error cargando propuestas:', error);
+    }
+  };
 
   const fetchAltas = async () => {
     try {
@@ -150,6 +173,54 @@ const CoordinadorAltas = () => {
     } catch (error) {
       console.error('❌ Error en el proceso de alta:', error);
       notifications.error('❌ Ocurrió un error al procesar la solicitud');
+    }
+  };
+
+  const abrirModalProcesarPropuesta = (propuesta) => {
+    setSelectedPropuesta(propuesta);
+    setProcesarData({
+      accion: 'aprobar',
+      tipo_alta: 'terapeutica',
+      evaluacion_final: propuesta.evaluacion_final || '',
+      motivo_rechazo: ''
+    });
+    setShowModalProcesarPropuesta(true);
+  };
+
+  const procesarPropuesta = async () => {
+    try {
+      if (!selectedPropuesta) return;
+
+      const confirmado = await confirmations.warning(
+        `¿${procesarData.accion === 'aprobar' ? 'Aprobar' : 'Rechazar'} la propuesta de alta para ${selectedPropuesta.paciente_nombre}?`
+      );
+
+      if (!confirmado) return;
+
+      const payload = {
+        accion: procesarData.accion,
+        tipo_alta: procesarData.tipo_alta,
+        evaluacion_final: procesarData.evaluacion_final,
+        recomendaciones: selectedPropuesta.recomendaciones
+      };
+
+      if (procesarData.accion === 'rechazar') {
+        payload.motivo_rechazo = procesarData.motivo_rechazo;
+      }
+
+      const response = await ApiService.put(`/altas/${selectedPropuesta.id}/procesar`, payload);
+
+      if (response.success) {
+        notifications.success(`Propuesta ${procesarData.accion === 'aprobar' ? 'aprobada' : 'rechazada'} exitosamente`);
+        setShowModalProcesarPropuesta(false);
+        fetchPropuestas();
+        fetchAltas();
+      } else {
+        notifications.error(response.message || 'Error al procesar propuesta');
+      }
+    } catch (error) {
+      console.error('Error procesando propuesta:', error);
+      notifications.error('Error al procesar la propuesta');
     }
   };
 
@@ -349,15 +420,71 @@ const CoordinadorAltas = () => {
         <div className="card">
           <div className="stat-box">
             <div className="stat-icon">
-              <FiTrendingUp />
+              <FiAlertCircle style={{ color: '#ff9f43' }} />
             </div>
             <div className="stat-content">
-              <div className="stat-value">{candidatosAlta.length}</div>
-              <div className="stat-label">Candidatos a Alta</div>
+              <div className="stat-value" style={{ color: '#ff9f43' }}>{propuestas.length}</div>
+              <div className="stat-label">Propuestas Pendientes</div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Propuestas Pendientes de Psicólogos */}
+      {propuestas.length > 0 && (
+        <div className="dashboard-section mb-30">
+          <div className="section-header">
+            <h3>
+              <FiAlertCircle style={{ marginRight: '10px', color: '#ff9f43' }} />
+              Propuestas de Alta Pendientes ({propuestas.length})
+            </h3>
+          </div>
+          
+          <div className="grid-2">
+            {propuestas.map((propuesta) => (
+              <div key={propuesta.id} className="card" style={{ borderLeft: '4px solid #ff9f43' }}>
+                <div className="flex-row align-center justify-between mb-15">
+                  <div className="flex-row align-center gap-10">
+                    <div className="avatar">
+                      {propuesta.paciente_nombre.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <div>
+                      <h4>{propuesta.paciente_nombre}</h4>
+                      <p className="text-small">Propuesta por psicólogo</p>
+                    </div>
+                  </div>
+                  <div style={{ padding: '8px 12px', background: '#fff3cd', borderRadius: '4px', fontSize: '12px', color: '#856404' }}>
+                    Pendiente
+                  </div>
+                </div>
+                
+                <div className="mb-15">
+                  <div className="text-small">
+                    <strong>Evaluación:</strong> {propuesta.evaluacion_final || 'Sin especificar'}
+                  </div>
+                  {propuesta.recomendaciones && (
+                    <div className="text-small mt-10">
+                      <strong>Recomendaciones:</strong>
+                      <div style={{ marginTop: '5px', padding: '8px', background: '#353535', borderRadius: '4px', fontSize: '13px' }}>
+                        {propuesta.recomendaciones}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex-row gap-10">
+                  <button 
+                    className="btn-primary flex-1"
+                    onClick={() => abrirModalProcesarPropuesta(propuesta)}
+                  >
+                    <FiCheckCircle /> Revisar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Candidatos a Alta */}
       <div className="dashboard-section mb-30">
@@ -837,6 +964,127 @@ const CoordinadorAltas = () => {
                 Cerrar
               </button>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Procesar Propuesta */}
+      {showModalProcesarPropuesta && selectedPropuesta && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-large">
+            <div className="modal-header">
+              <h3>Procesar Propuesta de Alta</h3>
+              <button className="modal-close" onClick={() => {
+                setShowModalProcesarPropuesta(false);
+                setSelectedPropuesta(null);
+              }}>×</button>
+            </div>
+            
+            <div className="modal-content">
+              <div className="alert-message info mb-20">
+                <strong>Paciente:</strong> {selectedPropuesta.paciente_nombre}
+                <br />
+                <strong>Evaluación del psicólogo:</strong> {selectedPropuesta.evaluacion_final || 'Sin especificar'}
+                <br />
+                {selectedPropuesta.recomendaciones && (
+                  <>
+                    <strong>Recomendaciones:</strong> {selectedPropuesta.recomendaciones}
+                  </>
+                )}
+              </div>
+
+              <div className="form-group mb-15">
+                <label>Decisión *</label>
+                <select
+                  value={procesarData.accion}
+                  onChange={(e) => setProcesarData({...procesarData, accion: e.target.value})}
+                  className="select-field"
+                  required
+                >
+                  <option value="aprobar">Aprobar - Dar de alta</option>
+                  <option value="rechazar">Rechazar - Solicitar más evaluación</option>
+                </select>
+              </div>
+
+              {procesarData.accion === 'aprobar' ? (
+                <>
+                  <div className="grid-2 gap-20">
+                    <div className="form-group">
+                      <label>Tipo de Alta *</label>
+                      <select
+                        value={procesarData.tipo_alta}
+                        onChange={(e) => setProcesarData({...procesarData, tipo_alta: e.target.value})}
+                        className="select-field"
+                        required
+                      >
+                        <option value="terapeutica">Alta Terapéutica</option>
+                        <option value="abandono">Abandono</option>
+                        <option value="traslado">Traslado</option>
+                        <option value="graduacion">Graduación</option>
+                        <option value="no_continua">No Continúa</option>
+                        <option value="otro">Otro</option>
+                      </select>
+                    </div>
+                    
+                    <div className="form-group">
+                      <label>Evaluación Final</label>
+                      <select
+                        value={procesarData.evaluacion_final}
+                        onChange={(e) => setProcesarData({...procesarData, evaluacion_final: e.target.value})}
+                        className="select-field"
+                      >
+                        <option value="">Usar evaluación del psicólogo</option>
+                        <option value="excelente">Excelente</option>
+                        <option value="buena">Buena</option>
+                        <option value="regular">Regular</option>
+                        <option value="mala">Mala</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="form-group">
+                  <label>Motivo del Rechazo *</label>
+                  <textarea
+                    value={procesarData.motivo_rechazo}
+                    onChange={(e) => setProcesarData({...procesarData, motivo_rechazo: e.target.value})}
+                    className="textarea-field"
+                    rows="4"
+                    placeholder="Explica por qué rechazas esta propuesta..."
+                    required
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div className="modal-footer">
+              <button 
+                className="btn-secondary"
+                onClick={() => {
+                  setShowModalProcesarPropuesta(false);
+                  setSelectedPropuesta(null);
+                }}
+              >
+                Cancelar
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={procesarPropuesta}
+                disabled={
+                  procesarData.accion === 'rechazar' && !procesarData.motivo_rechazo
+                }
+              >
+                {procesarData.accion === 'aprobar' ? (
+                  <>
+                    <FiCheckCircle /> Aprobar Alta
+                  </>
+                ) : (
+                  <>
+                    <FiXCircle /> Rechazar Propuesta
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

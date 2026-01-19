@@ -64,6 +64,27 @@ const Alta = sequelize.define('Alta', {
     fecha_seguimiento: {
         type: DataTypes.DATEONLY,
         allowNull: true
+    },
+    estado: {
+        type: DataTypes.ENUM('propuesta', 'aprobada', 'rechazada'),
+        defaultValue: 'aprobada',
+        allowNull: false
+    },
+    psicologo_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+            model: User,
+            key: 'id'
+        }
+    },
+    motivo_rechazo: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    fecha_propuesta: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
     }
 }, {
     tableName: 'altas',
@@ -80,11 +101,18 @@ const Alta = sequelize.define('Alta', {
         },
         {
             fields: ['tipo_alta']
+        },
+        {
+            fields: ['estado']
+        },
+        {
+            fields: ['psicologo_id']
         }
     ]
 });
 
 Alta.belongsTo(Paciente, { foreignKey: 'paciente_id' });
 Alta.belongsTo(User, { foreignKey: 'usuario_id' });
+Alta.belongsTo(User, { foreignKey: 'psicologo_id', as: 'psicologoPropone' });
 
 module.exports = Alta;

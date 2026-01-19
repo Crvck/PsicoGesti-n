@@ -12,6 +12,7 @@ const sequelize = require('./src/config/db');
 require('./src/models/userModel');
 require('./src/models/pacienteModel');
 require('./src/models/citaModel');
+require('./src/models/configuracionModel');
 // Importar otros modelos según necesites
 
 const authRoutes = require('./src/routes/authRoutes');
@@ -29,6 +30,7 @@ const expedienteRoutes = require('./src/routes/expedienteRoutes');
 const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const agendaRoutes = require('./src/routes/agendaRoutes');
 const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
+const configuracionRoutes = require('./src/routes/configuracionRoutes');
 const pacienteRoutes = require('./src/routes/pacienteRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -64,6 +66,7 @@ app.use('/api/expedientes', expedienteRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/agenda', agendaRoutes);
 app.use('/api/estadisticas', estadisticaRoutes);
+app.use('/api/configuracion', configuracionRoutes);
 const userRoutes = require('./src/routes/userRoutes');
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);

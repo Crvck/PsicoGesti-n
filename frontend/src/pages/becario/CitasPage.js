@@ -8,6 +8,7 @@ import { format, addDays, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import ConfiguracionService from '../../services/configuracionService';
 
 const BecarioCitas = () => {
   const [citas, setCitas] = useState([]);
@@ -16,10 +17,29 @@ const BecarioCitas = () => {
   const [view, setView] = useState('day');
   const [showNuevaCitaModal, setShowNuevaCitaModal] = useState(false);
   const [filterEstado, setFilterEstado] = useState('');
+  const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
+  const [userId, setUserId] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editCita, setEditCita] = useState(null);
+  const [editEstado, setEditEstado] = useState('');
+  const [editMotivo, setEditMotivo] = useState('');
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setUserId(payload.id || payload.userId || payload.sub || null);
+      } catch (e) {
+        console.warn('No se pudo decodificar token para obtener userId');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchCitas();
-  }, [selectedDate, filterEstado]);
+    fetchConfigCitas();
+  }, [selectedDate, filterEstado, userId]);
 
   // Escuchar eventos de creación o actualización de cita para refrescar sin recargar manualmente
   React.useEffect(() => {
@@ -28,6 +48,9 @@ const BecarioCitas = () => {
         console.log('Evento citaCreada recibido (citas):', e.detail);
         const nueva = e?.detail?.cita;
         if (nueva) {
+          if (userId && nueva.becario_id !== userId && nueva.becarioId !== userId) {
+            return;
+          }
           const nuevaFecha = nueva.fecha;
           const fechaSeleccionada = format(selectedDate, 'yyyy-MM-dd');
           if (nuevaFecha === fechaSeleccionada) {
@@ -48,6 +71,11 @@ const BecarioCitas = () => {
         console.log('Evento citaActualizada recibido (citas):', e.detail);
         const updated = e?.detail?.cita;
         if (updated) {
+          if (userId && updated.becario_id !== userId && updated.becarioId !== userId) {
+            // Si ya no es del becario actual, quítala si estaba
+            setCitas(prev => prev.filter(c => c.id !== updated.id));
+            return;
+          }
           const fechaSeleccionada = format(selectedDate, 'yyyy-MM-dd');
           if (updated.fecha === fechaSeleccionada) {
             setCitas(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
@@ -86,9 +114,17 @@ const BecarioCitas = () => {
       
       if (response.ok) {
         const data = await response.json();
-        
-        // Filtrar por estado si se especifica
         let citasFiltradas = data.data || [];
+
+        // Filtrar por becario actual
+        if (userId) {
+          citasFiltradas = citasFiltradas.filter(cita => {
+            const cid = cita.becario_id ?? cita.becarioId;
+            return cid === userId;
+          });
+        }
+
+        // Filtrar por estado si se especifica
         if (filterEstado) {
           citasFiltradas = citasFiltradas.filter(cita => cita.estado === filterEstado);
         }
@@ -114,6 +150,31 @@ const BecarioCitas = () => {
     setSelectedDate(new Date());
   };
 
+  const fetchConfigCitas = async () => {
+    try {
+      const response = await ConfiguracionService.obtenerPorCategoria('citas');
+      const data = response?.data || response || {};
+      setConfigCitas({
+        horarioInicio: data.horarioInicio || '09:00',
+        horarioFin: data.horarioFin || '20:00'
+      });
+    } catch (error) {
+      console.error('Error cargando configuración de citas (becario):', error);
+    }
+  };
+
+  const generateHours = () => {
+    const startHour = parseInt((configCitas.horarioInicio || '09:00').split(':')[0], 10);
+    const endHour = parseInt((configCitas.horarioFin || '20:00').split(':')[0], 10);
+    const safeStart = Number.isNaN(startHour) ? 9 : startHour;
+    const safeEnd = Number.isNaN(endHour) ? 20 : endHour;
+    const hours = [];
+    for (let i = safeStart; i <= safeEnd; i++) {
+      hours.push(i);
+    }
+    return hours;
+  };
+
   const handleEstadoCita = async (citaId, nuevoEstado) => {
     try {
       const token = localStorage.getItem('token');
@@ -134,6 +195,51 @@ const BecarioCitas = () => {
     } catch (error) {
       console.error('Error al actualizar cita:', error);
       notifications.error('Error al actualizar la cita');
+    }
+  };
+
+  const openEditModal = (cita) => {
+    setEditCita(cita);
+    setEditEstado(cita.estado || 'programada');
+    setEditMotivo('');
+    setShowEditModal(true);
+  };
+
+  const saveEditCita = async () => {
+    if (!editCita) return;
+    try {
+      const token = localStorage.getItem('token');
+      const payload = { estado: editEstado };
+      if (editEstado === 'cancelada' && editMotivo.trim()) {
+        payload.motivo_cancelacion = editMotivo.trim();
+      }
+
+      const res = await fetch(`http://localhost:3000/api/citas/cita/${editCita.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        console.error('Error editando cita:', json);
+        notifications.error(json.message || 'No se pudo actualizar la cita');
+        return;
+      }
+
+      const updated = json.data || { ...editCita, estado: editEstado, motivo_cancelacion: payload.motivo_cancelacion };
+      setCitas(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+      notifications.success('Cita actualizada');
+      setShowEditModal(false);
+      setEditCita(null);
+      setEditEstado('');
+      setEditMotivo('');
+
+      // Sincronizar otras vistas
+      window.dispatchEvent(new CustomEvent('citaActualizada', { detail: { cita: updated } }));
+    } catch (error) {
+      console.error('Error guardando edición de cita:', error);
+      notifications.error('Error guardando edición');
     }
   };
 
@@ -261,7 +367,7 @@ const BecarioCitas = () => {
       {view === 'day' && (
         <div className="calendar-day-view mb-20">
           <div className="time-column">
-            {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => (
+            {generateHours().map(hour => (
               <div key={hour} className="time-slot">
                 <span className="time-label">{hour}:00</span>
               </div>
@@ -269,7 +375,7 @@ const BecarioCitas = () => {
           </div>
 
           <div className="events-column">
-            {[9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
+            {generateHours().map(hour => {
               const hourCitas = citas.filter(cita => 
                 parseInt(cita.hora.split(':')[0]) === hour
               );
@@ -372,18 +478,11 @@ const BecarioCitas = () => {
                 </div>
                 
                 <div className="cita-card-footer">
-                  <button className="btn-text">
+                  <button className="btn-text" onClick={() => openEditModal(cita)}>
                     <FiEdit2 /> Editar
                   </button>
                   
-                  {cita.estado === 'confirmada' && (
-                    <button 
-                      className="btn-text text-success"
-                      onClick={() => handleEstadoCita(cita.id, 'completada')}
-                    >
-                      <FiCheckCircle /> Completar
-                    </button>
-                  )}
+                  
                   
                   {(cita.estado === 'programada' || cita.estado === 'confirmada') && (
                     <button 
@@ -459,6 +558,49 @@ const BecarioCitas = () => {
               <button className="btn-secondary" onClick={() => setShowNuevaCitaModal(false)}>
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para editar estado de cita */}
+      {showEditModal && editCita && (
+        <div className="modal-overlay">
+          <div className="modal-container">
+            <div className="modal-header">
+              <h3>Editar Cita</h3>
+              <button className="modal-close" onClick={() => setShowEditModal(false)}>×</button>
+            </div>
+            <div className="modal-content">
+              <div className="form-group">
+                <label>Estado</label>
+                <select
+                  value={editEstado}
+                  onChange={(e) => setEditEstado(e.target.value)}
+                  className="form-select"
+                >
+                  <option value="programada">Programada</option>
+                  <option value="confirmada">Confirmada</option>
+                  <option value="completada">Completada</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+              </div>
+              {editEstado === 'cancelada' && (
+                <div className="form-group">
+                  <label>Motivo de cancelación (opcional)</label>
+                  <input
+                    type="text"
+                    value={editMotivo}
+                    onChange={(e) => setEditMotivo(e.target.value)}
+                    className="input"
+                    placeholder="Motivo"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowEditModal(false)}>Cancelar</button>
+              <button className="btn-primary" onClick={saveEditCita}>Guardar</button>
             </div>
           </div>
         </div>

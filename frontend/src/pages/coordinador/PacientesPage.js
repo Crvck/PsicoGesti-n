@@ -653,9 +653,7 @@ const CoordinadorPacientes = () => {
             <button type="button" className="btn-secondary w-100" onClick={exportarListadoPacientes}>
               Exportar Listado
             </button>
-            <button className="btn-warning w-100">
-              Revisar Altas
-            </button>
+            
           </div>
         </div>
       </div>
@@ -901,7 +899,7 @@ const CoordinadorPacientes = () => {
             
             <div className="modal-content">
               {/* Estadísticas rápidas (expandido) */}
-              <div className="grid-4 gap-20 mb-25" style={{  width: '200vw' }}>
+              <div className="grid-4 gap-20 mb-25" style={{   }}>
                 <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Sesiones Totales</div>
                   <div className="stat-value" style={{ fontSize: '36px', lineHeight: '1' }}>{selectedPaciente.sesiones_completadas || 0}</div>

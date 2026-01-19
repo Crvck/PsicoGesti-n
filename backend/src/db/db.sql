@@ -186,13 +186,21 @@ CREATE TABLE altas (
     evaluacion_final ENUM('excelente', 'buena', 'regular', 'mala'),
     seguimiento_recomendado BOOLEAN DEFAULT FALSE,
     fecha_seguimiento DATE,
+    -- Campos para sistema de propuestas (psicólogo propone, coordinador aprueba)
+    estado ENUM('propuesta', 'aprobada', 'rechazada') DEFAULT 'aprobada',
+    psicologo_id INT COMMENT 'Psicólogo que propone el alta',
+    motivo_rechazo TEXT COMMENT 'Razón del rechazo por parte del coordinador',
+    fecha_propuesta DATE COMMENT 'Fecha en que se propuso el alta',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
     FOREIGN KEY (usuario_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (psicologo_id) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_paciente_id (paciente_id),
     INDEX idx_fecha_alta (fecha_alta),
-    INDEX idx_tipo_alta (tipo_alta)
+    INDEX idx_tipo_alta (tipo_alta),
+    INDEX idx_estado (estado),
+    INDEX idx_psicologo_id (psicologo_id)
 );
 
 CREATE TABLE reportes (

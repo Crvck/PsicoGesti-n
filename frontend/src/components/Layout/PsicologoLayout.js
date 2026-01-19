@@ -86,18 +86,7 @@ const PsicologoLayout = () => {
             ))}
           </nav>
           
-          {sidebarOpen && (
-            <div className="sidebar-info">
-              <div className="sidebar-info-item">
-                <FiClock />
-                <span>Citas hoy: Cargando...</span>
-              </div>
-              <div className="sidebar-info-item">
-                <FiUsers />
-                <span>Pacientes activos: Cargando...</span>
-              </div>
-            </div>
-          )}
+          
         </aside>
 
         <main className="main-content">

@@ -81,7 +81,7 @@ const CoordinadorConfiguracion = () => {
     { id: 'citas', label: 'Citas', icon: <FiCalendar /> },
     // { id: 'notificaciones', label: 'Notificaciones', icon: <FiBell /> },
     { id: 'seguridad', label: 'Seguridad', icon: <FiShield /> },
-    { id: 'avanzada', label: 'Avanzada', icon: <FiDatabase /> }
+    // { id: 'avanzada', label: 'Avanzada', icon: <FiDatabase /> }
   ];
 
   useEffect(() => {

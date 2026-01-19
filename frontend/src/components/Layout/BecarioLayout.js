@@ -120,19 +120,7 @@ const BecarioLayout = () => {
             ))}
           </nav>
           
-          {/* Info del día */}
-          {sidebarOpen && (
-            <div className="sidebar-info">
-              <div className="sidebar-info-item">
-                <FiClock />
-                <span>{new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-              </div>
-              <div className="sidebar-info-item">
-                <FiUsers />
-                <span>Pacientes asignados: Cargando...</span>
-              </div>
-            </div>
-          )}
+          
         </aside>
 
         {/* Main Content */}

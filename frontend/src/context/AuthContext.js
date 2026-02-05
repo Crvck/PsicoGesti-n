@@ -96,8 +96,8 @@ export const AuthProvider = ({ children }) => {
     updateUser,
     loading,
     isCoordinador: user?.rol === 'coordinador',
-    isPsicologo: user?.rol === 'psicologo',
-    isBecario: user?.rol === 'becario'
+    isTerapeuta: user?.rol === 'terapeuta',
+    isCoterapeuta: user?.rol === 'coterapeuta'
   };
 
   return (

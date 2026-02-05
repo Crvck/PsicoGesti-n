@@ -1,8 +1,12 @@
+const { Op } = require('sequelize');
 const Sesion = require('../models/sesionModel');
 const Cita = require('../models/citaModel');
 const Paciente = require('../models/pacienteModel');
 const User = require('../models/userModel');
-const { QueryTypes } = require('sequelize');
+const Asignacion = require('../models/asignacionModel');
+const Expediente = require('../models/expedienteModel');
+const Notificacion = require('../models/notificacionModel');
+const LogSistema = require('../models/logSistemaModel');
 const sequelize = require('../config/db');
 
 class SesionController {
@@ -121,14 +125,6 @@ class SesionController {
 
             console.log('Columnas en BD (sesiones):', availableCols);
             console.log('Creando sesión con campos:', Object.keys(filteredData));
-            // DEBUG: mostrar CREATE TABLE para validar esquema en el servidor MySQL
-            try {
-                const [createTable] = await sequelize.query("SHOW CREATE TABLE sesiones");
-                console.log('SHOW CREATE TABLE sesiones result:', createTable && createTable[0] ? createTable[0]['Create Table'] : createTable);
-            } catch (err) {
-                console.warn('Error ejecutando SHOW CREATE TABLE sesiones:', err);
-            }
-
             // Workaround: omit riesgo_suicida/escalas_aplicadas del INSERT si MySQL lanza ER_BAD_FIELD_ERROR al incluirlos
             // (a veces existe una discrepancia entre el esquema y los triggers). Intentamos crear sin esas columnas.
             const insertData = { ...filteredData };
@@ -152,22 +148,24 @@ class SesionController {
             
             // Notificar al becario si está asignado
             if (cita.becario_id) {
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'observacion_nueva', 'Sesión registrada', 
-                    CONCAT('Se ha registrado la sesión del paciente: ', 
-                    (SELECT CONCAT(nombre, ' ', apellido) FROM pacientes WHERE id = ?)), NOW())
-                `, {
-                    replacements: [cita.becario_id, cita.paciente_id]
+                const paciente = await Paciente.findByPk(cita.paciente_id, {
+                    attributes: ['nombre', 'apellido']
+                });
+                await Notificacion.create({
+                    usuario_id: cita.becario_id,
+                    tipo: 'observacion_nueva',
+                    titulo: 'Sesión registrada',
+                    mensaje: `Se ha registrado la sesión del paciente: ${paciente ? `${paciente.nombre} ${paciente.apellido}` : 'Paciente'}`
                 });
             }
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'creacion', 'sesiones', 'Registrar sesión', ?, NOW())
-            `, {
-                replacements: [usuarioId, `Sesión registrada para cita ${cita_id}`]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'creacion',
+                modulo: 'sesiones',
+                accion: 'Registrar sesión',
+                descripcion: `Sesión registrada para cita ${cita_id}`
             });
             
             res.json({
@@ -202,31 +200,34 @@ class SesionController {
                 });
             }
             
-            const query = `
-                SELECT 
-                    s.*,
-                    c.hora AS hora_cita,
-                    c.tipo_consulta,
-                    c.paciente_id,
-                    p.nombre AS paciente_nombre,
-                    p.apellido AS paciente_apellido,
-                    u_psi.nombre AS psicologo_nombre,
-                    u_psi.apellido AS psicologo_apellido,
-                    u_bec.nombre AS becario_nombre,
-                    u_bec.apellido AS becario_apellido
-                FROM sesiones s
-                JOIN citas c ON s.cita_id = c.id
-                JOIN pacientes p ON c.paciente_id = p.id
-                JOIN users u_psi ON s.psicologo_id = u_psi.id
-                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-                WHERE c.paciente_id = ?
-                ORDER BY s.fecha DESC, s.hora_inicio DESC
-            `;
-            
-            const sesiones = await sequelize.query(query, {
-                replacements: [paciente_id],
-                type: QueryTypes.SELECT
+            const sesionesRaw = await Sesion.findAll({
+                include: [
+                    {
+                        model: Cita,
+                        where: { paciente_id },
+                        attributes: ['id', 'hora', 'tipo_consulta', 'paciente_id', 'becario_id'],
+                        include: [
+                            { model: Paciente, attributes: ['nombre', 'apellido'] },
+                            { model: User, as: 'Becario', attributes: ['nombre', 'apellido'] }
+                        ]
+                    },
+                    { model: User, as: 'Psicologo', attributes: ['nombre', 'apellido'] }
+                ],
+                order: [['fecha', 'DESC'], ['hora_inicio', 'DESC']]
             });
+
+            const sesiones = sesionesRaw.map((s) => ({
+                ...s.toJSON(),
+                hora_cita: s.Cita?.hora,
+                tipo_consulta: s.Cita?.tipo_consulta,
+                paciente_id: s.Cita?.paciente_id,
+                paciente_nombre: s.Cita?.Paciente?.nombre,
+                paciente_apellido: s.Cita?.Paciente?.apellido,
+                psicologo_nombre: s.Psicologo?.nombre,
+                psicologo_apellido: s.Psicologo?.apellido,
+                becario_nombre: s.Cita?.Becario?.nombre,
+                becario_apellido: s.Cita?.Becario?.apellido
+            }));
             
             // Filtrar sesiones privadas si no es el psicólogo
             const sesionesFiltradas = sesiones.filter(sesion => {
@@ -259,38 +260,39 @@ class SesionController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
 
-            let whereClause = '';
-            let replacements = [limit, offset];
+            const includeCita = {
+                model: Cita,
+                attributes: ['id', 'paciente_id', 'hora', 'tipo_consulta', 'becario_id'],
+                include: [
+                    { model: Paciente, attributes: ['nombre', 'apellido'] }
+                ]
+            };
 
-            // Si es becario, solo mostrar sus sesiones
             if (usuarioRol === 'becario') {
-                whereClause = 'WHERE s.psicologo_id = ?';
-                replacements = [usuarioId, limit, offset];
+                includeCita.where = { becario_id: usuarioId };
+                includeCita.required = true;
             }
 
-            const query = `
-                SELECT 
-                    s.*,
-                    c.paciente_id,
-                    p.nombre AS paciente_nombre,
-                    p.apellido AS paciente_apellido,
-                    c.hora AS hora_cita,
-                    c.tipo_consulta,
-                    u_psi.nombre AS psicologo_nombre,
-                    u_psi.apellido AS psicologo_apellido
-                FROM sesiones s
-                JOIN citas c ON s.cita_id = c.id
-                JOIN pacientes p ON c.paciente_id = p.id
-                JOIN users u_psi ON s.psicologo_id = u_psi.id
-                ${whereClause}
-                ORDER BY s.fecha DESC, s.hora_inicio DESC
-                LIMIT ? OFFSET ?
-            `;
-
-            const sesiones = await sequelize.query(query, {
-                replacements: replacements,
-                type: QueryTypes.SELECT
+            const sesionesRaw = await Sesion.findAll({
+                include: [
+                    includeCita,
+                    { model: User, as: 'Psicologo', attributes: ['nombre', 'apellido'] }
+                ],
+                order: [['fecha', 'DESC'], ['hora_inicio', 'DESC']],
+                limit,
+                offset
             });
+
+            const sesiones = sesionesRaw.map((s) => ({
+                ...s.toJSON(),
+                paciente_id: s.Cita?.paciente_id,
+                paciente_nombre: s.Cita?.Paciente?.nombre,
+                paciente_apellido: s.Cita?.Paciente?.apellido,
+                hora_cita: s.Cita?.hora,
+                tipo_consulta: s.Cita?.tipo_consulta,
+                psicologo_nombre: s.Psicologo?.nombre,
+                psicologo_apellido: s.Psicologo?.apellido
+            }));
 
             // Filtrar sesiones privadas según permisos
             const sesionesFiltradas = sesiones.filter(sesion => {
@@ -313,30 +315,34 @@ class SesionController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
             
-            const query = `
-                SELECT 
-                    s.*,
-                    c.paciente_id,
-                    c.hora AS hora_cita,
-                    c.tipo_consulta,
-                    p.nombre AS paciente_nombre,
-                    p.apellido AS paciente_apellido,
-                    u_psi.nombre AS psicologo_nombre,
-                    u_psi.apellido AS psicologo_apellido,
-                    u_bec.nombre AS becario_nombre,
-                    u_bec.apellido AS becario_apellido
-                FROM sesiones s
-                JOIN citas c ON s.cita_id = c.id
-                JOIN pacientes p ON c.paciente_id = p.id
-                JOIN users u_psi ON s.psicologo_id = u_psi.id
-                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-                WHERE s.id = ?
-            `;
-            
-            const [sesion] = await sequelize.query(query, {
-                replacements: [id],
-                type: QueryTypes.SELECT
+            const sesionRaw = await Sesion.findByPk(id, {
+                include: [
+                    {
+                        model: Cita,
+                        attributes: ['id', 'paciente_id', 'hora', 'tipo_consulta', 'becario_id'],
+                        include: [
+                            { model: Paciente, attributes: ['nombre', 'apellido'] },
+                            { model: User, as: 'Becario', attributes: ['nombre', 'apellido'] }
+                        ]
+                    },
+                    { model: User, as: 'Psicologo', attributes: ['nombre', 'apellido'] }
+                ]
             });
+
+            const sesion = sesionRaw
+                ? {
+                    ...sesionRaw.toJSON(),
+                    paciente_id: sesionRaw.Cita?.paciente_id,
+                    hora_cita: sesionRaw.Cita?.hora,
+                    tipo_consulta: sesionRaw.Cita?.tipo_consulta,
+                    paciente_nombre: sesionRaw.Cita?.Paciente?.nombre,
+                    paciente_apellido: sesionRaw.Cita?.Paciente?.apellido,
+                    psicologo_nombre: sesionRaw.Psicologo?.nombre,
+                    psicologo_apellido: sesionRaw.Psicologo?.apellido,
+                    becario_nombre: sesionRaw.Cita?.Becario?.nombre,
+                    becario_apellido: sesionRaw.Cita?.Becario?.apellido
+                }
+                : null;
             
             if (!sesion) {
                 return res.status(404).json({
@@ -422,16 +428,14 @@ class SesionController {
             await sesion.update(updates);
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'sesiones', 'Actualizar sesión', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Sesión actualizada ID: ${id}`,
-                    JSON.stringify(datosAntes),
-                    JSON.stringify(sesion.toJSON())
-                ]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'sesiones',
+                accion: 'Actualizar sesión',
+                descripcion: `Sesión actualizada ID: ${id}`,
+                datos_antes: datosAntes,
+                datos_despues: sesion.toJSON()
             });
             
             res.json({
@@ -460,19 +464,19 @@ class SesionController {
     static async verificarAccesoSesiones(usuarioId, usuarioRol, pacienteId) {
         if (usuarioRol === 'coordinador') return true;
         
-        const query = `
-            SELECT 1 FROM asignaciones 
-            WHERE paciente_id = ? 
-            AND estado = 'activa'
-            AND (psicologo_id = ? OR becario_id = ?)
-        `;
-        
-        const [result] = await sequelize.query(query, {
-            replacements: [pacienteId, usuarioId, usuarioId],
-            type: QueryTypes.SELECT
+        const result = await Asignacion.findOne({
+            where: {
+                paciente_id: pacienteId,
+                estado: 'activa',
+                [Op.or]: [
+                    { psicologo_id: usuarioId },
+                    { becario_id: usuarioId }
+                ]
+            },
+            attributes: ['id']
         });
-        
-        return !!result;
+
+        return Boolean(result);
     }
     
     static async actualizarExpediente(pacienteId, datos) {
@@ -481,13 +485,10 @@ class SesionController {
             ? (datos.riesgo_suicida ? 1 : 0)
             : (datos.riesgo_suicida === null || typeof datos.riesgo_suicida === 'undefined') ? null : Number(datos.riesgo_suicida);
 
-        await sequelize.query(`
-            UPDATE expedientes 
-            SET riesgo_suicida = ?, 
-                updated_at = NOW()
-            WHERE paciente_id = ?
-        `, {
-            replacements: [riesgo, pacienteId]
+        await Expediente.update({
+            riesgo_suicida: riesgo
+        }, {
+            where: { paciente_id: pacienteId }
         });
     }
 }

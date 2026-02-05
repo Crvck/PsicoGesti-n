@@ -1,20 +1,22 @@
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') }); // Ajusta la ruta del .env si es necesario
 
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./src/doc/swagger.json');
 const cors = require('cors');
-
 const sequelize = require('./src/config/db');
 
-// Importar modelos
+// --- IMPORTAR MODELOS ---
 require('./src/models/userModel');
 require('./src/models/pacienteModel');
 require('./src/models/citaModel');
 require('./src/models/configuracionModel');
-// Importar otros modelos según necesites
+require('./src/models/Solicitud'); 
+require('./src/models/psicopedagogicoPerfilModel');
+require('./src/models/psicopedagogicoEvolucionModel');
 
+// --- IMPORTAR RUTAS ---
 const authRoutes = require('./src/routes/authRoutes');
 const citaRoutes = require('./src/routes/citaRoutes');
 const roleRoutes = require('./src/routes/roleRoutes');
@@ -27,18 +29,22 @@ const reporteRoutes = require('./src/routes/reporteRoutes');
 const observacionRoutes = require('./src/routes/observacionRoutes');
 const disponibilidadRoutes = require('./src/routes/disponibilidadRoutes');
 const expedienteRoutes = require('./src/routes/expedienteRoutes');
-const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const dashboardRoutes = require('./src/routes/dashboardRoutes'); // <--- AQUÍ IMPORTAMOS DASHBOARD
 const agendaRoutes = require('./src/routes/agendaRoutes');
 const estadisticaRoutes = require('./src/routes/estadisticaRoutes');
 const configuracionRoutes = require('./src/routes/configuracionRoutes');
 const pacienteRoutes = require('./src/routes/pacienteRoutes');
+const userRoutes = require('./src/routes/userRoutes');
+const preregistroRoutes = require('./src/routes/preregistroRoutes');
+const psicopedagogicoRoutes = require('./src/routes/psicopedagogicoRoutes');
+const recordatorioRoutes = require('./src/routes/recordatorioRoutes');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-
-
+// --- CONFIGURACIÓN DE CORS ---
 app.use(cors({
-  origin: 'http://localhost:3001',
+  origin: 'http://localhost:3001', // Asegúrate que este sea el puerto de tu Frontend
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,
 }));
@@ -46,12 +52,14 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// --- DOCUMENTACIÓN SWAGGER ---
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.get('/', (req, res) => {
   res.send('Server is running! Check /api-docs for documentation.');
 });
 
+// --- DEFINICIÓN DE ENDPOINTS ---
 app.use('/api/auth', authRoutes);
 app.use('/api/citas', citaRoutes);
 app.use('/api/fundaciones', fundacionRoutes);
@@ -63,15 +71,22 @@ app.use('/api/reportes', reporteRoutes);
 app.use('/api/observaciones', observacionRoutes);
 app.use('/api/disponibilidad', disponibilidadRoutes);
 app.use('/api/expedientes', expedienteRoutes);
-app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/agenda', agendaRoutes);
 app.use('/api/estadisticas', estadisticaRoutes);
 app.use('/api/configuracion', configuracionRoutes);
-const userRoutes = require('./src/routes/userRoutes');
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/pacientes', pacienteRoutes);
-// Sincronizar modelos
+app.use('/api/preregistro', preregistroRoutes);
+app.use('/api/psicopedagogico', psicopedagogicoRoutes);
+app.use('/api/recordatorios', recordatorioRoutes);
+
+// --- ENDPOINT DASHBOARD ---
+// Esto conecta las rutas que definimos arriba.
+// Las rutas dentro serán: /api/dashboard/coordinador, /api/dashboard/aprobar-solicitud, etc.
+app.use('/api/dashboard', dashboardRoutes); 
+
+// --- SINCRONIZACIÓN Y ARRANQUE ---
 sequelize.sync({ force: false, alter: false })
     .then(() => {
         console.log("✅ Tablas sincronizadas (base de datos lista)");
@@ -80,11 +95,17 @@ sequelize.sync({ force: false, alter: false })
           console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
           console.log(`CORS permitido para: http://localhost:3001`);
           console.log(`Endpoints disponibles:`);
-          console.log(`  GET  /api/citas/citas-por-fecha?fecha=YYYY-MM-DD&becario_id=1`);
-          console.log(`  GET  /api/citas/reporte-mensual?mes=1&anio=2024`);
-          console.log(`  POST /api/citas/alta-paciente`);
-          console.log(`  PUT  /api/citas/cita/:id`);
+          console.log(`  POST /api/dashboard/aprobar-solicitud (Verificado)`);
+          console.log(`  POST /api/dashboard/denegar-solicitud (Verificado)`);
         });
+
+          // Scheduler simple para recordatorios de citas (cada 60 minutos)
+          const RecordatorioService = require('./src/services/recordatorioService');
+          setInterval(() => {
+            RecordatorioService.enviarRecordatorios().catch(err =>
+              console.error('Error en recordatorio programado:', err)
+            );
+          }, 60 * 60 * 1000);
     })
     .catch((error) => {
         console.error("❌ Error al sincronizar la base de datos:", error.message);

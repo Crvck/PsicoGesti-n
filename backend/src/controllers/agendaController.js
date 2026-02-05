@@ -2,8 +2,9 @@
 const Cita = require('../models/citaModel');
 const Paciente = require('../models/pacienteModel');
 const User = require('../models/userModel');
-const { QueryTypes, Op } = require('sequelize');
-const sequelize = require('../config/db');
+const Disponibilidad = require('../models/disponibilidadModel');
+const Notificacion = require('../models/notificacionModel');
+const { Op, fn, col, literal } = require('sequelize');
 
 class AgendaController {
 
@@ -73,70 +74,16 @@ class AgendaController {
             
             console.log('Citas encontradas:', citas.length);
             
-            // Incluir estadísticas - consulta simplificada
-            let estadisticas = null;
-            try {
-                // Construir condiciones WHERE para SQL
-                let whereSQL = '1=1';
-                const replacements = [];
-                
-                if (fecha_inicio && fecha_fin) {
-                    whereSQL += ' AND fecha BETWEEN ? AND ?';
-                    replacements.push(fecha_inicio, fecha_fin);
-                } else if (fecha_inicio) {
-                    whereSQL += ' AND fecha >= ?';
-                    replacements.push(fecha_inicio);
-                } else if (fecha_fin) {
-                    whereSQL += ' AND fecha <= ?';
-                    replacements.push(fecha_fin);
-                }
-                
-                if (psicologo_id) {
-                    whereSQL += ' AND psicologo_id = ?';
-                    replacements.push(psicologo_id);
-                }
-                
-                if (estado) {
-                    whereSQL += ' AND estado = ?';
-                    replacements.push(estado);
-                }
-                
-                const query = `
-                    SELECT 
-                        COUNT(*) as total_citas,
-                        SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) as programadas,
-                        SUM(CASE WHEN estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
-                        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-                        SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
-                        COUNT(DISTINCT psicologo_id) as psicologos_involucrados,
-                        COUNT(DISTINCT becario_id) as becarios_involucrados,
-                        COUNT(DISTINCT paciente_id) as pacientes_atendidos
-                    FROM citas
-                    WHERE ${whereSQL}
-                `;
-                
-                const [stats] = await sequelize.query(query, {
-                    replacements,
-                    type: QueryTypes.SELECT
-                });
-                
-                estadisticas = stats;
-                console.log('Estadísticas:', estadisticas);
-                
-            } catch (statsError) {
-                console.error('Error al obtener estadísticas:', statsError);
-                // Continuar sin estadísticas
-                estadisticas = {
-                    total_citas: citas.length,
-                    programadas: citas.filter(c => c.estado === 'programada').length,
-                    confirmadas: citas.filter(c => c.estado === 'confirmada').length,
-                    completadas: citas.filter(c => c.estado === 'completada').length,
-                    canceladas: citas.filter(c => c.estado === 'cancelada').length,
-                    psicologos_involucrados: new Set(citas.map(c => c.psicologo_id)).size,
-                    becarios_involucrados: new Set(citas.map(c => c.becario_id)).size - 1, // Restar null
-                    pacientes_atendidos: new Set(citas.map(c => c.paciente_id)).size
-                };
-            }
+            const estadisticas = {
+                total_citas: citas.length,
+                programadas: citas.filter(c => c.estado === 'programada').length,
+                confirmadas: citas.filter(c => c.estado === 'confirmada').length,
+                completadas: citas.filter(c => c.estado === 'completada').length,
+                canceladas: citas.filter(c => c.estado === 'cancelada').length,
+                psicologos_involucrados: new Set(citas.map(c => c.psicologo_id)).size,
+                becarios_involucrados: new Set(citas.map(c => c.becario_id).filter(Boolean)).size,
+                pacientes_atendidos: new Set(citas.map(c => c.paciente_id)).size
+            };
             
             res.json({
                 success: true,
@@ -174,65 +121,79 @@ class AgendaController {
             
             const fechaConsulta = fecha || new Date().toISOString().split('T')[0];
             
-            const query = `
-                SELECT 
-                    c.id,
-                    c.fecha,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    c.estado,
-                    c.tipo_consulta,
-                    c.duracion as duracion_minutos,
-                    c.notas,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    p.telefono as paciente_telefono,
-                    p.email as paciente_email,
-                    CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo,
-                    CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario,
-                    u_psi.especialidad as psicologo_especialidad
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                JOIN users u_psi ON c.psicologo_id = u_psi.id
-                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-                WHERE c.fecha = ?
-                ORDER BY c.hora
-            `;
-            
-            const replacements = [fechaConsulta];
-            
-            const citas = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
+            const citasRaw = await Cita.findAll({
+                where: { fecha: fechaConsulta },
+                include: [
+                    { model: Paciente, attributes: ['nombre', 'apellido', 'telefono', 'email'] },
+                    { model: User, as: 'Psicologo', attributes: ['nombre', 'apellido', 'especialidad'] },
+                    { model: User, as: 'Becario', attributes: ['nombre', 'apellido'] }
+                ],
+                order: [['hora', 'ASC']]
             });
+
+            const citas = citasRaw.map((c) => ({
+                id: c.id,
+                fecha: c.fecha,
+                hora: c.hora,
+                estado: c.estado,
+                tipo_consulta: c.tipo_consulta,
+                duracion_minutos: c.duracion,
+                notas: c.notas,
+                paciente: c.Paciente ? `${c.Paciente.nombre} ${c.Paciente.apellido}` : '',
+                paciente_telefono: c.Paciente?.telefono || '',
+                paciente_email: c.Paciente?.email || '',
+                psicologo: c.Psicologo ? `${c.Psicologo.nombre} ${c.Psicologo.apellido}` : '',
+                becario: c.Becario ? `${c.Becario.nombre} ${c.Becario.apellido}` : '',
+                psicologo_especialidad: c.Psicologo?.especialidad || ''
+            }));
             
             // Obtener disponibilidad de profesionales para este día
             const diaSemana = this.obtenerDiaSemana(fechaConsulta);
-            const [disponibilidad] = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
-                    u.rol,
-                    GROUP_CONCAT(
-                        CONCAT(
-                            TIME_FORMAT(d.hora_inicio, '%H:%i'), 
-                            ' - ', 
-                            TIME_FORMAT(d.hora_fin, '%H:%i')
-                        ) SEPARATOR ', '
-                    ) as horarios_disponibles,
-                    COUNT(DISTINCT c.id) as citas_programadas
-                FROM users u
-                LEFT JOIN disponibilidades d ON u.id = d.usuario_id 
-                    AND d.dia_semana = ?
-                    AND d.activo = TRUE
-                LEFT JOIN citas c ON u.id = c.psicologo_id 
-                    AND c.fecha = ?
-                    AND c.estado IN ('programada', 'confirmada')
-                WHERE u.rol IN ('psicologo', 'becario')
-                AND u.activo = TRUE
-                GROUP BY u.id, u.nombre, u.apellido, u.rol
-                ORDER BY u.rol, u.apellido, u.nombre
-            `, {
-                replacements: [diaSemana, fechaConsulta],
-                type: QueryTypes.SELECT
+
+            const profesionales = await User.findAll({
+                where: {
+                    rol: { [Op.in]: ['psicologo', 'becario'] },
+                    activo: true
+                },
+                include: [
+                    {
+                        model: Disponibilidad,
+                        as: 'Disponibilidades',
+                        where: { dia_semana: diaSemana, activo: true },
+                        required: false
+                    }
+                ],
+                order: [['rol', 'ASC'], ['apellido', 'ASC'], ['nombre', 'ASC']]
+            });
+
+            const citasProgramadas = await Cita.findAll({
+                where: {
+                    fecha: fechaConsulta,
+                    estado: { [Op.in]: ['programada', 'confirmada'] }
+                },
+                attributes: ['psicologo_id', [fn('COUNT', col('id')), 'citas_programadas']],
+                group: ['psicologo_id']
+            });
+
+            const citasMap = citasProgramadas.reduce((acc, row) => {
+                acc[row.psicologo_id] = parseInt(row.get('citas_programadas'), 10) || 0;
+                return acc;
+            }, {});
+
+            const disponibilidad = profesionales.map((u) => {
+                const horarios = (u.Disponibilidades || []).map(d => {
+                    const inicio = typeof d.hora_inicio === 'string' ? d.hora_inicio.substring(0, 5) : d.hora_inicio;
+                    const fin = typeof d.hora_fin === 'string' ? d.hora_fin.substring(0, 5) : d.hora_fin;
+                    return `${inicio} - ${fin}`;
+                });
+
+                return {
+                    id: u.id,
+                    profesional: `${u.nombre} ${u.apellido}`,
+                    rol: u.rol,
+                    horarios_disponibles: horarios.join(', '),
+                    citas_programadas: citasMap[u.id] || 0
+                };
             });
             
             res.json({
@@ -261,35 +222,44 @@ class AgendaController {
             const mesActual = mes || new Date().getMonth() + 1;
             const anioActual = anio || new Date().getFullYear();
             
-            // Obtener citas del mes
-            const query = `
-                SELECT 
-                    c.fecha,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) as programadas,
-                    SUM(CASE WHEN c.estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
-                    GROUP_CONCAT(
-                        CONCAT(
-                            TIME_FORMAT(c.hora, '%H:%i'), ' ', 
-                            SUBSTRING(p.nombre, 1, 1), '. ', p.apellido
-                        ) 
-                        ORDER BY c.hora 
-                        SEPARATOR '; '
-                    ) as detalle_citas
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                WHERE MONTH(c.fecha) = ? AND YEAR(c.fecha) = ?
-                GROUP BY c.fecha ORDER BY c.fecha
-            `;
-            
-            const replacements = [mesActual, anioActual];
-            
-            const citasPorDia = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
+            const inicioMes = new Date(anioActual, mesActual - 1, 1);
+            const finMes = new Date(anioActual, mesActual, 0);
+            const inicioStr = inicioMes.toISOString().split('T')[0];
+            const finStr = finMes.toISOString().split('T')[0];
+
+            const citasMes = await Cita.findAll({
+                where: {
+                    fecha: { [Op.between]: [inicioStr, finStr] }
+                },
+                include: [{ model: Paciente, attributes: ['nombre', 'apellido'] }],
+                order: [['fecha', 'ASC'], ['hora', 'ASC']]
             });
+
+            const citasPorDiaMap = citasMes.reduce((acc, cita) => {
+                const fecha = cita.fecha;
+                if (!acc[fecha]) {
+                    acc[fecha] = {
+                        fecha,
+                        total_citas: 0,
+                        programadas: 0,
+                        confirmadas: 0,
+                        completadas: 0,
+                        canceladas: 0,
+                        detalle_citas: []
+                    };
+                }
+
+                acc[fecha].total_citas += 1;
+                if (cita.estado === 'programada') acc[fecha].programadas += 1;
+                if (cita.estado === 'confirmada') acc[fecha].confirmadas += 1;
+                if (cita.estado === 'completada') acc[fecha].completadas += 1;
+                if (cita.estado === 'cancelada') acc[fecha].canceladas += 1;
+
+                const pacienteInicial = cita.Paciente ? `${cita.Paciente.nombre[0]}. ${cita.Paciente.apellido}` : '';
+                acc[fecha].detalle_citas.push(`${cita.hora} ${pacienteInicial}`.trim());
+
+                return acc;
+            }, {});
             
             // Crear calendario
             const diasMes = new Date(anioActual, mesActual, 0).getDate();
@@ -297,7 +267,7 @@ class AgendaController {
             
             for (let dia = 1; dia <= diasMes; dia++) {
                 const fecha = `${anioActual}-${mesActual.toString().padStart(2, '0')}-${dia.toString().padStart(2, '0')}`;
-                const datosDia = citasPorDia.find(c => c.fecha === fecha);
+                const datosDia = citasPorDiaMap[fecha];
                 
                 calendario.push({
                     fecha,
@@ -308,25 +278,27 @@ class AgendaController {
                     confirmadas: datosDia ? datosDia.confirmadas : 0,
                     completadas: datosDia ? datosDia.completadas : 0,
                     canceladas: datosDia ? datosDia.canceladas : 0,
-                    detalle_citas: datosDia ? datosDia.detalle_citas : null
+                    detalle_citas: datosDia ? datosDia.detalle_citas.join('; ') : null
                 });
             }
             
-            // Estadísticas del mes
-            const [estadisticasMes] = await sequelize.query(`
-                SELECT 
-                    COUNT(*) as total_citas_mes,
-                    COUNT(DISTINCT paciente_id) as pacientes_unicos,
-                    COUNT(DISTINCT psicologo_id) as psicologos_activos,
-                    COUNT(DISTINCT becario_id) as becarios_activos,
-                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    ROUND(AVG(duracion), 1) as duracion_promedio
-                FROM citas
-                WHERE MONTH(fecha) = ? AND YEAR(fecha) = ?
-            `, {
-                replacements: [mesActual, anioActual],
-                type: QueryTypes.SELECT
-            });
+            const total_citas_mes = citasMes.length;
+            const pacientes_unicos = new Set(citasMes.map(c => c.paciente_id)).size;
+            const psicologos_activos = new Set(citasMes.map(c => c.psicologo_id)).size;
+            const becarios_activos = new Set(citasMes.map(c => c.becario_id).filter(Boolean)).size;
+            const citas_completadas = citasMes.filter(c => c.estado === 'completada').length;
+            const duracion_promedio = citasMes.length > 0
+                ? Math.round((citasMes.reduce((sum, c) => sum + (c.duracion || 0), 0) / citasMes.length) * 10) / 10
+                : 0;
+
+            const estadisticasMes = {
+                total_citas_mes,
+                pacientes_unicos,
+                psicologos_activos,
+                becarios_activos,
+                citas_completadas,
+                duracion_promedio
+            };
             
             res.json({
                 success: true,
@@ -363,24 +335,19 @@ class AgendaController {
             }
             
             // Verificar que la nueva fecha/hora no se solape
-            const [solapamiento] = await sequelize.query(`
-                SELECT id FROM citas 
-                WHERE (
-                    (psicologo_id = ? OR becario_id = ?)
-                    AND fecha = ?
-                    AND hora = ?
-                    AND estado IN ('programada', 'confirmada')
-                    AND id != ?
-                )
-            `, {
-                replacements: [
-                    cita.psicologo_id,
-                    cita.becario_id || 0,
-                    nueva_fecha,
-                    nueva_hora,
-                    id
-                ],
-                type: QueryTypes.SELECT
+            const orConditions = [];
+            if (cita.psicologo_id) orConditions.push({ psicologo_id: cita.psicologo_id });
+            if (cita.becario_id) orConditions.push({ becario_id: cita.becario_id });
+
+            const solapamiento = await Cita.findOne({
+                where: {
+                    id: { [Op.ne]: id },
+                    fecha: nueva_fecha,
+                    hora: nueva_hora,
+                    estado: { [Op.in]: ['programada', 'confirmada'] },
+                    ...(orConditions.length > 0 ? { [Op.or]: orConditions } : {})
+                },
+                attributes: ['id']
             });
             
             if (solapamiento) {
@@ -406,40 +373,27 @@ class AgendaController {
             });
             
             // Crear notificaciones
-            const [paciente] = await sequelize.query(
-                'SELECT email, nombre, apellido FROM pacientes WHERE id = ?',
-                { replacements: [cita.paciente_id], type: QueryTypes.SELECT }
-            );
+            const paciente = await Paciente.findByPk(cita.paciente_id, {
+                attributes: ['email', 'nombre', 'apellido']
+            });
             
             // Notificar al psicólogo
             if (cita.psicologo_id) {
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'cita_modificada', 'Cita reprogramada', 
-                    CONCAT('Cita reprogramada para el paciente: ', ?, '. Nueva fecha: ', ?, ' ', ?), NOW())
-                `, {
-                    replacements: [
-                        cita.psicologo_id,
-                        `${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}`,
-                        nueva_fecha,
-                        nueva_hora
-                    ]
+                await Notificacion.create({
+                    usuario_id: cita.psicologo_id,
+                    tipo: 'cita_modificada',
+                    titulo: 'Cita reprogramada',
+                    mensaje: `Cita reprogramada para el paciente: ${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}. Nueva fecha: ${nueva_fecha} ${nueva_hora}`
                 });
             }
             
             // Notificar al becario si está asignado
             if (cita.becario_id) {
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'cita_modificada', 'Cita reprogramada', 
-                    CONCAT('Cita reprogramada para el paciente: ', ?, '. Nueva fecha: ', ?, ' ', ?), NOW())
-                `, {
-                    replacements: [
-                        cita.becario_id,
-                        `${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}`,
-                        nueva_fecha,
-                        nueva_hora
-                    ]
+                await Notificacion.create({
+                    usuario_id: cita.becario_id,
+                    tipo: 'cita_modificada',
+                    titulo: 'Cita reprogramada',
+                    mensaje: `Cita reprogramada para el paciente: ${paciente?.nombre || 'Paciente'} ${paciente?.apellido || ''}. Nueva fecha: ${nueva_fecha} ${nueva_hora}`
                 });
             }
             
@@ -486,111 +440,97 @@ class AgendaController {
             
             const diaSemana = obtenerDiaSemana(fechaConsulta);
             
-            // CONSULTA PRINCIPAL: Obtener psicólogos y becarios activos
-            const psicologos = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as profesional,
-                    u.rol,
-                    u.especialidad,
-                    u.email
-                FROM users u
-                WHERE u.rol IN ('psicologo', 'becario')
-                    AND u.activo = TRUE
-                ORDER BY 
-                    CASE u.rol 
-                        WHEN 'psicologo' THEN 1
-                        WHEN 'becario' THEN 2
-                        ELSE 3
-                    END,
-                    u.apellido, u.nombre
-            `, {
-                type: QueryTypes.SELECT
+            const profesionales = await User.findAll({
+                where: {
+                    rol: { [Op.in]: ['psicologo', 'becario'] },
+                    activo: true
+                },
+                include: [
+                    {
+                        model: Disponibilidad,
+                        as: 'Disponibilidades',
+                        where: {
+                            dia_semana: diaSemana,
+                            activo: true,
+                            fecha_inicio_vigencia: { [Op.lte]: fechaConsulta },
+                            [Op.or]: [
+                                { fecha_fin_vigencia: null },
+                                { fecha_fin_vigencia: { [Op.gte]: fechaConsulta } }
+                            ]
+                        },
+                        required: false
+                    }
+                ],
+                order: [
+                    [literal("CASE rol WHEN 'terapeuta' THEN 1 WHEN 'coterapeuta' THEN 2 WHEN 'psicopedagogico' THEN 3 ELSE 4 END"), 'ASC'],
+                    ['apellido', 'ASC'],
+                    ['nombre', 'ASC']
+                ]
             });
-            
-            
-            // Para cada profesional, obtener su disponibilidad y citas programadas
-            const disponibilidadDetallada = [];
-            
-            for (const psicologo of psicologos) {
-                try {
-                    // 1. Obtener disponibilidad del día
-                    const [disponibilidad] = await sequelize.query(`
-                        SELECT 
-                            TIME_FORMAT(hora_inicio, '%H:%i') as hora_inicio,
-                            TIME_FORMAT(hora_fin, '%H:%i') as hora_fin,
-                            COALESCE(max_citas_dia, 8) as max_citas_dia,
-                            intervalo_citas
-                        FROM disponibilidades
-                        WHERE usuario_id = ?
-                            AND dia_semana = ?
-                            AND activo = TRUE
-                            AND (? BETWEEN fecha_inicio_vigencia AND COALESCE(fecha_fin_vigencia, '2099-12-31'))
-                        LIMIT 1
-                    `, {
-                        replacements: [psicologo.id, diaSemana, fechaConsulta],
-                        type: QueryTypes.SELECT
-                    });
-                    
-                    // 2. Obtener citas programadas para la fecha
-                    const [citasCount] = await sequelize.query(`
-                        SELECT COUNT(*) as citas_programadas
-                        FROM citas 
-                        WHERE (psicologo_id = ? OR becario_id = ?)
-                            AND fecha = ?
-                            AND estado IN ('programada', 'confirmada')
-                    `, {
-                        replacements: [psicologo.id, psicologo.id, fechaConsulta],
-                        type: QueryTypes.SELECT
-                    });
-                    
-                    const citasProgramadas = citasCount ? parseInt(citasCount.citas_programadas) : 0;
-                    const maxCitas = disponibilidad ? parseInt(disponibilidad.max_citas_dia) : 8;
-                    const cuposDisponibles = Math.max(0, maxCitas - citasProgramadas);
-                    const porcentajeOcupacion = maxCitas > 0 ? Math.round((citasProgramadas / maxCitas) * 100) : 0;
-                    
-                    // Determinar estado de disponibilidad
-                    let estado = 'disponible';
-                    if (cuposDisponibles === 0) estado = 'completo';
-                    else if (cuposDisponibles <= 2) estado = 'limitado';
-                    
-                    disponibilidadDetallada.push({
-                        id: psicologo.id,
-                        profesional: psicologo.profesional,
-                        rol: psicologo.rol,
-                        especialidad: psicologo.especialidad || (psicologo.rol === 'becario' ? 'Becario' : 'Psicología General'),
-                        email: psicologo.email,
-                        hora_inicio: disponibilidad ? disponibilidad.hora_inicio : '09:00',
-                        hora_fin: disponibilidad ? disponibilidad.hora_fin : '18:00',
-                        max_citas_dia: maxCitas,
-                        citas_programadas: citasProgramadas,
-                        cupos_disponibles: cuposDisponibles,
-                        porcentaje_ocupacion: porcentajeOcupacion,
-                        estado: estado,
-                        intervalo_citas: disponibilidad ? disponibilidad.intervalo_citas : 50
-                    });
-                    
-                    
-                } catch (error) {
-                    console.error(`⚠️ Error procesando ${psicologo.profesional}:`, error.message);
-                    // Datos de respaldo
-                    disponibilidadDetallada.push({
-                        id: psicologo.id,
-                        profesional: psicologo.profesional,
-                        rol: psicologo.rol,
-                        especialidad: psicologo.especialidad || 'Psicología General',
-                        email: psicologo.email,
-                        hora_inicio: '09:00',
-                        hora_fin: '18:00',
-                        max_citas_dia: 8,
-                        citas_programadas: 0,
-                        cupos_disponibles: 8,
-                        porcentaje_ocupacion: 0,
-                        estado: 'disponible',
-                        intervalo_citas: 50
-                    });
-                }
-            }
+
+            const citasPorPsicologo = await Cita.findAll({
+                where: {
+                    fecha: fechaConsulta,
+                    estado: { [Op.in]: ['programada', 'confirmada'] },
+                    psicologo_id: { [Op.ne]: null }
+                },
+                attributes: ['psicologo_id', [fn('COUNT', col('id')), 'citas_programadas']],
+                group: ['psicologo_id']
+            });
+
+            const citasPorBecario = await Cita.findAll({
+                where: {
+                    fecha: fechaConsulta,
+                    estado: { [Op.in]: ['programada', 'confirmada'] },
+                    becario_id: { [Op.ne]: null }
+                },
+                attributes: ['becario_id', [fn('COUNT', col('id')), 'citas_programadas']],
+                group: ['becario_id']
+            });
+
+            const citasMapPsi = citasPorPsicologo.reduce((acc, row) => {
+                acc[row.psicologo_id] = parseInt(row.get('citas_programadas'), 10) || 0;
+                return acc;
+            }, {});
+
+            const citasMapBec = citasPorBecario.reduce((acc, row) => {
+                acc[row.becario_id] = parseInt(row.get('citas_programadas'), 10) || 0;
+                return acc;
+            }, {});
+
+            const disponibilidadDetallada = profesionales.map((prof) => {
+                const disponibilidad = (prof.Disponibilidades || [])[0] || null;
+                const citasProgramadas = prof.rol === 'coterapeuta'
+                    ? (citasMapBec[prof.id] || 0)
+                    : (citasMapPsi[prof.id] || 0);
+
+                const maxCitas = disponibilidad ? parseInt(disponibilidad.max_citas_dia, 10) : 8;
+                const cuposDisponibles = Math.max(0, maxCitas - citasProgramadas);
+                const porcentajeOcupacion = maxCitas > 0 ? Math.round((citasProgramadas / maxCitas) * 100) : 0;
+
+                let estado = 'disponible';
+                if (cuposDisponibles === 0) estado = 'completo';
+                else if (cuposDisponibles <= 2) estado = 'limitado';
+
+                const horaInicio = disponibilidad?.hora_inicio ? String(disponibilidad.hora_inicio).substring(0, 5) : '09:00';
+                const horaFin = disponibilidad?.hora_fin ? String(disponibilidad.hora_fin).substring(0, 5) : '18:00';
+
+                return {
+                    id: prof.id,
+                    profesional: `${prof.nombre} ${prof.apellido}`,
+                    rol: prof.rol,
+                    especialidad: prof.especialidad || (prof.rol === 'coterapeuta' ? 'Coterapeuta' : 'Psicología General'),
+                    email: prof.email,
+                    hora_inicio: horaInicio,
+                    hora_fin: horaFin,
+                    max_citas_dia: maxCitas,
+                    citas_programadas: citasProgramadas,
+                    cupos_disponibles: cuposDisponibles,
+                    porcentaje_ocupacion: porcentajeOcupacion,
+                    estado,
+                    intervalo_citas: disponibilidad?.intervalo_citas || 50
+                };
+            });
             
             // Estadísticas generales
             const totalProfesionales = disponibilidadDetallada.length;

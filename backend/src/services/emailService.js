@@ -221,6 +221,80 @@ class EmailService {
         return await this.enviarEmail(becario.email, asunto, contenido);
     }
     
+    static async enviarBienvenidaUsuario(datosUsuario) {
+        const { nombre, apellido, email, passwordTemporal, rol } = datosUsuario;
+        
+        const nombreCompleto = `${nombre} ${apellido}`;
+        const rolTexto = {
+            'psicologo': 'Psicólogo/a',
+            'psicopedagogico': 'Psicopedagógico/a',
+            'terapeuta': 'Terapeuta',
+            'coterapeuta': 'Coterapeuta',
+            'becario': 'Practicante/Becario',
+            'coordinador': 'Coordinador/a'
+        }[rol] || rol;
+        
+        const asunto = `Bienvenido al Sistema de Gestión Psicológica - ${nombreCompleto}`;
+        
+        const contenido = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background-color: #4a6fa5; color: white; padding: 20px; text-align: center; }
+                    .content { padding: 20px; background-color: #f9f9f9; }
+                    .footer { padding: 10px; text-align: center; font-size: 12px; color: #666; }
+                    .credentials { margin: 20px 0; padding: 15px; background-color: #fff; border-left: 4px solid #4a6fa5; border-radius: 4px; }
+                    .password { background-color: #e8f4fd; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 16px; font-weight: bold; color: #2c5aa0; }
+                    .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 4px; margin: 15px 0; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>¡Bienvenido al Sistema!</h1>
+                    </div>
+                    <div class="content">
+                        <p>Estimado/a <strong>${nombreCompleto}</strong>,</p>
+                        
+                        <p>¡Felicitaciones! Su solicitud de registro ha sido aprobada y ahora forma parte de nuestro equipo como <strong>${rolTexto}</strong>.</p>
+                        
+                        <div class="credentials">
+                            <h3>Sus credenciales de acceso:</h3>
+                            <p><strong>Correo electrónico:</strong> ${email}</p>
+                            <p><strong>Contraseña temporal:</strong></p>
+                            <div class="password">${passwordTemporal}</div>
+                        </div>
+                        
+                        <div class="warning">
+                            <strong>⚠️ Importante:</strong> Esta es una contraseña temporal. Le recomendamos cambiarla inmediatamente después de su primer inicio de sesión por motivos de seguridad.
+                        </div>
+                        
+                        <p><strong>¿Cómo acceder al sistema?</strong></p>
+                        <ol>
+                            <li>Visite: <a href="http://localhost:3001">http://localhost:3001</a></li>
+                            <li>Inicie sesión con su correo electrónico y la contraseña temporal</li>
+                            <li>Cambie su contraseña en la sección de perfil</li>
+                        </ol>
+                        
+                        <p>Si tiene alguna duda o necesita asistencia, no dude en contactar al equipo de coordinación.</p>
+                        
+                        <p>¡Le damos la bienvenida y esperamos que tenga una excelente experiencia en nuestro sistema!</p>
+                    </div>
+                    <div class="footer">
+                        <p>Este es un mensaje automático del Sistema de Gestión Psicológica.</p>
+                        <p>Por favor, no responda a este correo.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        return await this.enviarEmail(email, asunto, contenido);
+    }
+    
     static async enviarReporteAdjunto(destinatario, asunto, contenido, archivoBuffer, nombreArchivo) {
         const adjuntos = [{
             filename: nombreArchivo,
@@ -254,6 +328,77 @@ class EmailService {
             console.error('Error al enviar recordatorios:', error);
             return false;
         }
+    }
+
+    static async enviarRecordatorioCitasUsuario({ usuario, citas, rangoDias }) {
+        const asunto = `Recordatorio de citas programadas (${rangoDias} días)`;
+
+        const rows = citas.map(c => {
+            const totalSesiones = Number(c.total_sesiones || 1);
+            const numeroSesion = Number(c.numero_sesion || 1);
+            const restantes = Math.max(0, totalSesiones - numeroSesion);
+            return `
+            <tr>
+                <td>${c.fecha}</td>
+                <td>${c.hora?.substring(0, 5) || ''}</td>
+                <td>${c.Paciente ? `${c.Paciente.nombre} ${c.Paciente.apellido}` : 'Paciente'}</td>
+                <td>${c.tipo_consulta === 'virtual' ? 'Virtual' : 'Presencial'}</td>
+                <td>${c.estado || ''}</td>
+                <td>${numeroSesion}/${totalSesiones}</td>
+                <td>${restantes}</td>
+            </tr>
+        `;
+        }).join('');
+
+        const contenido = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+                    .header { background-color: #4a6fa5; color: white; padding: 20px; text-align: center; }
+                    .content { padding: 20px; background-color: #f9f9f9; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    th { background-color: #f0f3f6; }
+                    .footer { padding: 10px; text-align: center; font-size: 12px; color: #666; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Recordatorio de Citas Programadas</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hola <strong>${usuario.nombre} ${usuario.apellido}</strong>,</p>
+                        <p>Estas son tus citas programadas para los próximos ${rangoDias} días:</p>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Hora</th>
+                                    <th>Paciente</th>
+                                    <th>Modalidad</th>
+                                    <th>Estado</th>
+                                    <th>Sesión</th>
+                                    <th>Restantes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="footer">
+                        <p>Mensaje automático del Sistema de Gestión Psicológica.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        return await this.enviarEmail(usuario.email, asunto, contenido);
     }
     
     // Métodos auxiliares

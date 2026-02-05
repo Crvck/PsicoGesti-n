@@ -1,6 +1,6 @@
+const { Op } = require('sequelize');
 const Notificacion = require('../models/notificacionModel');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
+const User = require('../models/userModel');
 
 class NotificacionController {
     
@@ -108,11 +108,11 @@ class NotificacionController {
             const creadorId = req.user.id;
             
             // Validar que el usuario receptor existe
-            const [usuario] = await sequelize.query(
-                'SELECT id FROM users WHERE id = ? AND activo = TRUE',
-                { replacements: [usuario_id], type: QueryTypes.SELECT }
-            );
-            
+            const usuario = await User.findOne({
+                where: { id: usuario_id, activo: true },
+                attributes: ['id']
+            });
+
             if (!usuario) {
                 return res.status(404).json({
                     success: false,
@@ -185,7 +185,7 @@ class NotificacionController {
                 where: {
                     usuario_id: usuarioId,
                     created_at: {
-                        [sequelize.Op.gte]: new Date(Date.now() - horas * 60 * 60 * 1000)
+                        [Op.gte]: new Date(Date.now() - horas * 60 * 60 * 1000)
                     }
                 },
                 order: [['created_at', 'DESC']],

@@ -46,7 +46,12 @@ const DEFAULTS = {
 		emailReportes: true,
 		smsRecordatorio: false,
 		notificacionesPush: true,
-		emailCoordinador: 'coordinador@psicogestion.com'
+			emailCoordinador: 'coordinador@psicogestion.com',
+			recordatorio_citas_activo: true,
+			recordatorio_citas_frecuencia_dias: 7,
+			recordatorio_citas_rango_dias: 7,
+			recordatorio_citas_hora: '09:00',
+			recordatorio_citas_ultima_fecha: null
 	},
 	seguridad: {
 		requerirVerificacionEmail: true,

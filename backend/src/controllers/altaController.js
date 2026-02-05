@@ -1,9 +1,12 @@
+const { Op, fn, col, literal } = require('sequelize');
+const sequelize = require('../config/db');
 const Alta = require('../models/altaModel');
 const Paciente = require('../models/pacienteModel');
 const Cita = require('../models/citaModel');
 const Asignacion = require('../models/asignacionModel');
-const { QueryTypes, Op } = require('sequelize'); // AÑADE Op aquí
-const sequelize = require('../config/db');
+const User = require('../models/userModel');
+const Notificacion = require('../models/notificacionModel');
+const LogSistema = require('../models/logSistemaModel');
 
 class AltaController {
     
@@ -24,19 +27,37 @@ class AltaController {
             }
             
             // Obtener estadísticas del paciente
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    COUNT(*) as total_sesiones,
-                    COUNT(CASE WHEN estado = 'completada' THEN 1 END) as sesiones_completadas,
-                    MIN(fecha) as primera_sesion,
-                    MAX(fecha) as ultima_sesion
-                FROM citas 
-                WHERE paciente_id = ?
-                AND estado IN ('completada', 'cancelada')
-            `, {
-                replacements: [paciente_id],
-                type: QueryTypes.SELECT
+            const totalSesiones = await Cita.count({
+                where: {
+                    paciente_id,
+                    estado: { [Op.in]: ['completada', 'cancelada'] }
+                }
             });
+            const sesionesCompletadas = await Cita.count({
+                where: {
+                    paciente_id,
+                    estado: 'completada'
+                }
+            });
+            const primeraSesion = await Cita.min('fecha', {
+                where: {
+                    paciente_id,
+                    estado: { [Op.in]: ['completada', 'cancelada'] }
+                }
+            });
+            const ultimaSesion = await Cita.max('fecha', {
+                where: {
+                    paciente_id,
+                    estado: { [Op.in]: ['completada', 'cancelada'] }
+                }
+            });
+
+            const estadisticas = {
+                total_sesiones: totalSesiones,
+                sesiones_completadas: sesionesCompletadas,
+                primera_sesion: primeraSesion,
+                ultima_sesion: ultimaSesion
+            };
             
             // Iniciar transacción
             const transaction = await sequelize.transaction();
@@ -90,52 +111,45 @@ class AltaController {
                 });
                 
                 // 5. Obtener profesionales asignados para notificaciones
-                const [profesionales] = await sequelize.query(`
-                    SELECT DISTINCT 
-                        a.psicologo_id,
-                        a.becario_id
-                    FROM asignaciones a
-                    WHERE a.paciente_id = ?
-                    AND a.estado = 'activa'
-                `, {
-                    replacements: [paciente_id],
-                    type: QueryTypes.SELECT,
+                const asignacionesActivas = await Asignacion.findAll({
+                    where: { paciente_id, estado: 'activa' },
+                    attributes: ['psicologo_id', 'becario_id'],
                     transaction
                 });
                 
                 // 6. Crear notificaciones
-                if (profesionales) {
+                if (asignacionesActivas.length > 0) {
                     const notificaciones = [];
                     const titulo = 'Paciente dado de alta';
                     const mensaje = `El paciente ${paciente.nombre} ${paciente.apellido} ha sido dado de alta (${tipo_alta}).`;
-                    
-                    if (profesionales.psicologo_id) {
-                        notificaciones.push([profesionales.psicologo_id, 'alerta_sistema', titulo, mensaje]);
-                    }
-                    
-                    if (profesionales.becario_id) {
-                        notificaciones.push([profesionales.becario_id, 'alerta_sistema', titulo, mensaje]);
-                    }
-                    
-                    for (const [usuarioIdNotif, tipo, tituloNotif, mensajeNotif] of notificaciones) {
-                        await sequelize.query(`
-                            INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                            VALUES (?, ?, ?, ?, NOW())
-                        `, {
-                            replacements: [usuarioIdNotif, tipo, tituloNotif, mensajeNotif],
-                            transaction
-                        });
+
+                    const destinatarios = new Set();
+                    asignacionesActivas.forEach((a) => {
+                        if (a.psicologo_id) destinatarios.add(a.psicologo_id);
+                        if (a.becario_id) destinatarios.add(a.becario_id);
+                    });
+
+                    if (destinatarios.size > 0) {
+                        await Notificacion.bulkCreate(
+                            Array.from(destinatarios).map((usuarioIdNotif) => ({
+                                usuario_id: usuarioIdNotif,
+                                tipo: 'alerta_sistema',
+                                titulo,
+                                mensaje
+                            })),
+                            { transaction }
+                        );
                     }
                 }
                 
                 // 7. Registrar log
-                await sequelize.query(`
-                    INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                    VALUES (?, 'modificacion', 'altas', 'Dar de alta paciente', ?, NOW())
-                `, {
-                    replacements: [usuarioId, `Alta paciente ${paciente_id} - Tipo: ${tipo_alta}`],
-                    transaction
-                });
+                await LogSistema.create({
+                    usuario_id: usuarioId,
+                    tipo_log: 'modificacion',
+                    modulo: 'altas',
+                    accion: 'Dar de alta paciente',
+                    descripcion: `Alta paciente ${paciente_id} - Tipo: ${tipo_alta}`
+                }, { transaction });
                 
                 // Commit transacción
                 await transaction.commit();
@@ -175,60 +189,45 @@ class AltaController {
         try {
             const { fecha_inicio, fecha_fin, tipo_alta, psicologo_id, estado } = req.query;
             
-            let query = `
-                SELECT 
-                    a.*,
-                    p.nombre AS paciente_nombre,
-                    p.apellido AS paciente_apellido,
-                    p.telefono AS paciente_telefono,
-                    u.nombre AS usuario_nombre,
-                    u.apellido AS usuario_apellido,
-                    COUNT(DISTINCT c.id) AS total_sesiones
-                FROM altas a
-                JOIN pacientes p ON a.paciente_id = p.id
-                JOIN users u ON a.usuario_id = u.id
-                LEFT JOIN citas c ON a.paciente_id = c.paciente_id AND c.estado = 'completada'
-                WHERE 1=1
-            `;
-            
-            const replacements = [];
-            
-            if (estado) {
-                query += ` AND a.estado = ?`;
-                replacements.push(estado);
-            }
-            
-            if (fecha_inicio) {
-                query += ` AND a.fecha_alta >= ?`;
-                replacements.push(fecha_inicio);
-            }
-            
-            if (fecha_fin) {
-                query += ` AND a.fecha_alta <= ?`;
-                replacements.push(fecha_fin);
-            }
-            
-            if (tipo_alta) {
-                query += ` AND a.tipo_alta = ?`;
-                replacements.push(tipo_alta);
-            }
-            
+            const whereClause = {};
+            if (estado) whereClause.estado = estado;
+            if (fecha_inicio) whereClause.fecha_alta = { ...(whereClause.fecha_alta || {}), [Op.gte]: fecha_inicio };
+            if (fecha_fin) whereClause.fecha_alta = { ...(whereClause.fecha_alta || {}), [Op.lte]: fecha_fin };
+            if (tipo_alta) whereClause.tipo_alta = tipo_alta;
+
+            const include = [
+                {
+                    model: Paciente,
+                    attributes: ['nombre', 'apellido', 'telefono']
+                },
+                {
+                    model: User,
+                    attributes: ['nombre', 'apellido']
+                }
+            ];
+
             if (psicologo_id) {
-                query += ` AND EXISTS (
-                    SELECT 1 FROM asignaciones asig 
-                    WHERE asig.paciente_id = a.paciente_id 
-                    AND asig.psicologo_id = ?
-                    AND asig.estado = 'finalizada'
-                )`;
-                replacements.push(psicologo_id);
+                include.push({
+                    model: Asignacion,
+                    required: true,
+                    where: { psicologo_id, estado: 'finalizada' },
+                    attributes: []
+                });
             }
-            
-            query += ` GROUP BY a.id, p.id, u.id
-                      ORDER BY a.fecha_alta DESC, p.apellido, p.nombre`;
-            
-            const altas = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
+
+            const altas = await Alta.findAll({
+                where: whereClause,
+                include,
+                attributes: {
+                    include: [
+                        [
+                            literal("(SELECT COUNT(DISTINCT c.id) FROM citas c WHERE c.paciente_id = Alta.paciente_id AND c.estado = 'completada')"),
+                            'total_sesiones'
+                        ]
+                    ]
+                },
+                order: [['fecha_alta', 'DESC'], [Paciente, 'apellido', 'ASC'], [Paciente, 'nombre', 'ASC']],
+                distinct: true
             });
             
             res.json({
@@ -250,39 +249,17 @@ class AltaController {
         try {
             const { id } = req.params;
             
-            const query = `
-                SELECT 
-                    a.*,
-                    p.nombre AS paciente_nombre,
-                    p.apellido AS paciente_apellido,
-                    p.fecha_nacimiento,
-                    p.genero,
-                    p.email AS paciente_email,
-                    p.telefono AS paciente_telefono,
-                    u.nombre AS usuario_nombre,
-                    u.apellido AS usuario_apellido,
-                    u_psi.nombre AS psicologo_nombre,
-                    u_psi.apellido AS psicologo_apellido,
-                    (SELECT COUNT(*) FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada') AS total_sesiones,
-                    (SELECT GROUP_CONCAT(DISTINCT DATE_FORMAT(fecha, '%Y-%m-%d') ORDER BY fecha DESC SEPARATOR ', ') 
-                    FROM citas WHERE paciente_id = a.paciente_id AND estado = 'completada' LIMIT 10) AS ultimas_sesiones
-                FROM altas a
-                JOIN pacientes p ON a.paciente_id = p.id
-                JOIN users u ON a.usuario_id = u.id
-                LEFT JOIN (
-                    SELECT paciente_id, psicologo_id 
-                    FROM asignaciones 
-                    WHERE paciente_id = ? 
-                    ORDER BY fecha_inicio DESC 
-                    LIMIT 1
-                ) asig ON p.id = asig.paciente_id
-                LEFT JOIN users u_psi ON asig.psicologo_id = u_psi.id
-                WHERE a.id = ?
-            `;
-            
-            const [alta] = await sequelize.query(query, {
-                replacements: [id, id],
-                type: QueryTypes.SELECT
+            const alta = await Alta.findByPk(id, {
+                include: [
+                    {
+                        model: Paciente,
+                        attributes: ['nombre', 'apellido', 'fecha_nacimiento', 'genero', 'email', 'telefono']
+                    },
+                    {
+                        model: User,
+                        attributes: ['nombre', 'apellido']
+                    }
+                ]
             });
             
             if (!alta) {
@@ -292,9 +269,42 @@ class AltaController {
                 });
             }
             
+            const total_sesiones = await Cita.count({
+                where: { paciente_id: alta.paciente_id, estado: 'completada' }
+            });
+
+            const ultimasSesiones = await Cita.findAll({
+                where: { paciente_id: alta.paciente_id, estado: 'completada' },
+                attributes: ['fecha'],
+                order: [['fecha', 'DESC']],
+                limit: 10
+            });
+
+            const asignacionReciente = await Asignacion.findOne({
+                where: { paciente_id: alta.paciente_id },
+                order: [['fecha_inicio', 'DESC']],
+                attributes: ['psicologo_id']
+            });
+
+            const psicologo = asignacionReciente
+                ? await User.findByPk(asignacionReciente.psicologo_id, { attributes: ['nombre', 'apellido'] })
+                : null;
+
             res.json({
                 success: true,
-                data: alta
+                data: {
+                    ...alta.toJSON(),
+                    paciente_nombre: alta.Paciente?.nombre,
+                    paciente_apellido: alta.Paciente?.apellido,
+                    paciente_email: alta.Paciente?.email,
+                    paciente_telefono: alta.Paciente?.telefono,
+                    usuario_nombre: alta.User?.nombre,
+                    usuario_apellido: alta.User?.apellido,
+                    psicologo_nombre: psicologo?.nombre || null,
+                    psicologo_apellido: psicologo?.apellido || null,
+                    total_sesiones,
+                    ultimas_sesiones: ultimasSesiones.map(s => s.fecha).join(', ')
+                }
             });
             
         } catch (error) {
@@ -310,65 +320,32 @@ class AltaController {
         try {
             const { fecha_inicio, fecha_fin } = req.query;
             
-            let query = `
-                SELECT 
-                    tipo_alta,
-                    COUNT(*) as total,
-                    MONTH(fecha_alta) as mes,
-                    YEAR(fecha_alta) as anio,
-                    AVG(sesiones_totales) as promedio_sesiones,
-                    SUM(CASE WHEN seguimiento_recomendado = TRUE THEN 1 ELSE 0 END) as seguimientos_recomendados
-                FROM altas
-                WHERE 1=1
-            `;
-            
-            let replacements = [];
-            
-            if (fecha_inicio) {
-                query += ` AND fecha_alta >= ?`;
-                replacements.push(fecha_inicio);
-            }
-            
-            if (fecha_fin) {
-                query += ` AND fecha_alta <= ?`;
-                replacements.push(fecha_fin);
-            }
-            
-            query += ` GROUP BY tipo_alta, YEAR(fecha_alta), MONTH(fecha_alta)
-                    ORDER BY anio DESC, mes DESC, total DESC`;
-            
-            const estadisticas = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
+            const whereClause = {};
+            if (fecha_inicio) whereClause.fecha_alta = { ...(whereClause.fecha_alta || {}), [Op.gte]: fecha_inicio };
+            if (fecha_fin) whereClause.fecha_alta = { ...(whereClause.fecha_alta || {}), [Op.lte]: fecha_fin };
+
+            const estadisticas = await Alta.findAll({
+                where: whereClause,
+                attributes: [
+                    'tipo_alta',
+                    [fn('COUNT', col('id')), 'total'],
+                    [fn('MONTH', col('fecha_alta')), 'mes'],
+                    [fn('YEAR', col('fecha_alta')), 'anio'],
+                    [fn('AVG', col('sesiones_totales')), 'promedio_sesiones'],
+                    [fn('SUM', literal("CASE WHEN seguimiento_recomendado = TRUE THEN 1 ELSE 0 END")), 'seguimientos_recomendados']
+                ],
+                group: ['tipo_alta', fn('YEAR', col('fecha_alta')), fn('MONTH', col('fecha_alta'))],
+                order: [[literal('anio'), 'DESC'], [literal('mes'), 'DESC'], [literal('total'), 'DESC']]
             });
-            
-            // Totales generales - AQUÍ ESTABA EL ERROR PRINCIPAL
-            // Crear la query para totales de forma dinámica
-            let totalesQuery = `
-                SELECT 
-                    COUNT(*) as total_altas,
-                    AVG(sesiones_totales) as promedio_sesiones_global,
-                    MIN(fecha_alta) as primera_alta,
-                    MAX(fecha_alta) as ultima_alta
-                FROM altas
-                WHERE 1=1
-            `;
-            
-            let totalesReplacements = [];
-            
-            if (fecha_inicio) {
-                totalesQuery += ` AND fecha_alta >= ?`;
-                totalesReplacements.push(fecha_inicio);
-            }
-            
-            if (fecha_fin) {
-                totalesQuery += ` AND fecha_alta <= ?`;
-                totalesReplacements.push(fecha_fin);
-            }
-            
-            const [totales] = await sequelize.query(totalesQuery, {
-                replacements: totalesReplacements,
-                type: QueryTypes.SELECT
+
+            const totales = await Alta.findOne({
+                where: whereClause,
+                attributes: [
+                    [fn('COUNT', col('id')), 'total_altas'],
+                    [fn('AVG', col('sesiones_totales')), 'promedio_sesiones_global'],
+                    [fn('MIN', col('fecha_alta')), 'primera_alta'],
+                    [fn('MAX', col('fecha_alta')), 'ultima_alta']
+                ]
             });
             
             res.json({
@@ -394,40 +371,31 @@ class AltaController {
         
         if (usuarioRol === 'coordinador') return true;
         
-        if (usuarioRol === 'psicologo') {
-            const [asignacion] = await sequelize.query(`
-                SELECT 1 FROM asignaciones 
-                WHERE paciente_id = ? 
-                AND psicologo_id = ?
-                AND estado = 'activa'
-            `, {
-                replacements: [pacienteId, usuarioId],
-                type: QueryTypes.SELECT
+        if (usuarioRol === 'terapeuta') {
+            const asignacion = await Asignacion.findOne({
+                where: { paciente_id: pacienteId, psicologo_id: usuarioId, estado: 'activa' },
+                attributes: ['id']
             });
-            
-            return !!asignacion;
+
+            return Boolean(asignacion);
         }
         
         return false;
     }
     
     static async obtenerRolUsuario(usuarioId) {
-        const [usuario] = await sequelize.query(
-            'SELECT rol FROM users WHERE id = ?',
-            { replacements: [usuarioId], type: QueryTypes.SELECT }
-        );
-        
+        const usuario = await User.findByPk(usuarioId, { attributes: ['rol'] });
         return usuario?.rol;
     }
 
-    // Nuevo método: Psicólogo propone un paciente para alta
+    // Nuevo método: Terapeuta propone un paciente para alta
     static async proponerAlta(req, res) {
         try {
             const paciente_id = req.params.paciente_id; // Leer del parámetro de URL
             const { evaluacion_final, recomendaciones } = req.body;
             const psicologo_id = req.user.id;
 
-            console.log(`📋 Propuesta de alta - Paciente ID: ${paciente_id}, Psicólogo ID: ${psicologo_id}`);
+            console.log(`📋 Propuesta de alta - Paciente ID: ${paciente_id}, Terapeuta ID: ${psicologo_id}`);
 
             // Verificar que el paciente existe y está activo
             const paciente = await Paciente.findByPk(paciente_id);
@@ -438,7 +406,7 @@ class AltaController {
                 });
             }
 
-            // Verificar que el psicólogo tiene asignado este paciente
+            // Verificar que el terapeuta tiene asignado este paciente
             const asignacion = await Asignacion.findOne({
                 where: { paciente_id, psicologo_id, estado: 'activa' }
             });
@@ -463,15 +431,8 @@ class AltaController {
             }
 
             // Obtener estadísticas del paciente
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    COUNT(CASE WHEN estado = 'completada' THEN 1 END) as sesiones_completadas
-                FROM citas 
-                WHERE paciente_id = ?
-                AND estado = 'completada'
-            `, {
-                replacements: [paciente_id],
-                type: QueryTypes.SELECT
+            const sesiones_completadas = await Cita.count({
+                where: { paciente_id, estado: 'completada' }
             });
 
             // Crear propuesta de alta
@@ -484,19 +445,25 @@ class AltaController {
                 fecha_propuesta: new Date().toISOString().split('T')[0],
                 evaluacion_final: evaluacion_final || null,
                 recomendaciones: recomendaciones || null,
-                sesiones_totales: estadisticas?.sesiones_completadas || 0
+                sesiones_totales: sesiones_completadas || 0
             });
 
             // Crear notificación para coordinador
-            await sequelize.query(`
-                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                SELECT u.id, 'alerta_sistema', 
-                       'Nueva propuesta de alta',
-                       CONCAT('${paciente.nombre} ${paciente.apellido} ha sido propuesto para alta por su psicólogo'),
-                       NOW()
-                FROM users u
-                WHERE u.rol = 'coordinador' AND u.activo = TRUE
-            `);
+            const coordinadores = await User.findAll({
+                where: { rol: 'coordinador', activo: true },
+                attributes: ['id']
+            });
+
+            if (coordinadores.length > 0) {
+                await Notificacion.bulkCreate(
+                    coordinadores.map((u) => ({
+                        usuario_id: u.id,
+                        tipo: 'alerta_sistema',
+                        titulo: 'Nueva propuesta de alta',
+                        mensaje: `${paciente.nombre} ${paciente.apellido} ha sido propuesto para alta por su psicólogo`
+                    }))
+                );
+            }
 
             res.json({
                 success: true,
@@ -588,39 +555,27 @@ class AltaController {
                     });
 
                     // 5. Notificar a psicólogo y becario
-                    const [profesionales] = await sequelize.query(`
-                        SELECT DISTINCT 
-                            a.psicologo_id,
-                            a.becario_id
-                        FROM asignaciones a
-                        WHERE a.paciente_id = ?
-                        LIMIT 1
-                    `, {
-                        replacements: [propuesta.paciente_id],
-                        type: QueryTypes.SELECT,
+                    const asignacionReciente = await Asignacion.findOne({
+                        where: { paciente_id: propuesta.paciente_id },
+                        attributes: ['psicologo_id', 'becario_id'],
+                        order: [['fecha_inicio', 'DESC']],
                         transaction
                     });
 
-                    if (profesionales) {
+                    if (asignacionReciente) {
                         const notificaciones = [];
                         const titulo = 'Paciente dado de alta';
                         const mensaje = `La propuesta de alta para ${paciente.nombre} ${paciente.apellido} ha sido aprobada.`;
 
-                        if (profesionales.psicologo_id) {
-                            notificaciones.push([profesionales.psicologo_id, 'alerta_sistema', titulo, mensaje]);
+                        if (asignacionReciente.psicologo_id) {
+                            notificaciones.push({ usuario_id: asignacionReciente.psicologo_id, tipo: 'alerta_sistema', titulo, mensaje });
                         }
-                        if (profesionales.becario_id) {
-                            notificaciones.push([profesionales.becario_id, 'alerta_sistema', titulo, mensaje]);
+                        if (asignacionReciente.becario_id) {
+                            notificaciones.push({ usuario_id: asignacionReciente.becario_id, tipo: 'alerta_sistema', titulo, mensaje });
                         }
 
-                        for (const [usuarioId, tipo, tit, mens] of notificaciones) {
-                            await sequelize.query(`
-                                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                                VALUES (?, ?, ?, ?, NOW())
-                            `, {
-                                replacements: [usuarioId, tipo, tit, mens],
-                                transaction
-                            });
+                        if (notificaciones.length > 0) {
+                            await Notificacion.bulkCreate(notificaciones, { transaction });
                         }
                     }
 
@@ -645,13 +600,11 @@ class AltaController {
                 });
 
                 // Notificar a psicólogo
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'alerta_sistema', 'Propuesta de alta rechazada',
-                            CONCAT('Tu propuesta de alta para ${paciente.nombre} ${paciente.apellido} ha sido rechazada. Motivo: ${motivo_rechazo || 'Sin especificar'}'),
-                            NOW())
-                `, {
-                    replacements: [propuesta.psicologo_id]
+                await Notificacion.create({
+                    usuario_id: propuesta.psicologo_id,
+                    tipo: 'alerta_sistema',
+                    titulo: 'Propuesta de alta rechazada',
+                    mensaje: `Tu propuesta de alta para ${paciente.nombre} ${paciente.apellido} ha sido rechazada. Motivo: ${motivo_rechazo || 'Sin especificar'}`
                 });
 
                 res.json({

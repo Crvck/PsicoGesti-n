@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Login from './components/Auth/Login';
+import PreRegistro from './components/Auth/PreRegistro'; // <--- Importación agregada
 import RoleRouter from './components/Auth/RoleRouter';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 
@@ -10,19 +11,24 @@ import ConfirmModal from './components/Common/ConfirmModal';
 import NotificationModal from './components/Common/NotificationModal';
 
 // Páginas para Becarios
-import BecarioDashboard from './pages/becario/DashboardPage';
-import BecarioCitas from './pages/becario/CitasPage';
-import BecarioPacientes from './pages/becario/PacientesPage';
-import BecarioNotificaciones from './pages/becario/NotificacionesPage';
-import BecarioObservaciones from './pages/becario/ObservacionesPage';
+// Páginas para Coterapeutas (antes Becario)
+import CoterapeutaDashboard from './pages/caterapeuta/DashboardPage';
+import CoterapeutaCitas from './pages/caterapeuta/CitasPage';
+import CoterapeutaPacientes from './pages/caterapeuta/PacientesPage';
+import CoterapeutaNotificaciones from './pages/caterapeuta/NotificacionesPage';
+import CoterapeutaObservaciones from './pages/caterapeuta/ObservacionesPage';
 
-// Páginas para Psicólogos
-import PsicologoDashboard from './pages/psicologo/DashboardPage';
-import PsicologoPacientes from './pages/psicologo/PacientesPage';
-import PsicologoCitas from './pages/psicologo/CitasPage';
-import PsicologoExpedientes from './pages/psicologo/ExpedientesPage';
-import PsicologoSesiones from './pages/psicologo/SesionesPage';
-import PsicologoSupervision from './pages/psicologo/SupervisionPage';
+// Páginas para Terapeutas (antes Psicólogo)
+import TerapeutaDashboard from './pages/terapeuta/DashboardPage';
+import TerapeutaPacientes from './pages/terapeuta/PacientesPage';
+import TerapeutaCitas from './pages/terapeuta/CitasPage';
+import TerapeutaExpedientes from './pages/terapeuta/ExpedientesPage';
+import TerapeutaSesiones from './pages/terapeuta/SesionesPage';
+import TerapeutaSupervision from './pages/terapeuta/SupervisionPage';
+
+// Páginas para Psicopedagógico
+import PsicopedagogicoDashboard from './pages/psicopedagogico/DashboardPage';
+import PsicopedagogicoPacientes from './pages/psicopedagogico/PacientesPage';
 
 // Páginas para Coordinadores
 import CoordinadorDashboard from './pages/coordinador/DashboardPage';
@@ -43,26 +49,28 @@ function App() {
         <NotificationModal />
         
         <Routes>
+          {/* Rutas Públicas */}
           <Route path="/login" element={<Login />} />
+          <Route path="/preregistro" element={<PreRegistro />} /> {/* <--- Ruta agregada */}
           
-          {/* Rutas de Becario */}
+          {/* Rutas Protegidas por Rol */}
           <Route path="/" element={<RoleRouter />}>
-            <Route index element={<BecarioDashboard />} />
+            <Route index element={<CoterapeutaDashboard />} />
             
-            {/* Becario */}
-            <Route path="becario/dashboard" element={<BecarioDashboard />} />
-            <Route path="becario/citas" element={<BecarioCitas />} />
-            <Route path="becario/pacientes" element={<BecarioPacientes />} />
-            <Route path="becario/notificaciones" element={<BecarioNotificaciones />} />
-            <Route path="becario/observaciones" element={<BecarioObservaciones />} />
-            
-            {/* Psicólogo */}
-            <Route path="psicologo/dashboard" element={<PsicologoDashboard />} />
-            <Route path="psicologo/pacientes" element={<PsicologoPacientes />} />
-            <Route path="psicologo/citas" element={<PsicologoCitas />} />
-            <Route path="psicologo/expedientes" element={<PsicologoExpedientes />} />
-            <Route path="psicologo/sesiones" element={<PsicologoSesiones />} />
-            <Route path="psicologo/supervision" element={<PsicologoSupervision />} />
+            {/* Coterapeuta */}
+            <Route path="coterapeuta/dashboard" element={<CoterapeutaDashboard />} />
+            <Route path="coterapeuta/citas" element={<CoterapeutaCitas />} />
+            <Route path="coterapeuta/pacientes" element={<CoterapeutaPacientes />} />
+            <Route path="coterapeuta/notificaciones" element={<CoterapeutaNotificaciones />} />
+            <Route path="coterapeuta/observaciones" element={<CoterapeutaObservaciones />} />
+
+            {/* Terapeuta */}
+            <Route path="terapeuta/dashboard" element={<TerapeutaDashboard />} />
+            <Route path="terapeuta/pacientes" element={<TerapeutaPacientes />} />
+            <Route path="terapeuta/citas" element={<TerapeutaCitas />} />
+            <Route path="terapeuta/expedientes" element={<TerapeutaExpedientes />} />
+            <Route path="terapeuta/sesiones" element={<TerapeutaSesiones />} />
+            <Route path="terapeuta/supervision" element={<TerapeutaSupervision />} />
             
             {/* Coordinador */}
             <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
@@ -73,6 +81,10 @@ function App() {
             <Route path="coordinador/reportes" element={<CoordinadorReportes />} />
             <Route path="coordinador/altas" element={<CoordinadorAltas />} />
             <Route path="coordinador/configuracion" element={<CoordinadorConfiguracion />} />
+
+            {/* Psicopedagógico */}
+            <Route path="psicopedagogico/dashboard" element={<PsicopedagogicoDashboard />} />
+            <Route path="psicopedagogico/pacientes" element={<PsicopedagogicoPacientes />} />
           </Route>
           
           {/* Redirección por defecto */}

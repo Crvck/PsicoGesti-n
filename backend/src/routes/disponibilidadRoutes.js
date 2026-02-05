@@ -8,13 +8,13 @@ const { requireRole } = require('../middlewares/roleMiddleware');
 router.use(verifyToken);
 
 // Gestión de disponibilidad personal
-router.post('/', requireRole(['psicologo', 'becario']), DisponibilidadController.crearDisponibilidad);
-router.get('/mi-disponibilidad', requireRole(['psicologo', 'becario']), DisponibilidadController.obtenerMiDisponibilidad);
-router.put('/:id', requireRole(['psicologo', 'becario']), DisponibilidadController.actualizarDisponibilidad);
-router.put('/:id/desactivar', requireRole(['psicologo', 'becario']), DisponibilidadController.desactivarDisponibilidad);
+router.post('/', requireRole(['terapeuta', 'coterapeuta']), DisponibilidadController.crearDisponibilidad);
+router.get('/mi-disponibilidad', requireRole(['terapeuta', 'coterapeuta']), DisponibilidadController.obtenerMiDisponibilidad);
+router.put('/:id', requireRole(['terapeuta', 'coterapeuta']), DisponibilidadController.actualizarDisponibilidad);
+router.put('/:id/desactivar', requireRole(['terapeuta', 'coterapeuta']), DisponibilidadController.desactivarDisponibilidad);
 
 // Consulta de disponibilidad
-router.get('/usuario/:usuario_id', requireRole(['coordinador', 'psicologo']), DisponibilidadController.obtenerDisponibilidadUsuario);
-router.get('/horarios-disponibles', requireRole(['coordinador', 'psicologo', 'becario']), DisponibilidadController.obtenerHorariosDisponibles);
+router.get('/usuario/:usuario_id', requireRole(['coordinador', 'terapeuta']), DisponibilidadController.obtenerDisponibilidadUsuario);
+router.get('/horarios-disponibles', requireRole(['coordinador', 'terapeuta', 'coterapeuta']), DisponibilidadController.obtenerHorariosDisponibles);
 
 module.exports = router;

@@ -1,7 +1,9 @@
+const { Op } = require('sequelize');
 const Disponibilidad = require('../models/disponibilidadModel');
 const User = require('../models/userModel');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
+const Cita = require('../models/citaModel');
+const Asignacion = require('../models/asignacionModel');
+const LogSistema = require('../models/logSistemaModel');
 
 class DisponibilidadController {
     
@@ -42,17 +44,17 @@ class DisponibilidadController {
                     usuario_id: usuarioId,
                     dia_semana,
                     activo: true,
-                    [sequelize.Op.or]: [
+                    [Op.or]: [
                         {
-                            hora_inicio: { [sequelize.Op.between]: [hora_inicio, hora_fin] }
+                            hora_inicio: { [Op.between]: [hora_inicio, hora_fin] }
                         },
                         {
-                            hora_fin: { [sequelize.Op.between]: [hora_inicio, hora_fin] }
+                            hora_fin: { [Op.between]: [hora_inicio, hora_fin] }
                         },
                         {
-                            [sequelize.Op.and]: [
-                                { hora_inicio: { [sequelize.Op.lte]: hora_inicio } },
-                                { hora_fin: { [sequelize.Op.gte]: hora_fin } }
+                            [Op.and]: [
+                                { hora_inicio: { [Op.lte]: hora_inicio } },
+                                { hora_fin: { [Op.gte]: hora_fin } }
                             ]
                         }
                     ]
@@ -82,11 +84,12 @@ class DisponibilidadController {
             });
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'creacion', 'disponibilidad', 'Crear disponibilidad', ?, NOW())
-            `, {
-                replacements: [usuarioId, `Disponibilidad creada: ${dia_semana} ${hora_inicio}-${hora_fin}`]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'creacion',
+                modulo: 'disponibilidad',
+                accion: 'Crear disponibilidad',
+                descripcion: `Disponibilidad creada: ${dia_semana} ${hora_inicio}-${hora_fin}`
             });
             
             res.json({
@@ -113,9 +116,9 @@ class DisponibilidadController {
                 where: {
                     usuario_id: usuarioId,
                     activo: true,
-                    [sequelize.Op.or]: [
+                    [Op.or]: [
                         { fecha_fin_vigencia: null },
-                        { fecha_fin_vigencia: { [sequelize.Op.gte]: new Date().toISOString().split('T')[0] } }
+                        { fecha_fin_vigencia: { [Op.gte]: new Date().toISOString().split('T')[0] } }
                     ]
                 },
                 order: [
@@ -125,20 +128,32 @@ class DisponibilidadController {
             });
             
             // Obtener citas programadas para los próximos 7 días
-            const [citasProgramadas] = await sequelize.query(`
-                SELECT 
-                    fecha,
-                    COUNT(*) as citas_count
-                FROM citas
-                WHERE (psicologo_id = ? OR becario_id = ?)
-                AND fecha BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-                AND estado IN ('programada', 'confirmada')
-                GROUP BY fecha
-                ORDER BY fecha
-            `, {
-                replacements: [usuarioId, usuarioId],
-                type: QueryTypes.SELECT
+            const hoy = new Date();
+            const fechaInicio = hoy.toISOString().split('T')[0];
+            const fechaFinObj = new Date(hoy);
+            fechaFinObj.setDate(fechaFinObj.getDate() + 7);
+            const fechaFin = fechaFinObj.toISOString().split('T')[0];
+
+            const citasProgramadasList = await Cita.findAll({
+                where: {
+                    [Op.or]: [{ psicologo_id: usuarioId }, { becario_id: usuarioId }],
+                    fecha: { [Op.between]: [fechaInicio, fechaFin] },
+                    estado: { [Op.in]: ['programada', 'confirmada'] }
+                },
+                attributes: ['fecha']
             });
+
+            const citasMap = citasProgramadasList.reduce((acc, cita) => {
+                const fecha = cita.fecha instanceof Date
+                    ? cita.fecha.toISOString().split('T')[0]
+                    : cita.fecha;
+                acc[fecha] = (acc[fecha] || 0) + 1;
+                return acc;
+            }, {});
+
+            const citasProgramadas = Object.entries(citasMap)
+                .map(([fecha, citas_count]) => ({ fecha, citas_count }))
+                .sort((a, b) => a.fecha.localeCompare(b.fecha));
             
             res.json({
                 success: true,
@@ -246,19 +261,19 @@ class DisponibilidadController {
                     where: {
                         usuario_id: disponibilidad.usuario_id,
                         dia_semana: updates.dia_semana || disponibilidad.dia_semana,
-                        id: { [sequelize.Op.ne]: id },
+                        id: { [Op.ne]: id },
                         activo: true,
-                        [sequelize.Op.or]: [
+                        [Op.or]: [
                             {
-                                hora_inicio: { [sequelize.Op.between]: [hora_inicio, hora_fin] }
+                                hora_inicio: { [Op.between]: [hora_inicio, hora_fin] }
                             },
                             {
-                                hora_fin: { [sequelize.Op.between]: [hora_inicio, hora_fin] }
+                                hora_fin: { [Op.between]: [hora_inicio, hora_fin] }
                             },
                             {
-                                [sequelize.Op.and]: [
-                                    { hora_inicio: { [sequelize.Op.lte]: hora_inicio } },
-                                    { hora_fin: { [sequelize.Op.gte]: hora_fin } }
+                                [Op.and]: [
+                                    { hora_inicio: { [Op.lte]: hora_inicio } },
+                                    { hora_fin: { [Op.gte]: hora_fin } }
                                 ]
                             }
                         ]
@@ -279,16 +294,14 @@ class DisponibilidadController {
             await disponibilidad.update(updates);
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'disponibilidad', 'Actualizar disponibilidad', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Disponibilidad actualizada ID: ${id}`,
-                    JSON.stringify(datosAntes),
-                    JSON.stringify(disponibilidad.toJSON())
-                ]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'disponibilidad',
+                accion: 'Actualizar disponibilidad',
+                descripcion: `Disponibilidad actualizada ID: ${id}`,
+                datos_antes: datosAntes,
+                datos_despues: disponibilidad.toJSON()
             });
             
             res.json({
@@ -329,25 +342,27 @@ class DisponibilidadController {
             }
             
             // Verificar que no haya citas futuras en este horario
-            const [citasFuturas] = await sequelize.query(`
-                SELECT COUNT(*) as count FROM citas
-                WHERE (psicologo_id = ? OR becario_id = ?)
-                AND fecha > CURDATE()
-                AND estado IN ('programada', 'confirmada')
-                AND DAYOFWEEK(fecha) = ?
-                AND TIME(hora) BETWEEN ? AND ?
-            `, {
-                replacements: [
-                    disponibilidad.usuario_id,
-                    disponibilidad.usuario_id,
-                    this.diaSemanaANumero(disponibilidad.dia_semana),
-                    disponibilidad.hora_inicio,
-                    disponibilidad.hora_fin
-                ],
-                type: QueryTypes.SELECT
+            const hoy = new Date();
+            const fechaHoy = hoy.toISOString().split('T')[0];
+            const citasFuturasList = await Cita.findAll({
+                where: {
+                    [Op.or]: [{ psicologo_id: disponibilidad.usuario_id }, { becario_id: disponibilidad.usuario_id }],
+                    fecha: { [Op.gt]: fechaHoy },
+                    estado: { [Op.in]: ['programada', 'confirmada'] }
+                },
+                attributes: ['fecha', 'hora']
             });
+
+            const citasFuturasCount = citasFuturasList.filter(cita => {
+                const fecha = cita.fecha instanceof Date ? cita.fecha : new Date(cita.fecha);
+                const diaSemana = this.numeroADiaSemana(fecha.getDay());
+                if (diaSemana !== disponibilidad.dia_semana) return false;
+                const hora = String(cita.hora).substring(0, 5);
+                return this.compararHoras(hora, disponibilidad.hora_inicio) >= 0
+                    && this.compararHoras(hora, disponibilidad.hora_fin) <= 0;
+            }).length;
             
-            if (citasFuturas.count > 0) {
+            if (citasFuturasCount > 0) {
                 return res.status(400).json({
                     success: false,
                     message: 'No se puede desactivar la disponibilidad porque hay citas programadas en este horario'
@@ -357,11 +372,12 @@ class DisponibilidadController {
             await disponibilidad.update({ activo: false });
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'modificacion', 'disponibilidad', 'Desactivar disponibilidad', ?, NOW())
-            `, {
-                replacements: [usuarioId, `Disponibilidad desactivada ID: ${id}`]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'disponibilidad',
+                accion: 'Desactivar disponibilidad',
+                descripcion: `Disponibilidad desactivada ID: ${id}`
             });
             
             res.json({
@@ -394,16 +410,21 @@ class DisponibilidadController {
             const diaSemana = this.numeroADiaSemana(fechaObj.getDay());
             
             // Obtener disponibilidad del usuario para ese día
-            const [disponibilidad] = await sequelize.query(`
-                SELECT * FROM disponibilidades
-                WHERE usuario_id = ?
-                AND dia_semana = ?
-                AND activo = TRUE
-                AND (fecha_fin_vigencia IS NULL OR fecha_fin_vigencia >= ?)
-                AND (fecha_inicio_vigencia <= ?)
-            `, {
-                replacements: [usuario_id, diaSemana, fecha, fecha],
-                type: QueryTypes.SELECT
+            const disponibilidad = await Disponibilidad.findOne({
+                where: {
+                    usuario_id,
+                    dia_semana: diaSemana,
+                    activo: true,
+                    [Op.and]: [
+                        {
+                            [Op.or]: [
+                                { fecha_fin_vigencia: null },
+                                { fecha_fin_vigencia: { [Op.gte]: fecha } }
+                            ]
+                        },
+                        { fecha_inicio_vigencia: { [Op.lte]: fecha } }
+                    ]
+                }
             });
             
             if (!disponibilidad) {
@@ -418,16 +439,14 @@ class DisponibilidadController {
             }
             
             // Obtener citas ya programadas para esa fecha
-            const [citasProgramadas] = await sequelize.query(`
-                SELECT hora, duracion_minutos
-                FROM citas
-                WHERE (psicologo_id = ? OR becario_id = ?)
-                AND fecha = ?
-                AND estado IN ('programada', 'confirmada')
-                ORDER BY hora
-            `, {
-                replacements: [usuario_id, usuario_id, fecha],
-                type: QueryTypes.SELECT
+            const citasProgramadas = await Cita.findAll({
+                where: {
+                    [Op.or]: [{ psicologo_id: usuario_id }, { becario_id: usuario_id }],
+                    fecha,
+                    estado: { [Op.in]: ['programada', 'confirmada'] }
+                },
+                attributes: ['hora', 'duracion_minutos'],
+                order: [['hora', 'ASC']]
             });
             
             // Generar horarios disponibles
@@ -500,17 +519,15 @@ class DisponibilidadController {
         
         if (solicitanteRol === 'psicologo') {
             // Verificar si es supervisor del usuario
-            const [relacion] = await sequelize.query(`
-                SELECT 1 FROM asignaciones 
-                WHERE becario_id = ? 
-                AND psicologo_id = ?
-                AND estado = 'activa'
-                LIMIT 1
-            `, {
-                replacements: [usuarioId, solicitanteId],
-                type: QueryTypes.SELECT
+            const relacion = await Asignacion.findOne({
+                where: {
+                    becario_id: usuarioId,
+                    psicologo_id: solicitanteId,
+                    estado: 'activa'
+                },
+                attributes: ['id']
             });
-            
+
             return !!relacion;
         }
         

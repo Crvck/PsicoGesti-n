@@ -10,12 +10,12 @@ router.use(verifyToken);
 // Rutas para coordinadores
 router.post('/', requireRole(['coordinador']), AsignacionController.crearAsignacion);
 router.get('/', requireRole(['coordinador']), AsignacionController.obtenerAsignacionesActivas);
-router.put('/:id/finalizar', requireRole(['coordinador', 'psicologo']), AsignacionController.finalizarAsignacion);
-router.get('/paciente/:paciente_id/historial', requireRole(['coordinador', 'psicologo']), AsignacionController.obtenerHistorialAsignaciones);
-router.post('/becarios/:id/horas', requireRole(['coordinador', 'psicologo']), AsignacionController.registrarHorasBecario);
+router.put('/:id/finalizar', requireRole(['coordinador', 'terapeuta']), AsignacionController.finalizarAsignacion);
+router.get('/paciente/:paciente_id/historial', requireRole(['coordinador', 'terapeuta']), AsignacionController.obtenerHistorialAsignaciones);
+router.post('/becarios/:id/horas', requireRole(['coordinador', 'terapeuta']), AsignacionController.registrarHorasBecario);
 
-// Rutas para psicólogos y becarios
-router.get('/mis-pacientes', requireRole(['psicologo', 'becario']), AsignacionController.obtenerMisPacientes);
-router.get('/mis-becarios', requireRole(['psicologo']), AsignacionController.obtenerMisBecarios);
+// Rutas para terapeutas y coterapeutas
+router.get('/mis-pacientes', requireRole(['terapeuta', 'coterapeuta']), AsignacionController.obtenerMisPacientes);
+router.get('/mis-becarios', requireRole(['terapeuta']), AsignacionController.obtenerMisBecarios);
 
 module.exports = router;

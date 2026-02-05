@@ -10,7 +10,7 @@ async function ejecutarMigracion() {
     console.log(`DB_USER: ${process.env.DB_USER}`);
     console.log(`DB_NAME: ${process.env.DB_NAME}`);
     
-    const migracionPath = path.join(__dirname, 'migrations', '20260119_add_estado_propuesta_to_altas.sql');
+    const migracionPath = path.join(__dirname, 'migrations', '20260203_create_solicitudes_ingreso.sql');
     const sql = fs.readFileSync(migracionPath, 'utf8');
     
     // Eliminar comentarios (líneas que comienzan con --)

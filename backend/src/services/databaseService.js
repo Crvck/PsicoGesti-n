@@ -1,4 +1,5 @@
 const sequelize = require('../config/db');
+const { randomUUID } = require('crypto');
 const { QueryTypes } = require('sequelize');
 
 class DatabaseService {
@@ -188,98 +189,140 @@ class DatabaseService {
             // 2. Verificar que el becario existe si se especificó
             if (datosCita.becario_id) {
                 const [becario] = await sequelize.query(`
-                    SELECT id FROM users WHERE id = :becario_id AND rol = 'becario'
+                    SELECT id FROM users WHERE id = :becario_id AND rol IN ('becario', 'coterapeuta')
                 `, {
                     replacements: { becario_id: datosCita.becario_id },
                     transaction
                 });
                 
                 if (!becario || becario.length === 0) {
-                    throw new Error('El becario especificado no existe');
+                    throw new Error('El coterapeuta/becario especificado no existe');
                 }
             }
             
-            // 3. Verificar que no haya conflicto de horario
-            const [citasConflicto] = await sequelize.query(`
-                SELECT id FROM citas 
-                WHERE fecha = :fecha 
-                AND hora = :hora 
-                AND estado IN ('programada', 'confirmada')
-                AND becario_id = :becario_id
-            `, {
-                replacements: {
-                    fecha: datosCita.fecha,
-                    hora: datosCita.hora + ':00', // Asegurar formato HH:MM:SS
-                    becario_id: datosCita.becario_id || null
-                },
-                transaction
+            const totalSesiones = Math.max(1, Number(datosCita.total_sesiones || 1));
+            const repetirSemanal = totalSesiones > 1;
+            const serieId = totalSesiones > 1 ? (datosCita.serie_id || randomUUID()) : null;
+            const horaSql = datosCita.hora && String(datosCita.hora).length === 5 ? `${datosCita.hora}:00` : datosCita.hora;
+
+            const parseFechaUtc = (fechaStr) => {
+                const [y, m, d] = String(fechaStr || '').split('-').map(Number);
+                return new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+            };
+
+            const formatFechaUtc = (fechaDate) => fechaDate.toISOString().split('T')[0];
+
+            const baseFecha = parseFechaUtc(datosCita.fecha);
+            const fechas = Array.from({ length: totalSesiones }, (_, i) => {
+                const fecha = new Date(baseFecha);
+                fecha.setUTCDate(baseFecha.getUTCDate() + (repetirSemanal ? i * 7 : i));
+                return formatFechaUtc(fecha);
             });
-            
-            if (citasConflicto && citasConflicto.length > 0) {
-                throw new Error('Ya existe una cita programada para este horario con este becario');
+
+            const citasCreadas = [];
+
+            for (let i = 0; i < fechas.length; i += 1) {
+                const fechaSesion = fechas[i];
+
+                // 3. Verificar que no haya conflicto de horario
+                const [citasConflicto] = await sequelize.query(`
+                    SELECT id FROM citas 
+                    WHERE fecha = :fecha 
+                    AND hora = :hora 
+                    AND estado IN ('programada', 'confirmada')
+                    AND (
+                        psicologo_id = :psicologo_id
+                        OR (:becario_id IS NOT NULL AND becario_id = :becario_id)
+                    )
+                `, {
+                    replacements: {
+                        fecha: fechaSesion,
+                        hora: horaSql,
+                        psicologo_id: datosCita.psicologo_id || datosCita.usuarioId,
+                        becario_id: datosCita.becario_id || null
+                    },
+                    transaction
+                });
+
+                if (citasConflicto && citasConflicto.length > 0) {
+                    throw new Error(`Ya existe una cita programada para este horario con este terapeuta/coterapeuta (${fechaSesion} ${datosCita.hora})`);
+                }
+
+                // 4. Crear la cita
+                await sequelize.query(`
+                    INSERT INTO citas (
+                        paciente_id,
+                        psicologo_id,
+                        becario_id,
+                        fecha,
+                        hora,
+                        duracion,
+                        tipo_consulta,
+                        estado,
+                        notas,
+                        color,
+                        total_sesiones,
+                        numero_sesion,
+                        serie_id,
+                        created_at
+                    ) VALUES (
+                        :paciente_id,
+                        :psicologo_id,
+                        :becario_id,
+                        :fecha,
+                        :hora,
+                        :duracion,
+                        :tipo_consulta,
+                        :estado,
+                        :notas,
+                        :color,
+                        :total_sesiones,
+                        :numero_sesion,
+                        :serie_id,
+                        NOW()
+                    )
+                `, {
+                    replacements: {
+                        paciente_id: paciente.id,
+                        psicologo_id: datosCita.psicologo_id || datosCita.usuarioId,
+                        becario_id: datosCita.becario_id || null,
+                        fecha: fechaSesion,
+                        hora: datosCita.hora,
+                        duracion: datosCita.duracion || 50,
+                        tipo_consulta: datosCita.tipo_consulta,
+                        estado: 'programada',
+                        notas: datosCita.notas || null,
+                        color: datosCita.color || null,
+                        total_sesiones: totalSesiones,
+                        numero_sesion: i + 1,
+                        serie_id: serieId
+                    },
+                    transaction
+                });
+
+                const [[citaInsertada]] = await sequelize.query(
+                    'SELECT LAST_INSERT_ID() AS id',
+                    { transaction }
+                );
+
+                // 5. Obtener la cita creada con información del paciente
+                const [citaCreada] = await sequelize.query(`
+                    SELECT 
+                        c.*,
+                        CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+                        p.telefono AS paciente_telefono,
+                        u_bec.nombre AS becario_nombre
+                    FROM citas c
+                    JOIN pacientes p ON c.paciente_id = p.id
+                    LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                    WHERE c.id = :cita_id
+                `, {
+                    replacements: { cita_id: citaInsertada.id },
+                    transaction
+                });
+
+                citasCreadas.push(citaCreada[0]);
             }
-            
-            // 4. Crear la cita
-            await sequelize.query(`
-                INSERT INTO citas (
-                    paciente_id,
-                    psicologo_id,
-                    becario_id,
-                    fecha,
-                    hora,
-                    duracion,
-                    tipo_consulta,
-                    estado,
-                    notas,
-                    created_at
-                ) VALUES (
-                    :paciente_id,
-                    :psicologo_id,
-                    :becario_id,
-                    :fecha,
-                    :hora,
-                    :duracion,
-                    :tipo_consulta,
-                    :estado,
-                    :notas,
-                    NOW()
-                )
-            `, {
-                replacements: {
-                    paciente_id: paciente.id,
-                    psicologo_id: datosCita.usuarioId,
-                    becario_id: datosCita.becario_id || null,
-                    fecha: datosCita.fecha,
-                    hora: datosCita.hora,
-                    duracion: datosCita.duracion || 50,
-                    tipo_consulta: datosCita.tipo_consulta,
-                    estado: 'programada',
-                    notas: datosCita.notas || null
-                },
-                transaction
-            });
-
-            const [[citaInsertada]] = await sequelize.query(
-                'SELECT LAST_INSERT_ID() AS id',
-                { transaction }
-            );
-
-            
-            // 5. Obtener la cita creada con información del paciente
-            const [citaCreada] = await sequelize.query(`
-                SELECT 
-                    c.*,
-                    CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
-                    p.telefono AS paciente_telefono,
-                    u_bec.nombre AS becario_nombre
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-                WHERE c.id = :cita_id
-            `, {
-                replacements: { cita_id: citaInsertada.id },
-                transaction
-            });
             
             // 6. Registrar en logs
             await sequelize.query(`
@@ -292,7 +335,7 @@ class DatabaseService {
                 replacements: { 
                     usuarioId: datosCita.usuarioId,
                     pacienteId: paciente.id,
-                    descripcion: `Nueva cita creada para ${datosCita.fecha} ${datosCita.hora}` 
+                    descripcion: `Nueva cita creada para ${datosCita.fecha} ${datosCita.hora} (sesiones: ${totalSesiones})` 
                 },
                 transaction
             });
@@ -300,7 +343,7 @@ class DatabaseService {
             await transaction.commit();
             console.log('✅ Cita creada exitosamente');
             
-            return citaCreada[0];
+            return citasCreadas.length === 1 ? citasCreadas[0] : citasCreadas;
             
         } catch (error) {
             await transaction.rollback();
@@ -449,6 +492,29 @@ class DatabaseService {
             
             if (!citaActual) {
                 throw new Error('Cita no encontrada');
+            }
+
+            const estadosQueCuentanSesion = new Set(['confirmada', 'cancelada', 'completada']);
+            const estadoAnterior = citaActual.estado;
+            const estadoNuevo = updates.estado;
+            const debeSumarSesion =
+                estadoNuevo &&
+                estadosQueCuentanSesion.has(estadoNuevo) &&
+                !estadosQueCuentanSesion.has(estadoAnterior);
+
+            if (debeSumarSesion) {
+                const totalSesiones = Number(citaActual.total_sesiones || 1);
+                const numeroSesionActual = Number.isFinite(Number(citaActual.numero_sesion))
+                    ? Number(citaActual.numero_sesion)
+                    : 0;
+                const numeroSesionNuevo = Math.min(
+                    totalSesiones,
+                    Math.max(0, numeroSesionActual + 1)
+                );
+
+                if (numeroSesionNuevo !== numeroSesionActual) {
+                    updates.numero_sesion = numeroSesionNuevo;
+                }
             }
             
             // 2. Construir query de actualización

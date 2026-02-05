@@ -3,9 +3,12 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const { Sequelize } = require('sequelize');
 
+// Verifica primero si las variables se están leyendo (solo para depuración)
+// console.log("User:", process.env.DB_USERNAME); 
+
 const sequelize = new Sequelize(
-    process.env.DB_NAME,
-    process.env.DB_USER,
+    process.env.DB_DATABASE, // CAMBIO 1: De DB_NAME a DB_DATABASE
+    process.env.DB_USERNAME, // CAMBIO 2: De DB_USER a DB_USERNAME (Aquí estaba el error del prefijo)
     process.env.DB_PASSWORD,
     {
         host: process.env.DB_HOST,
@@ -16,7 +19,7 @@ const sequelize = new Sequelize(
         dialectOptions: {
             ssl: {
                 require: true,
-                rejectUnauthorized: false
+                rejectUnauthorized: false // Importante para TiDB Cloud
             }
         },
 

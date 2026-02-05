@@ -85,7 +85,29 @@ class CitaController {
 
     static async crearNuevaCita(req, res) {
         try {
-            const { paciente, fecha, hora, tipo_consulta, duracion, notas, becario_id } = req.body;
+            const { paciente, fecha, hora, tipo_consulta, duracion, notas, becario_id, color, terapeuta_id, coterapeuta_id, total_sesiones } = req.body;
+
+            const normalizarFecha = (valor) => {
+                if (!valor) return valor;
+                if (typeof valor === 'string') {
+                    return valor.split('T')[0];
+                }
+                if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
+                    return valor.toISOString().split('T')[0];
+                }
+                return valor;
+            };
+
+            const normalizarHora = (valor) => {
+                if (!valor) return valor;
+                if (typeof valor === 'string') {
+                    return valor.length >= 5 ? valor.slice(0, 5) : valor;
+                }
+                return valor;
+            };
+
+            const fechaNormalizada = normalizarFecha(fecha);
+            const horaNormalizada = normalizarHora(hora);
 
             // Verificar que el usuario esté autenticado
             if (!req.user || !req.user.id) {
@@ -96,18 +118,21 @@ class CitaController {
             
             console.log('📝 Datos recibidos para nueva cita:', {
                 paciente,
-                fecha,
-                hora,
+                fecha: fechaNormalizada,
+                hora: horaNormalizada,
                 tipo_consulta,
                 duracion,
                 notas,
                 becario_id,
+                terapeuta_id,
+                coterapeuta_id,
+                color,
                 usuarioId,
                 usuarioRol
             });
             
             // Validar campos requeridos
-            if (!paciente || !paciente.nombre || !paciente.apellido || !fecha || !hora) {
+            if (!paciente || !paciente.nombre || !paciente.apellido || !fechaNormalizada || !horaNormalizada) {
                 return res.status(400).json({
                     success: false,
                     message: 'Faltan campos requeridos: paciente (nombre, apellido), fecha y hora'
@@ -115,34 +140,49 @@ class CitaController {
             }
             
             // Si es becario y no se especificó becario_id, asignar al usuario actual
-            let finalBecarioId = becario_id;
+            let finalBecarioId = coterapeuta_id || becario_id;
             if (usuarioRol === 'becario' && !finalBecarioId) {
                 finalBecarioId = usuarioId;
+            }
+
+            const finalPsicologoId = terapeuta_id || (usuarioRol === 'terapeuta' ? usuarioId : null);
+
+            if (!finalPsicologoId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Falta terapeuta_id para asignar la cita'
+                });
             }
             
             // Crear la cita usando DatabaseService
             const nuevaCita = await DatabaseService.crearNuevaCita({
                 paciente,
-                fecha,
-                hora,
+                fecha: fechaNormalizada,
+                hora: horaNormalizada,
                 tipo_consulta: tipo_consulta || 'presencial',
                 duracion: duracion || 50,
                 notas,
+                psicologo_id: finalPsicologoId,
                 becario_id: finalBecarioId,
-                usuarioId
+                color,
+                usuarioId,
+                total_sesiones: total_sesiones ? Number(total_sesiones) : 1
             });
-            
+
+            const createdCount = Array.isArray(nuevaCita) ? nuevaCita.length : 1;
+
             res.json({
                 success: true,
-                message: 'Cita creada exitosamente',
-                data: nuevaCita
+                message: createdCount > 1 ? `Citas creadas exitosamente (${createdCount})` : 'Cita creada exitosamente',
+                data: nuevaCita,
+                count: createdCount
             });
             
         } catch (error) {
             console.error('❌ Error en crearNuevaCita:', error);
             res.status(500).json({
                 success: false,
-                message: 'Error al crear la cita',
+                message: `Error al crear la cita: ${error.message}`,
                 error: error.message
             });
         }
@@ -218,7 +258,7 @@ class CitaController {
             const usuarioId = req.user.id;
             
             // Validar campos que se pueden actualizar
-            const camposPermitidos = ['fecha', 'hora', 'tipo_consulta', 'estado', 'notas', 'motivo_cancelacion', 'psicologo_id', 'becario_id'];
+            const camposPermitidos = ['fecha', 'hora', 'tipo_consulta', 'estado', 'notas', 'motivo_cancelacion', 'psicologo_id', 'becario_id', 'color'];
             const updatesFiltrados = {};
             
             for (const campo of camposPermitidos) {

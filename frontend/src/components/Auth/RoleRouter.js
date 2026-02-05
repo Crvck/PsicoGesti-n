@@ -1,9 +1,10 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import BecarioLayout from '../Layout/BecarioLayout';
-import PsicologoLayout from '../Layout/PsicologoLayout';
+import CoterapeutaLayout from '../Layout/CoterapeutaLayout';
+import TerapeutaLayout from '../Layout/TerapeutaLayout';
 import CoordinadorLayout from '../Layout/CoordinadorLayout';
+import PsicopedagogicoLayout from '../Layout/PsicopedagogicoLayout';
 
 const RoleRouter = ({ children }) => {
   const { user, loading } = useAuth();
@@ -27,12 +28,16 @@ const RoleRouter = ({ children }) => {
   // Verificar si la ruta actual corresponde al rol del usuario
   const path = location.pathname;
   
-  if (user.rol === 'becario' && !path.startsWith('/becario')) {
-    return <Navigate to="/becario/dashboard" replace />;
+  if (user.rol === 'coterapeuta' && !path.startsWith('/coterapeuta')) {
+    return <Navigate to="/coterapeuta/dashboard" replace />;
+  }
+
+  if (user.rol === 'psicopedagogico' && !path.startsWith('/psicopedagogico')) {
+    return <Navigate to="/psicopedagogico/dashboard" replace />;
   }
   
-  if (user.rol === 'psicologo' && !path.startsWith('/psicologo')) {
-    return <Navigate to="/psicologo/dashboard" replace />;
+  if (user.rol === 'terapeuta' && !path.startsWith('/terapeuta')) {
+    return <Navigate to="/terapeuta/dashboard" replace />;
   }
   
   if (user.rol === 'coordinador' && !path.startsWith('/coordinador')) {
@@ -41,10 +46,12 @@ const RoleRouter = ({ children }) => {
 
   // Determinar layout basado en el rol del usuario
   switch (user.rol) {
-    case 'becario':
-      return <BecarioLayout>{children}</BecarioLayout>;
-    case 'psicologo':
-      return <PsicologoLayout>{children}</PsicologoLayout>;
+    case 'coterapeuta':
+      return <CoterapeutaLayout>{children}</CoterapeutaLayout>;
+    case 'psicopedagogico':
+      return <PsicopedagogicoLayout>{children}</PsicopedagogicoLayout>;
+    case 'terapeuta':
+      return <TerapeutaLayout>{children}</TerapeutaLayout>;
     case 'coordinador':
       return <CoordinadorLayout>{children}</CoordinadorLayout>;
     default:

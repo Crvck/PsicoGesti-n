@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
-  FiUserCheck, FiClock, FiRefreshCw
+import {
+  FiUsers, FiCalendar, FiUserCheck, FiClock, FiRefreshCw
 } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
+import { format, startOfWeek, endOfWeek } from 'date-fns';
 import notifications from '../../utils/notifications';
-import confirmations from '../../utils/confirmations';
 
 const PsicologoDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
@@ -16,6 +15,8 @@ const PsicologoDashboard = () => {
   });
   const [citasHoy, setCitasHoy] = useState([]);
   const [becarios, setBecarios] = useState([]);
+  const [citasSemanaList, setCitasSemanaList] = useState([]);
+  const [pacientesAsignados, setPacientesAsignados] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -38,43 +39,79 @@ const PsicologoDashboard = () => {
       };
       const normalizeArray = (j) => Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
 
-      // Pacientes activos
-      const pacRes = await fetch('http://localhost:3000/api/pacientes/activos', { headers });
-      const pacJson = await safeJson(pacRes);
-      const pacientesActivos = normalizeArray(pacJson).length;
+      // Decodificar userId
+      let decodedUserId = null;
+      try {
+        const payload = token?.split('.')[1];
+        const json = payload ? JSON.parse(atob(payload)) : null;
+        decodedUserId = json?.id || json?.userId || null;
+      } catch (_) {
+        decodedUserId = null;
+      }
 
-      // Becarios asignados al psicólogo
-      const becRes = await fetch('http://localhost:3000/api/asignaciones/mis-becarios', { headers });
-      const becJson = await safeJson(becRes);
-      const becLista = normalizeArray(becJson).map(b => ({
-        id: b.id,
-        nombre: `${b.nombre || ''} ${b.apellido || ''}`.trim(),
-        pacientes: b.pacientes_asignados ?? 0,
-        observaciones: b.observaciones_count ?? 0
+      // Agenda semanal del terapeuta
+      const start = startOfWeek(today, { weekStartsOn: 1 });
+      const end = endOfWeek(today, { weekStartsOn: 1 });
+      const fechaInicio = format(start, 'yyyy-MM-dd');
+      const fechaFin = format(end, 'yyyy-MM-dd');
+
+      const agendaQuery = new URLSearchParams({
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
+        psicologo_id: decodedUserId || ''
+      });
+
+      const agendaRes = await fetch(`http://localhost:3000/api/agenda/global?${agendaQuery.toString()}`, { headers });
+      const agendaJson = await safeJson(agendaRes);
+      const citasRaw = Array.isArray(agendaJson) ? agendaJson : (agendaJson.data?.citas || agendaJson.data || []);
+      const citasWeek = citasRaw.map((c) => ({
+        id: c.id,
+        fecha: typeof c.fecha === 'string' ? c.fecha.split('T')[0] : format(new Date(c.fecha), 'yyyy-MM-dd'),
+        hora: typeof c.hora === 'string' ? c.hora.slice(0, 5) : c.hora,
+        tipo: c.tipo_consulta || 'presencial',
+        estado: c.estado,
+        color: c.color || c.cita_color || null,
+        paciente_nombre: c.Paciente ? `${c.Paciente.nombre} ${c.Paciente.apellido}` : (c.paciente_nombre || 'Paciente'),
+        paciente_telefono: c.Paciente?.telefono || c.paciente_telefono || '',
+        paciente_email: c.Paciente?.email || c.paciente_email || '',
+        coterapeuta_nombre: c.Becario ? `${c.Becario.nombre} ${c.Becario.apellido}` : (c.becario_nombre || '')
       }));
-      const becariosAsignados = becLista.length;
-      setBecarios(becLista);
+
+      setCitasSemanaList(citasWeek);
 
       // Citas hoy
-      const citasHoyRes = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers });
-      const citasHoyJson = await safeJson(citasHoyRes);
-      const citasHoyArr = normalizeArray(citasHoyJson).map(c => ({
+      const citasHoyArr = citasWeek.filter(c => c.fecha === todayStr).map(c => ({
         id: c.id,
-        paciente: c.paciente_nombre || `${c.paciente?.nombre || ''} ${c.paciente?.apellido || ''}`.trim(),
-        hora: c.hora || c.hora_inicio || '',
-        tipo: c.tipo_consulta || 'presencial'
+        paciente: c.paciente_nombre,
+        hora: c.hora || '',
+        tipo: c.tipo,
+        coterapeuta: c.coterapeuta_nombre || ''
       }));
       setCitasHoy(citasHoyArr);
 
-      // Citas semana (hoy + próximos 6 días)
-      let citasSemana = 0;
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(today);
-        d.setDate(today.getDate() + i);
-        const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${toISODate(d)}`, { headers });
-        const j = await safeJson(res);
-        citasSemana += normalizeArray(j).length;
-      }
+      // Becarios asignados para citas (desde agenda semanal)
+      const becariosFromCitas = [...new Set(citasWeek.map(c => c.coterapeuta_nombre).filter(Boolean))]
+        .map((nombre, idx) => ({ id: `bec-${idx}`, nombre, pacientes: 0, observaciones: 0 }));
+      setBecarios(becariosFromCitas);
+
+      // Pacientes asignados (desde asignaciones)
+      const asigRes = await fetch('http://localhost:3000/api/asignaciones', { headers });
+      const asigJson = await safeJson(asigRes);
+      const asigArr = normalizeArray(asigJson).filter(a =>
+        String(a.terapeuta_id || a.psicologo_id || a.Psicologo?.id) === String(decodedUserId)
+      );
+      const pacientesSet = new Map();
+      asigArr.forEach(a => {
+        const id = a.paciente_id || a.Paciente?.id || a.paciente?.id || a.id;
+        const nombre = a.Paciente ? `${a.Paciente.nombre} ${a.Paciente.apellido}` : (a.paciente || '').trim();
+        if (id && nombre) pacientesSet.set(id, nombre);
+      });
+      const pacientesAsignadosList = Array.from(pacientesSet.entries()).map(([id, nombre]) => ({ id, nombre }));
+      setPacientesAsignados(pacientesAsignadosList);
+
+      const pacientesActivos = pacientesAsignadosList.length;
+      const becariosAsignados = becariosFromCitas.length;
+      const citasSemana = citasWeek.length;
 
       setEstadisticas({ pacientesActivos, citasHoy: citasHoyArr.length, citasSemana, becariosAsignados });
     } catch (error) {
@@ -117,6 +154,7 @@ const PsicologoDashboard = () => {
     
   ];
 
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -154,6 +192,7 @@ const PsicologoDashboard = () => {
         ))}
       </div>
 
+
       {/* Main Content Grid */}
       <div className="dashboard-content-grid">
         {/* Citas de Hoy */}
@@ -162,15 +201,33 @@ const PsicologoDashboard = () => {
             <h3>Citas de Hoy</h3>
             <button className="btn-text" onClick={() => navigate('/psicologo/citas')}>Ver Agenda</button>
           </div>
-          
+
           <div className="citas-list">
             {citasHoy.map((cita) => (
               <div key={cita.id} className="cita-item">
                 <div className="cita-info">
                   <div className="cita-paciente">{cita.paciente}</div>
-                  <div className="cita-hora">{cita.hora} • {cita.tipo === 'presencial' ? 'Presencial' : 'Virtual'}</div>
+                  <div className="cita-hora">{cita.hora} • {cita.tipo === 'presencial' ? 'Presencial' : 'Virtual'} • {cita.coterapeuta || 'Sin coterapeuta'}</div>
                 </div>
                 <button className="btn-text">Ver</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Pacientes asignados */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            <h3>Pacientes asignados</h3>
+            <button className="btn-text" onClick={() => navigate('/psicologo/pacientes')}>Ver todos</button>
+          </div>
+
+          <div className="pacientes-list">
+            {pacientesAsignados.map((paciente) => (
+              <div key={paciente.id} className="paciente-item">
+                <div className="paciente-info">
+                  <div className="paciente-nombre">{paciente.nombre}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -179,29 +236,20 @@ const PsicologoDashboard = () => {
         {/* Becarios Asignados */}
         <div className="dashboard-section">
           <div className="section-header">
-            <h3>Becarios en Supervisión</h3>
-            <button className="btn-text" onClick={() => navigate('/psicologo/supervision')}>Ver todos</button>
+            <h3>Coterapeutas en citas</h3>
+            <button className="btn-text" onClick={() => navigate('/psicologo/citas')}>Ver agenda</button>
           </div>
-          
+
           <div className="pacientes-list">
             {becarios.map((becario) => (
               <div key={becario.id} className="paciente-item">
                 <div className="paciente-info">
                   <div className="paciente-nombre">{becario.nombre}</div>
-                  <div className="paciente-fecha">
-                    {becario.pacientes} pacientes • {becario.observaciones} observaciones
-                  </div>
-                </div>
-                <div className="paciente-progreso">
-                  <span className="progreso-text">
-                    {becario.observaciones} registradas
-                  </span>
                 </div>
               </div>
             ))}
           </div>
         </div>
-        
       </div>
     </div>
   );

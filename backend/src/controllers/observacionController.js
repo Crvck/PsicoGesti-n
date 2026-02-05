@@ -1,9 +1,11 @@
+const { Op } = require('sequelize');
 const ObservacionBecario = require('../models/observacionBecarioModel');
 const User = require('../models/userModel');
 const Cita = require('../models/citaModel');
 const Paciente = require('../models/pacienteModel');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
+const Asignacion = require('../models/asignacionModel');
+const Notificacion = require('../models/notificacionModel');
+const LogSistema = require('../models/logSistemaModel');
 
 class ObservacionController {
     
@@ -72,18 +74,20 @@ class ObservacionController {
             });
             
             // Notificar al becario
-            await sequelize.query(`
-                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                VALUES (?, 'observacion_nueva', 'Nueva observación', 
-                'Tienes una nueva observación de tu supervisor. Revisa tu panel para más detalles.', NOW())
-            `, { replacements: [becario_id] });
+            await Notificacion.create({
+                usuario_id: becario_id,
+                tipo: 'observacion_nueva',
+                titulo: 'Nueva observación',
+                mensaje: 'Tienes una nueva observación de tu supervisor. Revisa tu panel para más detalles.'
+            });
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'creacion', 'observaciones', 'Crear observación', ?, NOW())
-            `, {
-                replacements: [supervisorId, `Observación creada para becario ${becario_id}`]
+            await LogSistema.create({
+                usuario_id: supervisorId,
+                tipo_log: 'creacion',
+                modulo: 'observaciones',
+                accion: 'Crear observación',
+                descripcion: `Observación creada para becario ${becario_id}`
             });
             
             res.json({
@@ -192,7 +196,7 @@ class ObservacionController {
             
             if (fecha_inicio && fecha_fin) {
                 whereClause.fecha = {
-                    [sequelize.Op.between]: [fecha_inicio, fecha_fin]
+                    [Op.between]: [fecha_inicio, fecha_fin]
                 };
             }
             
@@ -275,24 +279,23 @@ class ObservacionController {
             
             // Notificar al becario si hay cambios importantes
             if (updates.calificacion || updates.recomendaciones || updates.plan_accion) {
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'observacion_nueva', 'Observación actualizada', 
-                    'Tu supervisor ha actualizado una observación. Revisa los cambios.', NOW())
-                `, { replacements: [observacion.becario_id] });
+                await Notificacion.create({
+                    usuario_id: observacion.becario_id,
+                    tipo: 'observacion_nueva',
+                    titulo: 'Observación actualizada',
+                    mensaje: 'Tu supervisor ha actualizado una observación. Revisa los cambios.'
+                });
             }
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'observaciones', 'Actualizar observación', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Observación actualizada ID: ${id}`,
-                    JSON.stringify(datosAntes),
-                    JSON.stringify(observacion.toJSON())
-                ]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'observaciones',
+                accion: 'Actualizar observación',
+                descripcion: `Observación actualizada ID: ${id}`,
+                datos_antes: datosAntes,
+                datos_despues: observacion.toJSON()
             });
             
             res.json({
@@ -339,15 +342,13 @@ class ObservacionController {
             await observacion.destroy();
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, created_at)
-                VALUES (?, 'eliminacion', 'observaciones', 'Eliminar observación', ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Observación eliminada ID: ${id}`,
-                    JSON.stringify(datosAntes)
-                ]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'eliminacion',
+                modulo: 'observaciones',
+                accion: 'Eliminar observación',
+                descripcion: `Observación eliminada ID: ${id}`,
+                datos_antes: datosAntes
             });
             
             res.json({
@@ -370,18 +371,16 @@ class ObservacionController {
         
         if (usuarioRol === 'psicologo') {
             // Verificar si es supervisor del becario
-            const [relacion] = await sequelize.query(`
-                SELECT 1 FROM asignaciones 
-                WHERE becario_id = ? 
-                AND psicologo_id = ?
-                AND estado = 'activa'
-                LIMIT 1
-            `, {
-                replacements: [becarioId, usuarioId],
-                type: QueryTypes.SELECT
+            const relacion = await Asignacion.findOne({
+                where: {
+                    becario_id: becarioId,
+                    psicologo_id: usuarioId,
+                    estado: 'activa'
+                },
+                attributes: ['id']
             });
-            
-            return !!relacion;
+
+            return Boolean(relacion);
         }
         
         if (usuarioRol === 'becario') {
@@ -476,16 +475,16 @@ class ObservacionController {
 
             // Verificar que el supervisor tenga relación con el becario
             if (supervisorRol === 'psicologo') {
-                const relacion = await sequelize.query(`
-                    SELECT 1 FROM asignaciones 
-                    WHERE psicologo_id = ? AND becario_id = ? AND estado = 'activa'
-                    LIMIT 1
-                `, {
-                    replacements: [supervisorId, becarioId],
-                    type: QueryTypes.SELECT
+                const relacion = await Asignacion.findOne({
+                    where: {
+                        psicologo_id: supervisorId,
+                        becario_id: becarioId,
+                        estado: 'activa'
+                    },
+                    attributes: ['id']
                 });
 
-                if (!relacion.length) {
+                if (!relacion) {
                     return res.status(403).json({
                         success: false,
                         message: 'No tienes permisos para supervisar a este becario'

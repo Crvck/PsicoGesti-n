@@ -93,6 +93,23 @@ const CoordinadorReportes = () => {
     reader.readAsDataURL(blob);
   });
 
+  const esReporteCoterapeutas = (tipo) => tipo === 'coterapeutas' || tipo === 'becarios';
+
+  const getTituloReporte = (tipo) => {
+    if (tipo === 'mensual') return 'Mensual';
+    if (tipo === 'trimestral') return 'Trimestral';
+    if (tipo === 'anual') return 'Anual';
+    if (tipo === 'clinico') return 'Clínico';
+    if (esReporteCoterapeutas(tipo)) return 'Coterapeutas';
+    return tipo;
+  };
+
+  const getNombreCompleto = (obj, primary, fallback) => {
+    const nombre = obj?.[`${primary}_nombre`] || obj?.[`${fallback}_nombre`] || '';
+    const apellido = obj?.[`${primary}_apellido`] || obj?.[`${fallback}_apellido`] || '';
+    return `${nombre} ${apellido}`.trim();
+  };
+
   const generarReporte = async () => {
     setLoading(true);
     try {
@@ -122,9 +139,9 @@ const CoordinadorReportes = () => {
           new TableRow({ children: [
             new TableCell({ children: [new Paragraph('Fecha')] }),
             new TableCell({ children: [new Paragraph('Hora Inicio')] }),
-            new TableCell({ children: [new Paragraph('Psicólogo 1')] }),
+            new TableCell({ children: [new Paragraph('Terapeuta 1')] }),
             new TableCell({ children: [new Paragraph('Paciente 1')] }),
-            new TableCell({ children: [new Paragraph('Psicólogo 2')] }),
+            new TableCell({ children: [new Paragraph('Terapeuta 2')] }),
             new TableCell({ children: [new Paragraph('Paciente 2')] })
           ] })
         ];
@@ -133,9 +150,9 @@ const CoordinadorReportes = () => {
           rows.push(new TableRow({ children: [
             new TableCell({ children: [new Paragraph(c.fecha || '')] }),
             new TableCell({ children: [new Paragraph(c.hora_inicio1 || '')] }),
-            new TableCell({ children: [new Paragraph((c.psicologo1_nombre || '') + ' ' + (c.psicologo1_apellido || ''))] }),
+            new TableCell({ children: [new Paragraph(getNombreCompleto(c, 'terapeuta1', 'psicologo1'))] }),
             new TableCell({ children: [new Paragraph((c.paciente1_nombre || '') + ' ' + (c.paciente1_apellido || ''))] }),
-            new TableCell({ children: [new Paragraph((c.psicologo2_nombre || '') + ' ' + (c.psicologo2_apellido || ''))] }),
+            new TableCell({ children: [new Paragraph(getNombreCompleto(c, 'terapeuta2', 'psicologo2'))] }),
             new TableCell({ children: [new Paragraph((c.paciente2_nombre || '') + ' ' + (c.paciente2_apellido || ''))] })
           ] }));
         });
@@ -160,9 +177,9 @@ const CoordinadorReportes = () => {
           <tr>
             <td>${c.fecha || ''}</td>
             <td>${c.hora_inicio1 || ''}</td>
-            <td>${(c.psicologo1_nombre || '') + ' ' + (c.psicologo1_apellido || '')}</td>
+            <td>${getNombreCompleto(c, 'terapeuta1', 'psicologo1')}</td>
             <td>${(c.paciente1_nombre || '') + ' ' + (c.paciente1_apellido || '')}</td>
-            <td>${(c.psicologo2_nombre || '') + ' ' + (c.psicologo2_apellido || '')}</td>
+            <td>${getNombreCompleto(c, 'terapeuta2', 'psicologo2')}</td>
             <td>${(c.paciente2_nombre || '') + ' ' + (c.paciente2_apellido || '')}</td>
           </tr>
         `).join('\n');
@@ -171,7 +188,7 @@ const CoordinadorReportes = () => {
           <h3>Conflictos de Citas</h3>
           <p>Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}</p>
           <table style="width:100%; border-collapse: collapse;">
-            <thead><tr><th>Fecha</th><th>Hora Inicio</th><th>Psicólogo 1</th><th>Paciente 1</th><th>Psicólogo 2</th><th>Paciente 2</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Hora Inicio</th><th>Terapeuta 1</th><th>Paciente 1</th><th>Terapeuta 2</th><th>Paciente 2</th></tr></thead>
             <tbody>
               ${previewRows}
             </tbody>
@@ -236,7 +253,7 @@ const CoordinadorReportes = () => {
       } else {
         // Generar un Word con datos reales según tipo de reporte
         let contenidoDocumento = [
-          new Paragraph({ text: `Reporte: ${tipoReporte === 'mensual' ? 'Mensual' : tipoReporte === 'trimestral' ? 'Trimestral' : tipoReporte === 'anual' ? 'Anual' : tipoReporte === 'clinico' ? 'Clínico' : tipoReporte === 'becarios' ? 'Becarios' : tipoReporte}`, heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: `Reporte: ${getTituloReporte(tipoReporte)}`, heading: HeadingLevel.HEADING_1 }),
           new Paragraph({ text: `Periodo: ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}` }),
           new Paragraph({ text: `Generado: ${fecha}` }),
           new Paragraph({ text: `Coordinador del Sistema` }),
@@ -265,13 +282,13 @@ const CoordinadorReportes = () => {
             new Paragraph({ text: `Pacientes con Sesiones Registradas: ${statsData.pacientes_con_sesiones || 0}` }),
             new Paragraph({ text: `Sesiones Completadas: ${statsData.sesiones_completadas || 0}` })
           );
-        } else if (tipoReporte === 'becarios') {
+        } else if (esReporteCoterapeutas(tipoReporte)) {
           contenidoDocumento.push(
             new Paragraph({ text: ` ` }),
-            new Paragraph({ text: `INFORMACIÓN DE BECARIOS`, heading: HeadingLevel.HEADING_2 }),
-            new Paragraph({ text: `Becarios Activos: ${statsData.becarios_activos || 0}` }),
-            new Paragraph({ text: `Total de Citas Atendidas por Becarios: ${statsData.total_citas_becarios || 0}` }),
-            new Paragraph({ text: `Pacientes Atendidos por Becarios: ${statsData.pacientes_atendidos_becarios || 0}` })
+            new Paragraph({ text: `INFORMACIÓN DE COTERAPEUTAS`, heading: HeadingLevel.HEADING_2 }),
+            new Paragraph({ text: `Coterapeutas Activos: ${(statsData.coterapeutas_activos ?? statsData.becarios_activos) || 0}` }),
+            new Paragraph({ text: `Total de Citas Atendidas por Coterapeutas: ${(statsData.total_citas_coterapeutas ?? statsData.total_citas_becarios) || 0}` }),
+            new Paragraph({ text: `Pacientes Atendidos por Coterapeutas: ${(statsData.pacientes_atendidos_coterapeutas ?? statsData.pacientes_atendidos_becarios) || 0}` })
           );
         } else if (tipoReporte === 'trimestral' || tipoReporte === 'anual') {
           contenidoDocumento.push(
@@ -295,7 +312,7 @@ const CoordinadorReportes = () => {
         const docUrl = URL.createObjectURL(blob);
 
         const previewHtmlLocal = `
-          <h3>Reporte: ${tipoReporte}</h3>
+          <h3>Reporte: ${getTituloReporte(tipoReporte)}</h3>
           <p><strong>Periodo:</strong> ${fechaInicio || 'Inicio'} - ${fechaFin || 'Fin'}</p>
           <h4>RESUMEN EJECUTIVO</h4>
           <ul>
@@ -315,12 +332,12 @@ const CoordinadorReportes = () => {
               <li>Sesiones Completadas: ${statsData.sesiones_completadas || 0}</li>
             </ul>
           ` : ''}
-          ${tipoReporte === 'becarios' ? `
-            <h4>INFORMACIÓN DE BECARIOS</h4>
+          ${esReporteCoterapeutas(tipoReporte) ? `
+            <h4>INFORMACIÓN DE COTERAPEUTAS</h4>
             <ul>
-              <li>Becarios Activos: ${statsData.becarios_activos || 0}</li>
-              <li>Citas Atendidas por Becarios: ${statsData.total_citas_becarios || 0}</li>
-              <li>Pacientes Atendidos: ${statsData.pacientes_atendidos_becarios || 0}</li>
+              <li>Coterapeutas Activos: ${(statsData.coterapeutas_activos ?? statsData.becarios_activos) || 0}</li>
+              <li>Citas Atendidas por Coterapeutas: ${(statsData.total_citas_coterapeutas ?? statsData.total_citas_becarios) || 0}</li>
+              <li>Pacientes Atendidos: ${(statsData.pacientes_atendidos_coterapeutas ?? statsData.pacientes_atendidos_becarios) || 0}</li>
             </ul>
           ` : ''}
           ${tipoReporte === 'trimestral' || tipoReporte === 'anual' ? `
@@ -431,7 +448,9 @@ const CoordinadorReportes = () => {
     switch (tipo) {
       case 'mensual': return 'var(--grnb)';
       case 'especial': return 'var(--blu)';
-      case 'becarios': return 'var(--yy)';
+      case 'coterapeutas':
+      case 'becarios':
+        return 'var(--yy)';
       case 'financiero': return 'var(--grnd)';
       case 'clinico': return 'var(--rr)';
       default: return 'var(--gray)';
@@ -481,7 +500,7 @@ const CoordinadorReportes = () => {
               <option value="mensual">Reporte Mensual</option>
               <option value="trimestral">Reporte Trimestral</option>
               <option value="anual">Reporte Anual</option>
-              <option value="becarios">Reporte de Becarios</option>
+              <option value="coterapeutas">Reporte de Coterapeutas</option>
               <option value="clinico">Reporte Clínico</option>
               
             </select>
@@ -583,7 +602,7 @@ const CoordinadorReportes = () => {
               <option value="">Todos los tipos</option>
               <option value="mensual">Mensuales</option>
               <option value="especial">Especiales</option>
-              <option value="becarios">Becarios</option>
+              <option value="coterapeutas">Coterapeutas</option>
               <option value="financiero">Financieros</option>
             </select>
             <input 
@@ -742,8 +761,8 @@ const CoordinadorReportes = () => {
         </div>
         
         <div className="card">
-          <h4>👨‍🎓 Reportes de Becarios</h4>
-          <p className="text-small mt-10">Seguimiento y evaluación de becarios</p>
+          <h4>👨‍🎓 Reportes de Coterapeutas</h4>
+          <p className="text-small mt-10">Seguimiento y evaluación de coterapeutas</p>
           <ul className="text-small mt-10">
             <li>Carga de trabajo</li>
             <li>Evaluación de supervisiones</li>

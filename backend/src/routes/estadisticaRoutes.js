@@ -12,8 +12,8 @@ router.get('/generales', requireRole(['coordinador']), EstadisticaController.obt
 router.get('/reporte-comparativo', requireRole(['coordinador']), EstadisticaController.obtenerReporteComparativo);
 
 // Estadísticas por rol/profesional
-router.get('/psicologo', requireRole(['coordinador', 'psicologo']), EstadisticaController.obtenerEstadisticasPsicologo);
-router.get('/becario', requireRole(['coordinador', 'psicologo', 'becario']), EstadisticaController.obtenerEstadisticasBecario);
-router.get('/paciente/:paciente_id', requireRole(['coordinador', 'psicologo']), EstadisticaController.obtenerEstadisticasPaciente);
+router.get('/psicologo', requireRole(['coordinador', 'terapeuta']), EstadisticaController.obtenerEstadisticasPsicologo);
+router.get('/becario', requireRole(['coordinador', 'terapeuta', 'coterapeuta']), EstadisticaController.obtenerEstadisticasBecario);
+router.get('/paciente/:paciente_id', requireRole(['coordinador', 'terapeuta']), EstadisticaController.obtenerEstadisticasPaciente);
 
 module.exports = router;

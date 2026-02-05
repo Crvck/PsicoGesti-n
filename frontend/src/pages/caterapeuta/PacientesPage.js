@@ -22,7 +22,8 @@ const BecarioPacientes = () => {
     hora: '10:00',
     tipo_consulta: 'presencial',
     duracion: 50,
-    notas: ''
+    notas: '',
+    color: '#1F85BA'
   });
 
   useEffect(() => {
@@ -494,6 +495,16 @@ const BecarioPacientes = () => {
                   <input type="number" className="input-field" value={scheduleForm.duracion} onChange={(e) => setScheduleForm({...scheduleForm, duracion: Number(e.target.value)})} />
                 </div>
 
+                <div className="form-group">
+                  <label>Color de cita</label>
+                  <input
+                    type="color"
+                    className="input-field"
+                    value={scheduleForm.color}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, color: e.target.value })}
+                  />
+                </div>
+
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Notas</label>
                   <textarea rows="3" className="textarea-field" value={scheduleForm.notas} onChange={(e) => setScheduleForm({...scheduleForm, notas: e.target.value})} />
@@ -512,7 +523,8 @@ const BecarioPacientes = () => {
                     hora: scheduleForm.hora,
                     tipo_consulta: scheduleForm.tipo_consulta,
                     duracion: scheduleForm.duracion,
-                    notas: scheduleForm.notas
+                    notas: scheduleForm.notas,
+                    color: scheduleForm.color
                   };
 
                   console.log('🚀 Enviando request POST /api/citas/nueva con body:', body);

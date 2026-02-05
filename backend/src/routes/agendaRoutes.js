@@ -14,6 +14,6 @@ router.get('/mensual', AgendaController.obtenerCalendarioMensual);
 router.get('/disponibilidad-profesionales', AgendaController.obtenerDisponibilidadProfesionales);
 
 // Reprogramar citas
-router.put('/cita/:id/reprogramar', requireRole(['psicologo', 'becario', 'coordinador']), AgendaController.reprogramarCita);
+router.put('/cita/:id/reprogramar', requireRole(['terapeuta', 'coterapeuta', 'coordinador']), AgendaController.reprogramarCita);
 
 module.exports = router;

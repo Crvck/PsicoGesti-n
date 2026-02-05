@@ -14,12 +14,20 @@ const CoordinadorUsuarios = () => {
   const [includeInactivos, setIncludeInactivos] = useState(true); // mostrar inactivos por defecto
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('nuevo');
+  const [showRecordatorioModal, setShowRecordatorioModal] = useState(false);
+  const [recordatorioConfig, setRecordatorioConfig] = useState({
+    recordatorio_citas_activo: true,
+    recordatorio_citas_frecuencia_dias: 7,
+    recordatorio_citas_rango_dias: 7,
+    recordatorio_citas_hora: '09:00'
+  });
+  const [recordatorioLoading, setRecordatorioLoading] = useState(false);
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
     email: '',
     telefono: '',
-    rol: 'becario',
+    rol: 'coterapeuta',
     especialidad: '',
     fundacion_id: '',
     activo: true,
@@ -54,6 +62,99 @@ const CoordinadorUsuarios = () => {
       console.error('Error al obtener usuarios:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRecordatorioConfig = async () => {
+    try {
+      setRecordatorioLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/recordatorios/configuracion', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        notifications.error(json.message || 'Error al cargar configuración');
+        return;
+      }
+
+      setRecordatorioConfig({
+        recordatorio_citas_activo: json.data.recordatorio_citas_activo ?? true,
+        recordatorio_citas_frecuencia_dias: json.data.recordatorio_citas_frecuencia_dias ?? 7,
+        recordatorio_citas_rango_dias: json.data.recordatorio_citas_rango_dias ?? 7,
+        recordatorio_citas_hora: json.data.recordatorio_citas_hora ?? '09:00'
+      });
+    } catch (error) {
+      console.error('Error cargando configuración de recordatorios:', error);
+      notifications.error('Error al cargar configuración');
+    } finally {
+      setRecordatorioLoading(false);
+    }
+  };
+
+  const handleGuardarRecordatorioConfig = async () => {
+    try {
+      setRecordatorioLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/recordatorios/configuracion', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify(recordatorioConfig)
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        notifications.error(json.message || 'Error al guardar configuración');
+        return;
+      }
+
+      setRecordatorioConfig({
+        recordatorio_citas_activo: json.data.recordatorio_citas_activo,
+        recordatorio_citas_frecuencia_dias: json.data.recordatorio_citas_frecuencia_dias,
+        recordatorio_citas_rango_dias: json.data.recordatorio_citas_rango_dias,
+        recordatorio_citas_hora: json.data.recordatorio_citas_hora
+      });
+
+      notifications.success('Configuración guardada');
+    } catch (error) {
+      console.error('Error guardando configuración:', error);
+      notifications.error('Error al guardar configuración');
+    } finally {
+      setRecordatorioLoading(false);
+    }
+  };
+
+  const handleEnviarRecordatorios = async () => {
+    try {
+      setRecordatorioLoading(true);
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:3000/api/recordatorios/enviar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        notifications.error(json.message || 'Error al enviar recordatorios');
+        return;
+      }
+
+      notifications.success('Recordatorios enviados');
+    } catch (error) {
+      console.error('Error enviando recordatorios:', error);
+      notifications.error('Error al enviar recordatorios');
+    } finally {
+      setRecordatorioLoading(false);
     }
   };
 
@@ -167,8 +268,13 @@ const CoordinadorUsuarios = () => {
         return;
       }
 
-      setUsuarios(prev => prev.filter(u => u.id !== id));
-      notifications.success('Usuario eliminado correctamente');
+      const payload = await res.json().catch(() => ({}));
+      const updatedUser = payload.usuario;
+      setUsuarios(prev => prev.map(u => u.id === id ? { ...u, activo: false } : u));
+      if (updatedUser) {
+        setUsuarios(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+      }
+      notifications.success('Usuario inactivado correctamente');
     } catch (error) {
       console.error('Error eliminando usuario:', error);
       notifications.error('Error eliminando usuario');
@@ -222,7 +328,7 @@ const CoordinadorUsuarios = () => {
       apellido: '',
       email: '',
       telefono: '',
-      rol: 'becario',
+      rol: 'coterapeuta',
       especialidad: '',
       fundacion_id: '',
       activo: true,
@@ -286,11 +392,13 @@ const CoordinadorUsuarios = () => {
   const getRolLabel = (rol) => {
     switch (rol) {
       case 'coordinador':
-        return { text: 'Coordinador', color: 'danger' };
-      case 'psicologo':
-        return { text: 'Psicólogo', color: 'primary' };
-      case 'becario':
-        return { text: 'Becario', color: 'warning' };
+        return { text: 'Coordinador', color: 'primary' };
+      case 'terapeuta':
+        return { text: 'Terapeuta', color: 'success' };
+      case 'coterapeuta':
+        return { text: 'Coterapeuta', color: 'warning' };
+      case 'psicopedagogico':
+        return { text: 'Psicopedagógico', color: 'secondary' };
       default:
         return { text: rol, color: 'info' };
     }
@@ -310,7 +418,7 @@ const CoordinadorUsuarios = () => {
       <div className="page-header">
         <div>
           <h1>Gestión de Usuarios</h1>
-          <p>Administración de coordinadores, psicólogos y becarios</p>
+          <p>Administración de coordinadores, terapeutas y coterapeutas</p>
         </div>
         <button 
           className="btn-primary"
@@ -346,8 +454,9 @@ const CoordinadorUsuarios = () => {
           >
             <option value="">Todos los roles</option>
             <option value="coordinador">Coordinadores</option>
-            <option value="psicologo">Psicólogos</option>
-            <option value="becario">Becarios</option>
+            <option value="psicopedagogico">Psicopedagógicos</option>
+            <option value="terapeuta">Terapeutas</option>
+            <option value="coterapeuta">Coterapeutas</option>
           </select>
 
           <label className="ml-10 flex-row align-center">
@@ -413,7 +522,7 @@ const CoordinadorUsuarios = () => {
                     <div className="text-small">{usuario.telefono}</div>
                   </td>
                   <td>
-                    <span className={`badge badge-${rolInfo.color}`}>
+                    <span className={`badge badge-${usuario.activo ? rolInfo.color : 'danger'}`}>
                       {rolInfo.text}
                     </span>
                   </td>
@@ -467,8 +576,9 @@ const CoordinadorUsuarios = () => {
           <div className="mt-10">
             <p>Total: {usuarios.length}</p>
             <p>Activos: {usuarios.filter(u => u.activo).length}</p>
-            <p>Becarios: {usuarios.filter(u => u.rol === 'becario').length}</p>
-            <p>Psicólogos: {usuarios.filter(u => u.rol === 'psicologo').length}</p>
+            <p>Psicopedagógicos: {usuarios.filter(u => u.rol === 'psicopedagogico').length}</p>
+            <p>Coterapeutas: {usuarios.filter(u => u.rol === 'coterapeuta').length}</p>
+            <p>Terapeutas: {usuarios.filter(u => u.rol === 'terapeuta').length}</p>
           </div>
         </div>
         
@@ -495,7 +605,13 @@ const CoordinadorUsuarios = () => {
             <button className="btn-primary w-100" onClick={exportarListado}>
               Exportar Listado
             </button>
-            <button className="btn-secondary w-100">
+            <button
+              className="btn-secondary w-100"
+              onClick={() => {
+                setShowRecordatorioModal(true);
+                fetchRecordatorioConfig();
+              }}
+            >
               Enviar Recordatorios
             </button>
           </div>
@@ -518,7 +634,7 @@ const CoordinadorUsuarios = () => {
                   <input
                     type="text"
                     name="nombre"
-                    value={formData.nombre}
+                    value={formData.nombre || ''}
                     onChange={handleInputChange}
                     className="input-field"
                     required
@@ -530,7 +646,7 @@ const CoordinadorUsuarios = () => {
                   <input
                     type="text"
                     name="apellido"
-                    value={formData.apellido}
+                    value={formData.apellido || ''}
                     onChange={handleInputChange}
                     className="input-field"
                     required
@@ -542,7 +658,7 @@ const CoordinadorUsuarios = () => {
                   <input
                     type="email"
                     name="email"
-                    value={formData.email}
+                    value={formData.email || ''}
                     onChange={handleInputChange}
                     className="input-field"
                     required
@@ -554,7 +670,7 @@ const CoordinadorUsuarios = () => {
                   <input
                     type="tel"
                     name="telefono"
-                    value={formData.telefono}
+                    value={formData.telefono || ''}
                     onChange={handleInputChange}
                     className="input-field"
                   />
@@ -564,13 +680,14 @@ const CoordinadorUsuarios = () => {
                   <label>Rol</label>
                   <select
                     name="rol"
-                    value={formData.rol}
+                    value={formData.rol || ''}
                     onChange={handleInputChange}
                     className="select-field"
                     required
                   >
-                    <option value="becario">Becario</option>
-                    <option value="psicologo">Psicólogo</option>
+                    <option value="coterapeuta">Coterapeuta</option>
+                    <option value="terapeuta">Terapeuta</option>
+                    <option value="psicopedagogico">Psicopedagógico</option>
                     <option value="coordinador">Coordinador</option>
                   </select>
                 </div>
@@ -580,14 +697,14 @@ const CoordinadorUsuarios = () => {
                   <input
                     type="text"
                     name="especialidad"
-                    value={formData.especialidad}
+                    value={formData.especialidad || ''}
                     onChange={handleInputChange}
                     className="input-field"
                     placeholder="Ej: Terapia Cognitivo-Conductual"
                   />
                 </div>
                 
-                {formData.rol === 'psicologo' && (
+                {formData.rol === 'terapeuta' && (
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
                     <label>Contraseña Temporal</label>
                     <input
@@ -627,6 +744,103 @@ const CoordinadorUsuarios = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Recordatorios */}
+      {showRecordatorioModal && (
+        <div className="modal-overlay">
+          <div className="modal-container">
+            <div className="modal-header">
+              <h3>Recordatorios de Citas</h3>
+              <button className="modal-close" onClick={() => setShowRecordatorioModal(false)}>×</button>
+            </div>
+
+            <div className="modal-content">
+              <div className="form-grid">
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label className="flex-row align-center gap-10">
+                    <input
+                      type="checkbox"
+                      checked={recordatorioConfig.recordatorio_citas_activo}
+                      onChange={(e) => setRecordatorioConfig(prev => ({
+                        ...prev,
+                        recordatorio_citas_activo: e.target.checked
+                      }))}
+                    />
+                    <span>Recordatorio automático activo</span>
+                  </label>
+                </div>
+
+                <div className="form-group">
+                  <label>Frecuencia (días)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    className="input-field"
+                    value={recordatorioConfig.recordatorio_citas_frecuencia_dias}
+                    onChange={(e) => setRecordatorioConfig(prev => ({
+                      ...prev,
+                      recordatorio_citas_frecuencia_dias: Number(e.target.value)
+                    }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Rango de citas (días)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    className="input-field"
+                    value={recordatorioConfig.recordatorio_citas_rango_dias}
+                    onChange={(e) => setRecordatorioConfig(prev => ({
+                      ...prev,
+                      recordatorio_citas_rango_dias: Number(e.target.value)
+                    }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Hora de envío</label>
+                  <input
+                    type="time"
+                    className="input-field"
+                    value={recordatorioConfig.recordatorio_citas_hora}
+                    onChange={(e) => setRecordatorioConfig(prev => ({
+                      ...prev,
+                      recordatorio_citas_hora: e.target.value
+                    }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleEnviarRecordatorios}
+                disabled={recordatorioLoading}
+              >
+                Enviar ahora
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleGuardarRecordatorioConfig}
+                disabled={recordatorioLoading}
+              >
+                Guardar configuración
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => setShowRecordatorioModal(false)}
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,0 +1,21 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+const Solicitud = sequelize.define('Solicitud', {
+  nombre_completo: { type: DataTypes.STRING, allowNull: false },
+  email: { type: DataTypes.STRING, allowNull: false },
+  telefono: { type: DataTypes.STRING, allowNull: false },
+  origen: { type: DataTypes.ENUM('CESUN', 'EXTERNO'), defaultValue: 'CESUN' },
+  matricula: { type: DataTypes.STRING, allowNull: true },
+  institucion_procedencia: { type: DataTypes.STRING, allowNull: true },
+  horas_a_liberar: { type: DataTypes.INTEGER, allowNull: false },
+  motivo: { type: DataTypes.TEXT },
+  estado: { type: DataTypes.ENUM('PENDIENTE', 'APROBADO', 'RECHAZADO'), defaultValue: 'PENDIENTE' }
+}, {
+  tableName: 'solicitudes_ingreso',
+  timestamps: true,
+  createdAt: 'fecha_solicitud',
+  updatedAt: false
+});
+
+module.exports = Solicitud;

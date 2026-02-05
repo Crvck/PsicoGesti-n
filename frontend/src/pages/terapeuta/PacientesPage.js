@@ -23,7 +23,8 @@ const PsicologoPacientes = () => {
     tipo_consulta: 'presencial',
     duracion: 50,
     becario_id: null,
-    notas: ''
+    notas: '',
+    color: '#1F85BA'
   });
 
   // Estados para expediente y sesiones reales
@@ -643,6 +644,16 @@ const PsicologoPacientes = () => {
                   <input type="number" className="input-field" value={scheduleForm.duracion} onChange={(e) => setScheduleForm({...scheduleForm, duracion: Number(e.target.value)})} />
                 </div>
 
+                <div className="form-group">
+                  <label>Color de cita</label>
+                  <input
+                    type="color"
+                    className="input-field"
+                    value={scheduleForm.color}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, color: e.target.value })}
+                  />
+                </div>
+
                 {/* Mostrar selector de becario solo si es cita de psicólogo (opcional) o si es cita de becario (obligatorio) */}
                 {tipoCitaAgendar === 'becario' && (
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
@@ -706,6 +717,7 @@ const PsicologoPacientes = () => {
                     duracion: scheduleForm.duracion,
                     notas: scheduleForm.notas,
                     becario_id: scheduleForm.becario_id || null,
+                    color: scheduleForm.color,
                     // Indicar si la cita es para el becario o para el psicólogo
                     tipo_asignacion: tipoCitaAgendar // 'psicologo' o 'becario'
                   };

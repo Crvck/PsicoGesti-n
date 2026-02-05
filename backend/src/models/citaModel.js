@@ -60,6 +60,24 @@ const Cita = sequelize.define('Cita', {
         type: DataTypes.TEXT,
         allowNull: true
     },
+    color: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    total_sesiones: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1
+    },
+    numero_sesion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1
+    },
+    serie_id: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+    },
     motivo_cancelacion: {
         type: DataTypes.STRING(255),
         allowNull: true

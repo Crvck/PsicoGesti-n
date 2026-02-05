@@ -1,322 +1,401 @@
-const { QueryTypes } = require('sequelize');
+const { Op } = require('sequelize');
 const sequelize = require('../config/db');
+const bcrypt = require('bcryptjs');
+const Solicitud = require('../models/Solicitud');
+const EmailService = require('../services/emailService');
+const Paciente = require('../models/pacienteModel');
+const Cita = require('../models/citaModel');
+const User = require('../models/userModel');
+const Asignacion = require('../models/asignacionModel');
+const Alta = require('../models/altaModel');
+const Sesion = require('../models/sesionModel');
+const ObservacionBecario = require('../models/observacionBecarioModel');
+const Disponibilidad = require('../models/disponibilidadModel');
+
+const formatDate = (date) => date.toISOString().split('T')[0];
+const addDays = (date, days) => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+};
+const dayNamesEs = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const getDayNameEs = (date) => dayNamesEs[date.getDay()] || 'domingo';
+const startOfWeek = (date) => {
+    const d = new Date(date);
+    const day = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - day);
+    d.setHours(0, 0, 0, 0);
+    return d;
+};
+const getWeekKey = (date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+};
 
 class DashboardController {
     
     static async obtenerDashboardCoordinador(req, res) {
         try {
             const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
             
-            
-            // Estadísticas generales
+            // Inicializamos las variables
             let estadisticas = {};
             let citasPorDia = [];
-            let topPsicologos = [];
-            let becariosConCarga = [];
+            let topTerapeutas = [];
+            let coterapeutasConCarga = [];
             let actividadReciente = [];
-            let alertas = [];
-            let evolucionMensual = [];
+            let solicitudesPendientes = []; // <--- NUEVA VARIABLE
             
+            // --- BLOQUE 1: Estadísticas generales ---
             try {
-                const [estResult] = await sequelize.query(`
-                    SELECT 
-                        (SELECT COUNT(*) FROM pacientes WHERE activo = TRUE) as pacientes_activos,
-                        (SELECT COUNT(*) FROM pacientes WHERE activo = FALSE) as pacientes_inactivos,
-                        (SELECT COUNT(*) FROM pacientes WHERE DATE(created_at) = CURDATE()) as pacientes_nuevos_hoy,
-                        (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado IN ('programada', 'confirmada')) as citas_hoy,
-                        (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'completada') as citas_completadas_hoy,
-                        (SELECT COUNT(*) FROM citas WHERE fecha = CURDATE() AND estado = 'cancelada') as citas_canceladas_hoy,
-                        (SELECT COUNT(*) FROM citas WHERE fecha BETWEEN DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND CURDATE()) as citas_semana,
-                        (SELECT COUNT(*) FROM users WHERE rol = 'psicologo' AND activo = TRUE) as psicologos_activos,
-                        (SELECT COUNT(*) FROM users WHERE rol = 'becario' AND activo = TRUE) as becarios_activos,
-                        (SELECT COUNT(*) FROM users WHERE rol = 'coordinador' AND activo = TRUE) as coordinadores_activos,
-                        (SELECT COUNT(*) FROM asignaciones WHERE estado = 'activa') as asignaciones_activas,
-                        (SELECT COUNT(*) FROM asignaciones WHERE estado = 'finalizada' AND fecha_fin >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as asignaciones_finalizadas_mes,
-                        (SELECT COUNT(*) FROM altas WHERE fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as altas_mes,
-                        (SELECT COUNT(*) FROM altas WHERE fecha_alta = CURDATE()) as altas_hoy
-                `, { type: QueryTypes.SELECT });
-                estadisticas = estResult || {};
+                const hoy = new Date();
+                const hoyStr = formatDate(hoy);
+                const mananaStr = formatDate(addDays(hoy, 1));
+                const sieteDiasAtras = formatDate(addDays(hoy, -7));
+                const treintaDiasAtras = formatDate(addDays(hoy, -30));
+
+                const solicitudesPendientesList = await Solicitud.findAll();
+                const solicitudesPendientesFiltradas = solicitudesPendientesList.filter(s =>
+                    String(s.estado || '').trim().toUpperCase() === 'PENDIENTE'
+                );
+
+                const [
+                    pacientes_activos,
+                    pacientes_inactivos,
+                    pacientes_nuevos_hoy,
+                    citas_hoy,
+                    citas_completadas_hoy,
+                    citas_canceladas_hoy,
+                    citas_semana,
+                    terapeutas_activos,
+                    coterapeutas_activos,
+                    coordinadores_activos,
+                    asignaciones_activas,
+                    asignaciones_finalizadas_mes,
+                    altas_mes,
+                    altas_hoy
+                ] = await Promise.all([
+                    Paciente.count({ where: { activo: true } }),
+                    Paciente.count({ where: { activo: false } }),
+                    Paciente.count({ where: { created_at: { [Op.between]: [hoyStr, mananaStr] } } }),
+                    Cita.count({ where: { fecha: hoyStr, estado: { [Op.in]: ['programada', 'confirmada'] } } }),
+                    Cita.count({ where: { fecha: hoyStr, estado: 'completada' } }),
+                    Cita.count({ where: { fecha: hoyStr, estado: 'cancelada' } }),
+                    Cita.count({ where: { fecha: { [Op.between]: [sieteDiasAtras, hoyStr] } } }),
+                    User.count({ where: { rol: 'terapeuta', activo: true } }),
+                    User.count({ where: { rol: 'coterapeuta', activo: true } }),
+                    User.count({ where: { rol: 'coordinador', activo: true } }),
+                    Asignacion.count({ where: { estado: 'activa' } }),
+                    Asignacion.count({ where: { estado: 'finalizada', fecha_fin: { [Op.gte]: treintaDiasAtras } } }),
+                    Alta.count({ where: { fecha_alta: { [Op.gte]: treintaDiasAtras } } }),
+                    Alta.count({ where: { fecha_alta: hoyStr } })
+                ]);
+
+                estadisticas = {
+                    pacientes_activos,
+                    pacientes_inactivos,
+                    pacientes_nuevos_hoy,
+                    citas_hoy,
+                    citas_completadas_hoy,
+                    citas_canceladas_hoy,
+                    citas_semana,
+                    terapeutas_activos,
+                    coterapeutas_activos,
+                    coordinadores_activos,
+                    asignaciones_activas,
+                    asignaciones_finalizadas_mes,
+                    altas_mes,
+                    altas_hoy,
+                    solicitudes_pendientes_count: solicitudesPendientesFiltradas.length
+                };
+
+                solicitudesPendientes = solicitudesPendientesFiltradas.sort(
+                    (a, b) => new Date(a.fecha_solicitud) - new Date(b.fecha_solicitud)
+                );
             } catch (e) {
                 console.warn('Error en estadísticas:', e.message);
                 estadisticas = {};
             }
             
-            // Citas por día
+            // --- BLOQUE 2: Citas por día ---
             try {
-                citasPorDia = await sequelize.query(`
-                    SELECT 
-                        DAYNAME(fecha) as dia,
-                        COUNT(*) as total_citas,
-                        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-                        SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas
-                    FROM citas
-                    WHERE YEARWEEK(fecha, 1) = YEARWEEK(CURDATE(), 1)
-                    GROUP BY DAYNAME(fecha), DAYOFWEEK(fecha)
-                    ORDER BY DAYOFWEEK(fecha)
-                `, { type: QueryTypes.SELECT });
+                const hoy = new Date();
+                const weekStart = startOfWeek(hoy);
+                const weekEnd = addDays(weekStart, 6);
+                const citasSemana = await Cita.findAll({
+                    where: { fecha: { [Op.between]: [formatDate(weekStart), formatDate(weekEnd)] } },
+                    attributes: ['fecha', 'estado']
+                });
+
+                const map = citasSemana.reduce((acc, cita) => {
+                    const fecha = cita.fecha instanceof Date ? cita.fecha : new Date(cita.fecha);
+                    const dia = getDayNameEs(fecha);
+                    if (!acc[dia]) acc[dia] = { dia, total_citas: 0, completadas: 0, canceladas: 0 };
+                    acc[dia].total_citas += 1;
+                    if (cita.estado === 'completada') acc[dia].completadas += 1;
+                    if (cita.estado === 'cancelada') acc[dia].canceladas += 1;
+                    return acc;
+                }, {});
+
+                const order = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+                citasPorDia = Object.values(map).sort((a, b) => order.indexOf(a.dia) - order.indexOf(b.dia));
             } catch (e) {
                 console.warn('Error en citas por día:', e.message);
-                citasPorDia = [];
             }
             
-            // Top psicólogos
+            // --- BLOQUE 3: Top terapeutas ---
             try {
-                topPsicologos = await sequelize.query(`
-                    SELECT 
-                        u.id,
-                        CONCAT(u.nombre, ' ', u.apellido) as nombre_completo,
-                        COUNT(c.id) as total_citas,
-                        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas
-                    FROM users u
-                    LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                    WHERE u.rol = 'psicologo' AND u.activo = TRUE
-                    GROUP BY u.id, u.nombre, u.apellido
-                    ORDER BY citas_completadas DESC
-                    LIMIT 5
-                `, { type: QueryTypes.SELECT });
+                const treintaDiasAtras = formatDate(addDays(new Date(), -30));
+                const terapeutas = await User.findAll({
+                    where: { rol: 'terapeuta', activo: true },
+                    attributes: ['id', 'nombre', 'apellido']
+                });
+                const ids = terapeutas.map(t => t.id);
+                const citas = await Cita.findAll({
+                    where: { psicologo_id: { [Op.in]: ids }, fecha: { [Op.gte]: treintaDiasAtras } },
+                    attributes: ['psicologo_id', 'estado']
+                });
+
+                const stats = terapeutas.map(t => {
+                    const citasTer = citas.filter(c => c.psicologo_id === t.id);
+                    const total_citas = citasTer.length;
+                    const citas_completadas = citasTer.filter(c => c.estado === 'completada').length;
+                    return {
+                        id: t.id,
+                        nombre_completo: `${t.nombre} ${t.apellido}`,
+                        total_citas,
+                        citas_completadas
+                    };
+                }).sort((a, b) => b.citas_completadas - a.citas_completadas).slice(0, 5);
+
+                topTerapeutas = stats;
             } catch (e) {
-                console.warn('Error en top psicólogos:', e.message);
-                topPsicologos = [];
+                console.warn('Error en top terapeutas:', e.message);
             }
             
-            // Becarios con carga
+            // --- BLOQUE 4: Coterapeutas con carga ---
             try {
-                becariosConCarga = await sequelize.query(`
-                    SELECT 
-                        u.id,
-                        CONCAT(u.nombre, ' ', u.apellido) as nombre_completo,
-                        COUNT(DISTINCT a.paciente_id) as pacientes_asignados,
-                        COUNT(DISTINCT c.id) as citas_este_mes,
-                        GROUP_CONCAT(DISTINCT CONCAT(p.nombre, ' ', p.apellido) ORDER BY p.nombre SEPARATOR ', ') as pacientes
-                    FROM users u
-                    LEFT JOIN asignaciones a ON u.id = a.becario_id AND a.estado = 'activa'
-                    LEFT JOIN pacientes p ON a.paciente_id = p.id
-                    LEFT JOIN citas c ON u.id = c.becario_id AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                    WHERE u.rol = 'becario' AND u.activo = TRUE
-                    GROUP BY u.id, u.nombre, u.apellido
-                    ORDER BY pacientes_asignados DESC
-                    LIMIT 5
-                `, { type: QueryTypes.SELECT });
+                const treintaDiasAtras = formatDate(addDays(new Date(), -30));
+                const coterapeutas = await User.findAll({
+                    where: { rol: 'coterapeuta', activo: true },
+                    attributes: ['id', 'nombre', 'apellido']
+                });
+                const coterapeutaIds = coterapeutas.map(c => c.id);
+
+                const asignaciones = await Asignacion.findAll({
+                    where: { becario_id: { [Op.in]: coterapeutaIds }, estado: 'activa' },
+                    include: [{ model: Paciente, attributes: ['id', 'nombre', 'apellido'] }]
+                });
+
+                const citas = await Cita.findAll({
+                    where: { becario_id: { [Op.in]: coterapeutaIds }, fecha: { [Op.gte]: treintaDiasAtras } },
+                    attributes: ['id', 'becario_id']
+                });
+
+                const asignacionesPorCoterapeuta = asignaciones.reduce((acc, a) => {
+                    const id = a.becario_id;
+                    if (!acc[id]) acc[id] = { pacientes: new Map(), pacientes_asignados: 0 };
+                    if (a.Paciente && !acc[id].pacientes.has(a.Paciente.id)) {
+                        acc[id].pacientes.set(a.Paciente.id, `${a.Paciente.nombre} ${a.Paciente.apellido}`);
+                        acc[id].pacientes_asignados += 1;
+                    }
+                    return acc;
+                }, {});
+
+                const citasPorCoterapeuta = citas.reduce((acc, c) => {
+                    acc[c.becario_id] = (acc[c.becario_id] || 0) + 1;
+                    return acc;
+                }, {});
+
+                coterapeutasConCarga = coterapeutas.map(ct => {
+                    const asignacionInfo = asignacionesPorCoterapeuta[ct.id] || { pacientes: new Map(), pacientes_asignados: 0 };
+                    return {
+                        id: ct.id,
+                        nombre_completo: `${ct.nombre} ${ct.apellido}`,
+                        pacientes_asignados: asignacionInfo.pacientes_asignados,
+                        citas_este_mes: citasPorCoterapeuta[ct.id] || 0,
+                        pacientes: Array.from(asignacionInfo.pacientes.values()).join(', ')
+                    };
+                }).sort((a, b) => b.pacientes_asignados - a.pacientes_asignados).slice(0, 5);
             } catch (e) {
-                console.warn('Error en becarios con carga:', e.message);
-                becariosConCarga = [];
+                console.warn('Error en coterapeutas con carga:', e.message);
             }
             
-            // Actividad reciente
+            // --- BLOQUE 5: Actividad reciente ---
             try {
-                actividadReciente = await sequelize.query(`
-                    SELECT 
-                        c.id,
-                        c.paciente_id,
-                        c.fecha,
-                        c.created_at as fecha_evento,
-                        'Cita creada' as tipo_evento,
-                        CONCAT(u.nombre, ' ', u.apellido) as usuario,
-                        u.nombre as nombre_usuario,
-                        CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
-                        'cita' as entidad_tipo
-                    FROM citas c
-                    LEFT JOIN users u ON c.psicologo_id = u.id
-                    LEFT JOIN pacientes p ON c.paciente_id = p.id
-                    WHERE c.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                    ORDER BY c.created_at DESC
-                    LIMIT 5
-                `, { type: QueryTypes.SELECT });
+                const citasRecientes = await Cita.findAll({
+                    include: [{ model: User, as: 'Psicologo', attributes: ['nombre', 'apellido'] }],
+                    order: [['created_at', 'DESC']],
+                    limit: 5
+                });
+
+                actividadReciente = citasRecientes.map(c => ({
+                    id: c.id,
+                    paciente_id: c.paciente_id,
+                    fecha: c.fecha,
+                    fecha_evento: c.created_at,
+                    tipo_evento: 'Cita creada',
+                    usuario: c.Psicologo ? `${c.Psicologo.nombre} ${c.Psicologo.apellido}` : null,
+                    nombre_usuario: c.Psicologo?.nombre || null
+                }));
             } catch (e) {
                 console.warn('Error en actividad reciente:', e.message);
-                actividadReciente = [];
             }
-            
-            // Alertas
+
+            // --- BLOQUE 6: Solicitudes Pendientes ---
             try {
-                alertas = await sequelize.query(`
-                    SELECT 
-                        'citas_sin_confirmar' as tipo,
-                        COUNT(*) as cantidad,
-                        'Citas programadas sin confirmar' as descripcion
-                    FROM citas
-                    WHERE estado = 'programada' AND fecha = CURDATE()
-                    
-                    UNION ALL
-                    
-                    SELECT 
-                        'altas_pendientes' as tipo,
-                        COUNT(*) as cantidad,
-                        'Pacientes pendientes de revisión para alta' as descripcion
-                    FROM pacientes p
-                    WHERE p.activo = TRUE 
-                    AND NOT EXISTS (SELECT 1 FROM altas a WHERE a.paciente_id = p.id)
-                    AND (SELECT COUNT(*) FROM citas c WHERE c.paciente_id = p.id AND c.estado = 'completada') >= 4
-                `, { type: QueryTypes.SELECT });
+                if (!solicitudesPendientes.length) {
+                    const solicitudesPendientesList = await Solicitud.findAll({
+                        order: [['fecha_solicitud', 'ASC']]
+                    });
+                    solicitudesPendientes = solicitudesPendientesList.filter(s =>
+                        String(s.estado || '').trim().toUpperCase() === 'PENDIENTE'
+                    );
+                }
             } catch (e) {
-                console.warn('Error en alertas:', e.message);
-                alertas = [];
+                console.warn('Error obteniendo solicitudes pendientes:', e.message);
+                solicitudesPendientes = [];
             }
-            
-            // Evolución mensual
-            try {
-                evolucionMensual = await sequelize.query(`
-                    SELECT 
-                        DATE_FORMAT(fecha_alta, '%Y-%m') as mes,
-                        COUNT(*) as altas,
-                        SUM(CASE WHEN tipo_alta = 'terapeutica' THEN 1 ELSE 0 END) as altas_terapeuticas,
-                        SUM(CASE WHEN tipo_alta = 'abandono' THEN 1 ELSE 0 END) as abandonos
-                    FROM altas
-                    WHERE fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-                    GROUP BY DATE_FORMAT(fecha_alta, '%Y-%m')
-                    ORDER BY mes DESC
-                    LIMIT 6
-                `, { type: QueryTypes.SELECT });
-            } catch (e) {
-                console.warn('Error en evolución mensual:', e.message);
-                evolucionMensual = [];
-            }
-            
+
             res.json({
                 success: true,
                 data: {
                     estadisticas,
                     citas_por_dia: citasPorDia,
-                    top_psicologos: topPsicologos,
-                    becarios_carga: becariosConCarga,
+                    top_terapeutas: topTerapeutas,
+                    coterapeutas_con_carga: coterapeutasConCarga,
                     actividad_reciente: actividadReciente,
-                    alertas,
-                    evolucion_mensual: evolucionMensual.length > 0 ? evolucionMensual.reverse() : [],
+                    solicitudes_pendientes: solicitudesPendientes, // <--- Aquí se envía al frontend
                     ultima_actualizacion: new Date().toISOString()
                 }
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerDashboardCoordinador:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener dashboard de coordinador'
-            });
+            res.status(500).json({ success: false, message: 'Error al obtener dashboard de coordinador' });
         }
     }
-    
+
     static async obtenerDashboardPsicologo(req, res) {
         try {
             const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
             
-            
-            // Estadísticas del psicólogo
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes asignados
-                    (SELECT COUNT(DISTINCT paciente_id) FROM asignaciones WHERE psicologo_id = ? AND estado = 'activa') as pacientes_asignados,
-                    
-                    -- Becarios supervisados
-                    (SELECT COUNT(DISTINCT becario_id) FROM asignaciones WHERE psicologo_id = ? AND becario_id IS NOT NULL AND estado = 'activa') as becarios_supervisados,
-                    
-                    -- Citas
-                    (SELECT COUNT(*) FROM citas WHERE psicologo_id = ? AND fecha = CURDATE() AND estado IN ('programada', 'confirmada')) as citas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE psicologo_id = ? AND fecha = CURDATE() AND estado = 'completada') as citas_completadas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE psicologo_id = ? AND fecha BETWEEN DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND CURDATE()) as citas_semana,
-                    
-                    -- Sesiones registradas
-                    (SELECT COUNT(*) FROM sesiones WHERE psicologo_id = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as sesiones_mes,
-                    
-                    -- Observaciones realizadas
-                    (SELECT COUNT(*) FROM observaciones_becarios WHERE supervisor_id = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as observaciones_mes,
-                    
-                    -- Altas realizadas
-                    (SELECT COUNT(*) FROM altas WHERE usuario_id = ? AND fecha_alta >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as altas_mes
-            `, {
-                replacements: [usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId],
-                type: QueryTypes.SELECT
+            const hoy = new Date();
+            const hoyStr = formatDate(hoy);
+
+            const pacientes_asignados = await Asignacion.count({
+                where: { psicologo_id: usuarioId, estado: 'activa' },
+                distinct: true,
+                col: 'paciente_id'
             });
-            
-            // Próximas citas
-            const proximasCitas = await sequelize.query(`
-                SELECT 
-                    c.id,
-                    c.fecha,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    c.estado,
-                    c.tipo_consulta,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    p.telefono as paciente_telefono,
-                    u_bec.nombre as becario_nombre
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
-                WHERE c.psicologo_id = ?
-                AND c.fecha >= CURDATE()
-                AND c.estado IN ('programada', 'confirmada')
-                ORDER BY c.fecha, c.hora
-                LIMIT 10
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const citas_hoy = await Cita.count({ where: { psicologo_id: usuarioId, fecha: hoyStr } });
+            const estadisticas = { pacientes_asignados, citas_hoy };
+
+            const proximasCitasList = await Cita.findAll({
+                where: {
+                    psicologo_id: usuarioId,
+                    fecha: { [Op.gte]: hoyStr },
+                    estado: { [Op.in]: ['programada', 'confirmada'] }
+                },
+                include: [
+                    { model: Paciente, attributes: ['nombre', 'apellido'] },
+                    { model: User, as: 'Becario', attributes: ['nombre', 'apellido'] }
+                ],
+                order: [['fecha', 'ASC'], ['hora', 'ASC']],
+                limit: 10
             });
-            
-            // Pacientes con seguimiento pendiente
-            const pacientesSeguimiento = await sequelize.query(`
-                SELECT 
-                    p.id,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    MAX(c.fecha) as ultima_sesion,
-                    DATEDIFF(CURDATE(), MAX(c.fecha)) as dias_desde_ultima,
-                    COUNT(c.id) as total_sesiones
-                FROM asignaciones a
-                JOIN pacientes p ON a.paciente_id = p.id
-                LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
-                WHERE a.psicologo_id = ?
-                AND a.estado = 'activa'
-                AND p.activo = TRUE
-                GROUP BY p.id, p.nombre, p.apellido
-                HAVING DATEDIFF(CURDATE(), MAX(c.fecha)) > 14 OR MAX(c.fecha) IS NULL
-                ORDER BY dias_desde_ultima DESC
-                LIMIT 5
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+
+            const proximasCitas = proximasCitasList.map(c => ({
+                id: c.id,
+                fecha: c.fecha,
+                hora: c.hora,
+                estado: c.estado,
+                paciente: c.Paciente ? `${c.Paciente.nombre} ${c.Paciente.apellido}` : null,
+                coterapeuta_nombre: c.Becario ? c.Becario.nombre : null
+            }));
+
+            const asignaciones = await Asignacion.findAll({
+                where: { psicologo_id: usuarioId, estado: 'activa' },
+                include: [{ model: Paciente, attributes: ['id', 'nombre', 'apellido', 'activo'] }]
             });
-            
-            // Observaciones recientes de becarios
-            const observacionesRecientes = await sequelize.query(`
-                SELECT 
-                    ob.id,
-                    ob.fecha,
-                    ob.aspecto_evaluado,
-                    ob.calificacion,
-                    CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario,
-                    ob.plan_accion,
-                    ob.fecha_seguimiento
-                FROM observaciones_becarios ob
-                JOIN users u_bec ON ob.becario_id = u_bec.id
-                WHERE ob.supervisor_id = ?
-                ORDER BY ob.fecha DESC, ob.created_at DESC
-                LIMIT 5
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const pacientesIds = asignaciones.map(a => a.paciente_id);
+            const citasCompletadas = await Cita.findAll({
+                where: { paciente_id: { [Op.in]: pacientesIds }, estado: 'completada' },
+                attributes: ['paciente_id', 'fecha']
             });
-            
-            // Disponibilidad para la semana
-            const disponibilidadSemana = await sequelize.query(`
-                SELECT 
-                    d.dia_semana,
-                    TIME_FORMAT(d.hora_inicio, '%H:%i') as hora_inicio,
-                    TIME_FORMAT(d.hora_fin, '%H:%i') as hora_fin,
-                    COUNT(c.id) as citas_programadas
-                FROM disponibilidades d
-                LEFT JOIN citas c ON d.usuario_id = c.psicologo_id 
-                    AND c.fecha BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-                    AND c.estado IN ('programada', 'confirmada')
-                    AND DAYNAME(c.fecha) = d.dia_semana
-                    AND TIME(c.hora) BETWEEN d.hora_inicio AND d.hora_fin
-                WHERE d.usuario_id = ?
-                AND d.activo = TRUE
-                GROUP BY d.dia_semana, d.hora_inicio, d.hora_fin
-                ORDER BY FIELD(d.dia_semana, 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo')
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const citasPorPaciente = citasCompletadas.reduce((acc, c) => {
+                const fecha = c.fecha instanceof Date ? c.fecha : new Date(c.fecha);
+                if (!acc[c.paciente_id]) acc[c.paciente_id] = { total: 0, ultima: fecha };
+                acc[c.paciente_id].total += 1;
+                if (fecha > acc[c.paciente_id].ultima) acc[c.paciente_id].ultima = fecha;
+                return acc;
+            }, {});
+
+            const pacientesSeguimiento = asignaciones
+                .filter(a => a.Paciente?.activo)
+                .map(a => {
+                    const info = citasPorPaciente[a.paciente_id];
+                    const ultima = info?.ultima || null;
+                    const dias = ultima ? Math.floor((hoy - ultima) / (1000 * 60 * 60 * 24)) : null;
+                    return {
+                        id: a.Paciente.id,
+                        paciente: `${a.Paciente.nombre} ${a.Paciente.apellido}`,
+                        ultima_sesion: ultima ? formatDate(ultima) : null,
+                        dias_desde_ultima: dias,
+                        total_sesiones: info?.total || 0
+                    };
+                })
+                .filter(p => p.dias_desde_ultima === null || p.dias_desde_ultima > 14)
+                .sort((a, b) => (b.dias_desde_ultima ?? Infinity) - (a.dias_desde_ultima ?? Infinity))
+                .slice(0, 5);
+
+            const observacionesRecientesList = await ObservacionBecario.findAll({
+                where: { supervisor_id: usuarioId },
+                include: [{ model: User, as: 'Becario', attributes: ['nombre', 'apellido'] }],
+                order: [['fecha', 'DESC'], ['created_at', 'DESC']],
+                limit: 5
             });
+            const observacionesRecientes = observacionesRecientesList.map(ob => ({
+                id: ob.id,
+                fecha: ob.fecha,
+                aspecto_evaluado: ob.aspecto_evaluado,
+                calificacion: ob.calificacion,
+                coterapeuta: ob.Becario ? `${ob.Becario.nombre} ${ob.Becario.apellido}` : null,
+                plan_accion: ob.plan_accion,
+                fecha_seguimiento: ob.fecha_seguimiento
+            }));
+
+            const disponibilidadList = await Disponibilidad.findAll({
+                where: { usuario_id: usuarioId, activo: true }
+            });
+            const fechaFin = formatDate(addDays(hoy, 7));
+            const citasSemana = await Cita.findAll({
+                where: {
+                    psicologo_id: usuarioId,
+                    fecha: { [Op.between]: [hoyStr, fechaFin] },
+                    estado: { [Op.in]: ['programada', 'confirmada'] }
+                },
+                attributes: ['fecha', 'hora']
+            });
+
+            const disponibilidadSemana = disponibilidadList.map(d => {
+                const citas_programadas = citasSemana.filter(c => {
+                    const fecha = c.fecha instanceof Date ? c.fecha : new Date(c.fecha);
+                    const dia = getDayNameEs(fecha);
+                    if (dia !== d.dia_semana) return false;
+                    return c.hora >= d.hora_inicio && c.hora <= d.hora_fin;
+                }).length;
+                return {
+                    dia_semana: d.dia_semana,
+                    hora_inicio: d.hora_inicio,
+                    hora_fin: d.hora_fin,
+                    citas_programadas
+                };
+            }).sort((a, b) => dayNamesEs.indexOf(a.dia_semana) - dayNamesEs.indexOf(b.dia_semana));
             
             res.json({
                 success: true,
@@ -332,154 +411,145 @@ class DashboardController {
             
         } catch (error) {
             console.error('Error en obtenerDashboardPsicologo:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener dashboard de psicólogo'
-            });
+            res.status(500).json({ success: false, message: 'Error al obtener dashboard de psicólogo' });
         }
     }
     
     static async obtenerDashboardBecario(req, res) {
         try {
             const usuarioId = req.user.id;
-            const usuarioRol = req.user.rol;
             
-            
-            // Estadísticas del becario
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes asignados
-                    (SELECT COUNT(DISTINCT paciente_id) FROM asignaciones WHERE becario_id = ? AND estado = 'activa') as pacientes_asignados,
-                    
-                    -- Citas de hoy
-                    (SELECT COUNT(*) FROM citas WHERE becario_id = ? AND fecha = CURDATE() AND estado IN ('programada', 'confirmada')) as citas_hoy,
-                    (SELECT COUNT(*) FROM citas WHERE becario_id = ? AND fecha = CURDATE() AND estado = 'completada') as citas_completadas_hoy,
-                    
-                    -- Citas totales
-                    (SELECT COUNT(*) FROM citas WHERE becario_id = ? AND fecha BETWEEN DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND CURDATE()) as citas_mes,
-                    (SELECT COUNT(*) FROM citas WHERE becario_id = ? AND estado = 'completada') as citas_completadas_total,
-                    
-                    -- Observaciones recibidas
-                    (SELECT COUNT(*) FROM observaciones_becarios WHERE becario_id = ? AND fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as observaciones_mes,
-                    (SELECT AVG(calificacion) FROM observaciones_becarios WHERE becario_id = ?) as promedio_calificacion,
-                    
-                    -- Supervisor
-                    (SELECT CONCAT(u.nombre, ' ', u.apellido) FROM asignaciones a 
-                     JOIN users u ON a.psicologo_id = u.id 
-                     WHERE a.becario_id = ? AND a.estado = 'activa' LIMIT 1) as supervisor
-            `, {
-                replacements: [usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId],
-                type: QueryTypes.SELECT
+            const hoy = new Date();
+            const hoyStr = formatDate(hoy);
+            const treintaDiasAtras = formatDate(addDays(hoy, -30));
+
+            const [
+                pacientes_asignados,
+                citas_hoy,
+                citas_completadas_hoy,
+                citas_mes,
+                citas_completadas_total,
+                observaciones_mes,
+                promedio_calificacion
+            ] = await Promise.all([
+                Asignacion.count({ where: { becario_id: usuarioId, estado: 'activa' }, distinct: true, col: 'paciente_id' }),
+                Cita.count({ where: { becario_id: usuarioId, fecha: hoyStr, estado: { [Op.in]: ['programada', 'confirmada'] } } }),
+                Cita.count({ where: { becario_id: usuarioId, fecha: hoyStr, estado: 'completada' } }),
+                Cita.count({ where: { becario_id: usuarioId, fecha: { [Op.between]: [treintaDiasAtras, hoyStr] } } }),
+                Cita.count({ where: { becario_id: usuarioId, estado: 'completada' } }),
+                ObservacionBecario.count({ where: { becario_id: usuarioId, fecha: { [Op.gte]: treintaDiasAtras } } }),
+                ObservacionBecario.avg('calificacion', { where: { becario_id: usuarioId } })
+            ]);
+
+            const supervisorAsignacion = await Asignacion.findOne({
+                where: { becario_id: usuarioId, estado: 'activa' },
+                include: [{ model: User, as: 'Psicologo', attributes: ['nombre', 'apellido'] }]
             });
-            
-            // Citas de hoy
-            const citasHoy = await sequelize.query(`
-                SELECT 
-                    c.id,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    c.estado,
-                    c.tipo_consulta,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    p.telefono as paciente_telefono,
-                    u_psi.nombre as psicologo_nombre
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
-                WHERE c.becario_id = ?
-                AND c.fecha = CURDATE()
-                AND c.estado IN ('programada', 'confirmada', 'completada')
-                ORDER BY c.hora
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const supervisor = supervisorAsignacion?.Psicologo
+                ? `${supervisorAsignacion.Psicologo.nombre} ${supervisorAsignacion.Psicologo.apellido}`
+                : null;
+
+            const estadisticas = {
+                pacientes_asignados,
+                citas_hoy,
+                citas_completadas_hoy,
+                citas_mes,
+                citas_completadas_total,
+                observaciones_mes,
+                promedio_calificacion: promedio_calificacion ? Math.round(promedio_calificacion * 100) / 100 : 0,
+                supervisor
+            };
+
+            const citasHoyList = await Cita.findAll({
+                where: { becario_id: usuarioId, fecha: hoyStr, estado: { [Op.in]: ['programada', 'confirmada', 'completada'] } },
+                include: [
+                    { model: Paciente, attributes: ['nombre', 'apellido', 'telefono'] },
+                    { model: User, as: 'Psicologo', attributes: ['nombre'] }
+                ],
+                order: [['hora', 'ASC']]
             });
-            
-            // Próximas citas
-            const proximasCitas = await sequelize.query(`
-                SELECT 
-                    c.id,
-                    c.fecha,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    c.estado,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    p.telefono as paciente_telefono
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                WHERE c.becario_id = ?
-                AND c.fecha > CURDATE()
-                AND c.estado IN ('programada', 'confirmada')
-                ORDER BY c.fecha, c.hora
-                LIMIT 10
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const citasHoy = citasHoyList.map(c => ({
+                id: c.id,
+                hora: c.hora,
+                estado: c.estado,
+                tipo_consulta: c.tipo_consulta,
+                paciente: c.Paciente ? `${c.Paciente.nombre} ${c.Paciente.apellido}` : null,
+                paciente_telefono: c.Paciente?.telefono || null,
+                terapeuta_nombre: c.Psicologo?.nombre || null
+            }));
+
+            const proximasCitasList = await Cita.findAll({
+                where: { becario_id: usuarioId, fecha: { [Op.gt]: hoyStr }, estado: { [Op.in]: ['programada', 'confirmada'] } },
+                include: [{ model: Paciente, attributes: ['nombre', 'apellido', 'telefono'] }],
+                order: [['fecha', 'ASC'], ['hora', 'ASC']],
+                limit: 10
             });
-            
-            // Observaciones recientes
-            const observacionesRecientes = await sequelize.query(`
-                SELECT 
-                    ob.id,
-                    ob.fecha,
-                    ob.aspecto_evaluado,
-                    ob.calificacion,
-                    ob.fortalezas,
-                    ob.areas_mejora,
-                    CONCAT(u_sup.nombre, ' ', u_sup.apellido) as supervisor,
-                    ob.fecha_seguimiento
-                FROM observaciones_becarios ob
-                JOIN users u_sup ON ob.supervisor_id = u_sup.id
-                WHERE ob.becario_id = ?
-                ORDER BY ob.fecha DESC
-                LIMIT 5
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const proximasCitas = proximasCitasList.map(c => ({
+                id: c.id,
+                fecha: c.fecha,
+                hora: c.hora,
+                estado: c.estado,
+                paciente: c.Paciente ? `${c.Paciente.nombre} ${c.Paciente.apellido}` : null,
+                paciente_telefono: c.Paciente?.telefono || null
+            }));
+
+            const observacionesRecientesList = await ObservacionBecario.findAll({
+                where: { becario_id: usuarioId },
+                include: [{ model: User, as: 'Supervisor', attributes: ['nombre', 'apellido'] }],
+                order: [['fecha', 'DESC']],
+                limit: 5
             });
-            
-            // Tareas pendientes (sesiones sin registro)
-            const tareasPendientes = await sequelize.query(`
-                SELECT 
-                    c.id as cita_id,
-                    c.fecha,
-                    TIME_FORMAT(c.hora, '%H:%i') as hora,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    DATEDIFF(CURDATE(), c.fecha) as dias_pasados
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                WHERE c.becario_id = ?
-                AND c.estado = 'completada'
-                AND NOT EXISTS (SELECT 1 FROM sesiones s WHERE s.cita_id = c.id)
-                AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                ORDER BY c.fecha DESC
-                LIMIT 5
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const observacionesRecientes = observacionesRecientesList.map(ob => ({
+                id: ob.id,
+                fecha: ob.fecha,
+                aspecto_evaluado: ob.aspecto_evaluado,
+                calificacion: ob.calificacion,
+                fortalezas: ob.fortalezas,
+                areas_mejora: ob.areas_mejora,
+                supervisor: ob.Supervisor ? `${ob.Supervisor.nombre} ${ob.Supervisor.apellido}` : null,
+                fecha_seguimiento: ob.fecha_seguimiento
+            }));
+
+            const sieteDiasAtras = formatDate(addDays(hoy, -7));
+            const citasCompletadas = await Cita.findAll({
+                where: { becario_id: usuarioId, estado: 'completada', fecha: { [Op.gte]: sieteDiasAtras } },
+                include: [{ model: Paciente, attributes: ['nombre', 'apellido'] }],
+                order: [['fecha', 'DESC']],
+                limit: 10
             });
-            
-            // Disponibilidad
-            const disponibilidad = await sequelize.query(`
-                SELECT 
-                    dia_semana,
-                    TIME_FORMAT(hora_inicio, '%H:%i') as hora_inicio,
-                    TIME_FORMAT(hora_fin, '%H:%i') as hora_fin
-                FROM disponibilidades
-                WHERE usuario_id = ?
-                AND activo = TRUE
-                ORDER BY FIELD(dia_semana, 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo')
-            `, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const sesionIds = citasCompletadas.map(c => c.id);
+            const sesiones = await Sesion.findAll({ where: { cita_id: { [Op.in]: sesionIds } }, attributes: ['cita_id'] });
+            const sesionesMap = sesiones.reduce((acc, s) => { acc[s.cita_id] = true; return acc; }, {});
+
+            const tareasPendientes = citasCompletadas
+                .filter(c => !sesionesMap[c.id])
+                .slice(0, 5)
+                .map(c => ({
+                    cita_id: c.id,
+                    fecha: c.fecha,
+                    hora: c.hora,
+                    paciente: c.Paciente ? `${c.Paciente.nombre} ${c.Paciente.apellido}` : null,
+                    dias_pasados: Math.floor((hoy - new Date(c.fecha)) / (1000 * 60 * 60 * 24))
+                }));
+
+            const disponibilidadList = await Disponibilidad.findAll({
+                where: { usuario_id: usuarioId, activo: true },
+                order: [['dia_semana', 'ASC'], ['hora_inicio', 'ASC']]
             });
+            const disponibilidad = disponibilidadList.map(d => ({
+                dia_semana: d.dia_semana,
+                hora_inicio: d.hora_inicio,
+                hora_fin: d.hora_fin
+            }));
             
             res.json({
                 success: true,
                 data: {
                     estadisticas,
-                    citas_hoy,
-                    proximas_citas,
-                    observaciones_recientes,
-                    tareas_pendientes,
+                    citas_hoy: citasHoy,
+                    proximas_citas: proximasCitas,
+                    observaciones_recientes: observacionesRecientes,
+                    tareas_pendientes: tareasPendientes,
                     disponibilidad,
                     ultima_actualizacion: new Date().toISOString()
                 }
@@ -487,108 +557,122 @@ class DashboardController {
             
         } catch (error) {
             console.error('Error en obtenerDashboardBecario:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener dashboard de becario'
-            });
+            res.status(500).json({ success: false, message: 'Error al obtener dashboard de coterapeuta' });
         }
     }
     
     static async obtenerMetricasGlobales(req, res) {
         try {
-            const { periodo = 'mes' } = req.query; // mes, trimestre, semestre, año
+            const { periodo = 'mes' } = req.query;
             
-            let intervalo;
+            let days;
             switch (periodo) {
-                case 'mes':
-                    intervalo = 'INTERVAL 30 DAY';
-                    break;
-                case 'trimestre':
-                    intervalo = 'INTERVAL 90 DAY';
-                    break;
-                case 'semestre':
-                    intervalo = 'INTERVAL 180 DAY';
-                    break;
-                case 'año':
-                    intervalo = 'INTERVAL 365 DAY';
-                    break;
-                default:
-                    intervalo = 'INTERVAL 30 DAY';
+                case 'mes': days = 30; break;
+                case 'trimestre': days = 90; break;
+                case 'semestre': days = 180; break;
+                case 'año': days = 365; break;
+                default: days = 30;
             }
-            
-            // Métricas principales
-            const [metricas] = await sequelize.query(`
-                SELECT 
-                    -- Pacientes
-                    COUNT(DISTINCT p.id) as total_pacientes,
-                    COUNT(DISTINCT CASE WHEN p.activo = TRUE THEN p.id END) as pacientes_activos,
-                    COUNT(DISTINCT CASE WHEN p.activo = FALSE THEN p.id END) as pacientes_inactivos,
-                    
-                    -- Citas
-                    COUNT(DISTINCT c.id) as total_citas,
-                    COUNT(DISTINCT CASE WHEN c.estado = 'completada' THEN c.id END) as citas_completadas,
-                    COUNT(DISTINCT CASE WHEN c.estado = 'cancelada' THEN c.id END) as citas_canceladas,
-                    
-                    -- Sesiones
-                    COUNT(DISTINCT s.id) as sesiones_registradas,
-                    
-                    -- Altas
-                    COUNT(DISTINCT a.id) as altas_realizadas,
-                    COUNT(DISTINCT CASE WHEN a.tipo_alta = 'terapeutica' THEN a.id END) as altas_terapeuticas,
-                    
-                    -- Tasa de completitud
-                    ROUND(COUNT(DISTINCT CASE WHEN c.estado = 'completada' THEN c.id END) * 100.0 / 
-                          NULLIF(COUNT(DISTINCT c.id), 0), 2) as tasa_completitud_citas,
-                    
-                    -- Tasa de abandono
-                    ROUND(COUNT(DISTINCT CASE WHEN a.tipo_alta = 'abandono' THEN a.id END) * 100.0 / 
-                          NULLIF(COUNT(DISTINCT a.id), 0), 2) as tasa_abandono
-                    
-                FROM pacientes p
-                LEFT JOIN citas c ON p.id = c.paciente_id AND c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-                LEFT JOIN sesiones s ON c.id = s.cita_id
-                LEFT JOIN altas a ON p.id = a.paciente_id AND a.fecha_alta >= DATE_SUB(CURDATE(), ${intervalo})
-                WHERE p.created_at >= DATE_SUB(CURDATE(), ${intervalo})
-            `, { type: QueryTypes.SELECT });
-            
-            // Evolución semanal
-            const evolucionSemanal = await sequelize.query(`
-                SELECT 
-                    YEARWEEK(c.fecha, 1) as semana,
-                    COUNT(DISTINCT c.id) as total_citas,
-                    COUNT(DISTINCT CASE WHEN c.estado = 'completada' THEN c.id END) as citas_completadas,
-                    COUNT(DISTINCT p.id) as pacientes_atendidos,
-                    COUNT(DISTINCT a.id) as altas_realizadas
-                FROM citas c
-                LEFT JOIN pacientes p ON c.paciente_id = p.id
-                LEFT JOIN altas a ON p.id = a.paciente_id AND YEARWEEK(a.fecha_alta, 1) = YEARWEEK(c.fecha, 1)
-                WHERE c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-                GROUP BY YEARWEEK(c.fecha, 1)
-                ORDER BY semana DESC
-                LIMIT 12
-            `, { type: QueryTypes.SELECT });
-            
-            // Distribución por tipo de consulta
-            const distribucionConsulta = await sequelize.query(`
-                SELECT 
-                    c.tipo_consulta,
-                    COUNT(*) as cantidad,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM citas c
-                WHERE c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-                GROUP BY c.tipo_consulta
-            `, { type: QueryTypes.SELECT });
-            
-            // Distribución por motivo de alta
-            const distribucionAlta = await sequelize.query(`
-                SELECT 
-                    a.tipo_alta,
-                    COUNT(*) as cantidad,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM altas a
-                WHERE a.fecha_alta >= DATE_SUB(CURDATE(), ${intervalo})
-                GROUP BY a.tipo_alta
-            `, { type: QueryTypes.SELECT });
+
+            const fechaInicio = formatDate(addDays(new Date(), -days));
+
+            const pacientes = await Paciente.findAll({
+                where: { created_at: { [Op.gte]: fechaInicio } },
+                attributes: ['id', 'activo']
+            });
+
+            const citas = await Cita.findAll({
+                where: { fecha: { [Op.gte]: fechaInicio } },
+                attributes: ['id', 'estado', 'paciente_id', 'tipo_consulta', 'fecha']
+            });
+
+            const altas = await Alta.findAll({
+                where: { fecha_alta: { [Op.gte]: fechaInicio } },
+                attributes: ['id', 'tipo_alta', 'paciente_id', 'fecha_alta']
+            });
+
+            const sesiones = citas.length > 0
+                ? await Sesion.count({ where: { cita_id: { [Op.in]: citas.map(c => c.id) } } })
+                : 0;
+
+            const total_pacientes = pacientes.length;
+            const pacientes_activos = pacientes.filter(p => p.activo).length;
+            const pacientes_inactivos = total_pacientes - pacientes_activos;
+            const total_citas = citas.length;
+            const citas_completadas = citas.filter(c => c.estado === 'completada').length;
+            const citas_canceladas = citas.filter(c => c.estado === 'cancelada').length;
+            const altas_realizadas = altas.length;
+            const altas_terapeuticas = altas.filter(a => a.tipo_alta === 'terapeutica').length;
+            const tasa_completitud_citas = total_citas > 0
+                ? Math.round((citas_completadas / total_citas) * 10000) / 100
+                : 0;
+            const tasa_abandono = altas_realizadas > 0
+                ? Math.round((altas.filter(a => a.tipo_alta === 'abandono').length / altas_realizadas) * 10000) / 100
+                : 0;
+
+            const metricas = {
+                total_pacientes,
+                pacientes_activos,
+                pacientes_inactivos,
+                total_citas,
+                citas_completadas,
+                citas_canceladas,
+                sesiones_registradas: sesiones,
+                altas_realizadas,
+                altas_terapeuticas,
+                tasa_completitud_citas,
+                tasa_abandono
+            };
+
+            const evolucionMap = citas.reduce((acc, c) => {
+                const fecha = c.fecha instanceof Date ? c.fecha : new Date(c.fecha);
+                const semana = getWeekKey(fecha);
+                if (!acc[semana]) acc[semana] = { semana, total_citas: 0, citas_completadas: 0, pacientes: new Set(), altas_realizadas: 0 };
+                acc[semana].total_citas += 1;
+                if (c.estado === 'completada') acc[semana].citas_completadas += 1;
+                if (c.paciente_id) acc[semana].pacientes.add(c.paciente_id);
+                return acc;
+            }, {});
+
+            altas.forEach(a => {
+                const fecha = a.fecha_alta instanceof Date ? a.fecha_alta : new Date(a.fecha_alta);
+                const semana = getWeekKey(fecha);
+                if (!evolucionMap[semana]) evolucionMap[semana] = { semana, total_citas: 0, citas_completadas: 0, pacientes: new Set(), altas_realizadas: 0 };
+                evolucionMap[semana].altas_realizadas += 1;
+            });
+
+            const evolucionSemanal = Object.values(evolucionMap)
+                .map(item => ({
+                    semana: item.semana,
+                    total_citas: item.total_citas,
+                    citas_completadas: item.citas_completadas,
+                    pacientes_atendidos: item.pacientes.size,
+                    altas_realizadas: item.altas_realizadas
+                }))
+                .sort((a, b) => a.semana.localeCompare(b.semana))
+                .slice(-12);
+
+            const distribucionConsultaMap = citas.reduce((acc, c) => {
+                const tipo = c.tipo_consulta || 'no especificado';
+                acc[tipo] = (acc[tipo] || 0) + 1;
+                return acc;
+            }, {});
+            const distribucionConsulta = Object.entries(distribucionConsultaMap).map(([tipo_consulta, cantidad]) => ({
+                tipo_consulta,
+                cantidad,
+                porcentaje: total_citas > 0 ? Math.round((cantidad / total_citas) * 10000) / 100 : 0
+            }));
+
+            const distribucionAltaMap = altas.reduce((acc, a) => {
+                const tipo = a.tipo_alta || 'no especificado';
+                acc[tipo] = (acc[tipo] || 0) + 1;
+                return acc;
+            }, {});
+            const distribucionAlta = Object.entries(distribucionAltaMap).map(([tipo_alta, cantidad]) => ({
+                tipo_alta,
+                cantidad,
+                porcentaje: altas_realizadas > 0 ? Math.round((cantidad / altas_realizadas) * 10000) / 100 : 0
+            }));
             
             res.json({
                 success: true,
@@ -604,10 +688,102 @@ class DashboardController {
             
         } catch (error) {
             console.error('Error en obtenerMetricasGlobales:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener métricas globales'
+            res.status(500).json({ success: false, message: 'Error al obtener métricas globales' });
+        }
+    }
+
+    static async denegarSolicitud(req, res) {
+        console.log("=== INICIANDO denegarSolicitud ===");
+        const { solicitudId } = req.body;
+        
+        if (!solicitudId) {
+            return res.status(400).json({ message: "Falta el ID de la solicitud." });
+        }
+        
+        try {
+            await Solicitud.update(
+                { estado: 'RECHAZADO' },
+                { where: { id: solicitudId }, validate: false }
+            );
+
+            return res.status(200).json({ message: "Solicitud denegada correctamente.", success: true });
+            
+        } catch (error) {
+            console.error("Error al denegar solicitud:", error.message);
+            return res.status(500).json({ message: "Error interno: " + error.message });
+        }
+    }
+
+    static async aprobarSolicitud(req, res) {
+        console.log("=== INICIANDO aprobarSolicitud ===");
+        const { solicitudId, rolAsignado } = req.body;
+        console.log("--> Datos recibidos:", { solicitudId, rolAsignado });
+
+        if (!solicitudId || !rolAsignado) {
+            console.log("--> ERROR: Faltan datos requeridos");
+            return res.status(400).json({ message: "Faltan datos requeridos (ID o Rol)." });
+        }
+
+        const transaction = await sequelize.transaction();
+        console.log("--> Transacción iniciada");
+
+        try {
+            const solicitud = await Solicitud.findByPk(solicitudId, { transaction });
+            if (!solicitud) {
+                await transaction.rollback();
+                return res.status(404).json({ message: "Solicitud no encontrada en la BD." });
+            }
+
+            const existingUser = await User.findOne({ where: { email: solicitud.email }, transaction });
+            if (existingUser) {
+                await transaction.rollback();
+                return res.status(400).json({ message: "El email ya está registrado en el sistema." });
+            }
+
+            const nombreSimple = solicitud.nombre_completo.split(' ')[0];
+            const rawPassword = `${nombreSimple}123`;
+            const passwordHash = await bcrypt.hash(rawPassword, 10);
+
+            const partesNombre = solicitud.nombre_completo.split(' ');
+            const nombreUser = partesNombre[0];
+            const apellidoUser = partesNombre.slice(1).join(' ') || '.';
+
+            await User.create({
+                nombre: nombreUser,
+                apellido: apellidoUser,
+                email: solicitud.email,
+                password: passwordHash,
+                rol: rolAsignado.toLowerCase(),
+                telefono: solicitud.telefono,
+                activo: true
+            }, { transaction });
+
+            await solicitud.update({ estado: 'APROBADA' }, { transaction, validate: false });
+
+            await transaction.commit();
+            console.log("--> Transacción completada y usuario creado.");
+
+            try {
+                await EmailService.enviarBienvenidaUsuario({
+                    nombre: nombreUser,
+                    apellido: apellidoUser,
+                    email: solicitud.email,
+                    passwordTemporal: rawPassword,
+                    rol: rolAsignado
+                });
+            } catch (emailError) {
+                console.error("--> Error al enviar correo (no bloqueante):", emailError.message);
+            }
+
+            res.status(200).json({
+                message: "Solicitud aprobada y usuario creado correctamente.",
+                success: true
             });
+
+        } catch (error) {
+            await transaction.rollback();
+            console.error("=== ERROR CRÍTICO en aprobarSolicitud ===", error);
+            res.status(500).json({ message: "Error interno: " + error.message });
         }
     }
 }

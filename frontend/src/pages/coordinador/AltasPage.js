@@ -95,8 +95,8 @@ const CoordinadorAltas = () => {
           fecha_ingreso: paciente.fecha_ingreso,
           sesiones_completadas: paciente.sesiones_completadas || 0,
           progreso: Math.min(100, paciente.progreso_estimado || 0),
-          psicologo: paciente.psicologo_nombre || 'Sin asignar',
-          becario: paciente.becario_nombre || 'No asignado',
+          terapeuta: paciente.terapeuta_nombre || paciente.psicologo_nombre || 'Sin asignar',
+          coterapeuta: paciente.coterapeuta_nombre || paciente.becario_nombre || 'No asignado',
           recomendacion: paciente.sesiones_completadas >= 10 
             ? 'Posible alta en 1-2 sesiones más' 
             : 'Evaluar en próxima revisión'
@@ -430,7 +430,7 @@ const CoordinadorAltas = () => {
         </div>
       </div>
 
-      {/* Propuestas Pendientes de Psicólogos */}
+      {/* Propuestas Pendientes de Terapeutas */}
       {propuestas.length > 0 && (
         <div className="dashboard-section mb-30">
           <div className="section-header">
@@ -450,7 +450,7 @@ const CoordinadorAltas = () => {
                     </div>
                     <div>
                       <h4>{propuesta.paciente_nombre}</h4>
-                      <p className="text-small">Propuesta por psicólogo</p>
+                      <p className="text-small">Propuesta por terapeuta</p>
                     </div>
                   </div>
                   <div style={{ padding: '8px 12px', background: '#fff3cd', borderRadius: '4px', fontSize: '12px', color: '#856404' }}>
@@ -527,12 +527,12 @@ const CoordinadorAltas = () => {
                 
                 <div className="grid-2 gap-10 mb-15">
                   <div>
-                    <div className="text-small">Psicólogo</div>
-                    <div className="font-bold">{paciente.psicologo}</div>
+                    <div className="text-small">Terapeuta</div>
+                    <div className="font-bold">{paciente.terapeuta}</div>
                   </div>
                   <div>
-                    <div className="text-small">Becario</div>
-                    <div className="font-bold">{paciente.becario || 'No asignado'}</div>
+                    <div className="text-small">Coterapeuta</div>
+                    <div className="font-bold">{paciente.coterapeuta || 'No asignado'}</div>
                   </div>
                 </div>
                 
@@ -564,7 +564,7 @@ const CoordinadorAltas = () => {
               <FiCheckCircle />
             </div>
             <div>No hay candidatos a alta pendientes</div>
-            <p className="text-small mt-10">Los psicólogos propondrán pacientes para alta cuando estén listos</p>
+            <p className="text-small mt-10">Los terapeutas propondrán pacientes para alta cuando estén listos</p>
           </div>
         )}
       </div>
@@ -745,7 +745,7 @@ const CoordinadorAltas = () => {
                   <div className="alert-message info mb-20">
                     <strong>Paciente:</strong> {selectedPacienteAlta.paciente_nombre}
                     <br />
-                    <strong>Psicólogo asignado:</strong> {selectedPacienteAlta.psicologo}
+                    <strong>Terapeuta asignado:</strong> {selectedPacienteAlta.terapeuta}
                     <br />
                     <strong>Sesiones completadas:</strong> {selectedPacienteAlta.sesiones_completadas}
                   </div>
@@ -915,9 +915,9 @@ const CoordinadorAltas = () => {
                   <div className="detail-row">
                     <strong>Sesiones completadas:</strong> {selectedAltaDetalles.sesiones_totales || 0}
                   </div>
-                  {selectedAltaDetalles.psicologo_nombre && (
+                  {(selectedAltaDetalles.terapeuta_nombre || selectedAltaDetalles.psicologo_nombre) && (
                     <div className="detail-row">
-                      <strong>Psicólogo asignado:</strong> {selectedAltaDetalles.psicologo_nombre}
+                      <strong>Terapeuta asignado:</strong> {selectedAltaDetalles.terapeuta_nombre || selectedAltaDetalles.psicologo_nombre}
                     </div>
                   )}
                   {selectedAltaDetalles.evaluacion_final && (
@@ -985,7 +985,7 @@ const CoordinadorAltas = () => {
               <div className="alert-message info mb-20">
                 <strong>Paciente:</strong> {selectedPropuesta.paciente_nombre}
                 <br />
-                <strong>Evaluación del psicólogo:</strong> {selectedPropuesta.evaluacion_final || 'Sin especificar'}
+                <strong>Evaluación del terapeuta:</strong> {selectedPropuesta.evaluacion_final || 'Sin especificar'}
                 <br />
                 {selectedPropuesta.recomendaciones && (
                   <>
@@ -1034,7 +1034,7 @@ const CoordinadorAltas = () => {
                         onChange={(e) => setProcesarData({...procesarData, evaluacion_final: e.target.value})}
                         className="select-field"
                       >
-                        <option value="">Usar evaluación del psicólogo</option>
+                        <option value="">Usar evaluación del terapeuta</option>
                         <option value="excelente">Excelente</option>
                         <option value="buena">Buena</option>
                         <option value="regular">Regular</option>

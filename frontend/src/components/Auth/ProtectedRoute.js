@@ -25,10 +25,12 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   if (!allowedRoles.includes(user.rol)) {
     // Redirigir al dashboard correspondiente según el rol
     switch (user.rol) {
-      case 'becario':
-        return <Navigate to="/becario/dashboard" replace />;
-      case 'psicologo':
-        return <Navigate to="/psicologo/dashboard" replace />;
+      case 'coterapeuta':
+        return <Navigate to="/coterapeuta/dashboard" replace />;
+      case 'terapeuta':
+        return <Navigate to="/terapeuta/dashboard" replace />;
+      case 'psicopedagogico':
+        return <Navigate to="/psicopedagogico/dashboard" replace />;
       case 'coordinador':
         return <Navigate to="/coordinador/dashboard" replace />;
       default:

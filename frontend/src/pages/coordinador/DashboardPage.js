@@ -1,33 +1,41 @@
 // frontend/src/pages/coordinador/DashboardPage.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
   FiUserCheck, FiClock, FiAlertCircle, FiRefreshCw,
-  FiDollarSign, FiActivity, FiInfo, FiUser, FiFileText,
-  FiCheckCircle, FiList, FiUserPlus, FiTarget, FiClipboard,
-  FiUsers as FiUsersGroup, FiCalendar as FiCalendarGlobal
+  FiActivity, FiUser, FiCheck, FiX, FiUserPlus,
+  FiEye, FiPhone, FiMapPin, FiBook, FiBriefcase, FiMail 
 } from 'react-icons/fi';
-import './coordinador.css';
-import { useNavigate } from 'react-router-dom'; // Importamos useNavigate
+import './coordinador.css'; 
+import { useNavigate } from 'react-router-dom';
 import notifications from '../../utils/notifications';
 import DashboardService from '../../services/dashboardService';
 
 const CoordinadorDashboard = () => {
-  const navigate = useNavigate(); // Para navegación
+  const navigate = useNavigate();
   
-  const [estadisticas, setEstadisticas] = useState({
-    becariosActivos: 0,
-    psicologosActivos: 0,
-    pacientesActivos: 0,
-    citasHoy: 0,
-    citasCompletadasHoy: 0,
-    altasMesActual: 0
+  // Estados de datos
+  const [estadisticas, setEstadisticas] = useState({ 
+    coterapeutasActivos: 0, 
+    terapeutasActivos: 0, 
+    pacientesActivos: 0, 
+    citasHoy: 0, 
+    citasCompletadasHoy: 0, 
+    altasMesActual: 0 
   });
-  
   const [actividadReciente, setActividadReciente] = useState([]);
-  const [distribucionPsicologos, setDistribucionPsicologos] = useState([]);
-  const [becariosCarga, setBecariosCarga] = useState([]);
+  const [distribucionTerapeutas, setDistribucionTerapeutas] = useState([]);
+  const [coterapeutasCarga, setCoterapeutasCarga] = useState([]);
   const [alertas, setAlertas] = useState([]);
+  
+  // Estado para Solicitudes y Modal
+  const [solicitudes, setSolicitudes] = useState([]); 
+  const [selectedSolicitud, setSelectedSolicitud] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [rolAsignar, setRolAsignar] = useState('');
+  const [solicitudesPage, setSolicitudesPage] = useState(1);
+  const solicitudesPerPage = 6;
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -37,121 +45,136 @@ const CoordinadorDashboard = () => {
 
   const fetchDashboardData = async () => {
     setLoading(true);
-    setError(null);
-    
     try {
-      console.log('Cargando dashboard...');
+      // Llamada al servicio
       const response = await DashboardService.obtenerDashboardCoordinador();
+      console.log('Response completo del dashboard:', response);
       
-      const datosTransformados = DashboardService.transformarDatosCoordinador(response);
+      let datos = {};
+      try {
+          datos = DashboardService.transformarDatosCoordinador(response);
+      } catch (e) {
+          console.error('Error en transformarDatosCoordinador:', e);
+          datos = response; // Fallback si falla la transformación
+      }
       
-      setEstadisticas(datosTransformados.estadisticas);
-      setActividadReciente(datosTransformados.actividadReciente);
-      setDistribucionPsicologos(datosTransformados.distribucionPsicologos);
-      setBecariosCarga(datosTransformados.becariosCarga || []);
-      setAlertas(datosTransformados.alertas);
+      setEstadisticas(datos.estadisticas || response.data?.estadisticas || {});
+      setActividadReciente(datos.actividadReciente || []);
+      setCoterapeutasCarga(datos.coterapeutasCarga || []);
+      setAlertas(datos.alertas || []);
       
+      // === SOLUCIÓN 1: ARREGLO DE SOLICITUDES ===
+      const listaSolicitudes = 
+          datos.solicitudes || 
+          response.solicitudes_pendientes || 
+          response.data?.solicitudes_pendientes || 
+          [];
+      console.log('Solicitudes cargadas:', listaSolicitudes);
+      setSolicitudes(listaSolicitudes);
+      setSolicitudesPage(1);
+
+      // === SOLUCIÓN 2: ARREGLO DE CITAS POR TERAPEUTA ===
+      // Busca en múltiples ubicaciones por si el nombre varía en el backend
+        const listaTerapeutas = 
+          datos.distribucionTerapeutas || 
+          response.citas_por_terapeuta || 
+          response.distribucion_terapeutas ||
+          response.data?.citas_por_terapeuta ||
+          [];
+      
+      console.log("Datos Terapeutas cargados:", listaTerapeutas);
+      setDistribucionTerapeutas(listaTerapeutas);
       
     } catch (error) {
-      console.error('Error cargando dashboard:', error);
+      console.error(error);
       setError(`Error al cargar datos: ${error.message}`);
-      notifications.error('Error', 'No se pudieron cargar los datos del dashboard');
     } finally {
       setLoading(false);
     }
   };
 
-  // Función para manejar "Ver todo" en Actividad Reciente
-  const handleVerTodaActividad = () => {
-    navigate('/coordinador/agenda'); // Redirige a la agenda
+  // --- MANEJO DEL MODAL ---
+  const handleAbrirModal = (solicitud) => {
+    setSelectedSolicitud(solicitud);
+    const rolSugerido = solicitud.rol === 'Practicante' ? 'coterapeuta' : '';
+    setRolAsignar(rolSugerido); 
+    setShowModal(true);
   };
 
-  // Funciones para las Acciones de Coordinación
-  const handleGestionarUsuarios = () => {
-    navigate('/coordinador/usuarios');
+  const handleCerrarModal = () => {
+    setShowModal(false);
+    setSelectedSolicitud(null);
+    setRolAsignar('');
   };
 
-  const handleAsignarPacientes = () => {
-    navigate('/coordinador/asignaciones');
-  };
-
-  const handleGenerarReporteMensual = () => {
-    navigate('/coordinador/reportes');
-  };
-
-  const handleRevisarAltas = () => {
-    navigate('/coordinador/altas');
-  };
-
-  const handleVerAgendaGlobal = () => {
-    navigate('/coordinador/agenda');
-  };
-
-  // Función para manejar "Reasignar" en Carga de Pacientes
-  const handleReasignar = () => {
-    navigate('/coordinador/asignaciones');
-  };
-
-  // Función para manejar "Resolver" en Alertas
-  const handleResolverAlertas = () => {
-    // Aquí puedes implementar lógica para marcar alertas como resueltas
-    setAlertas([]);
-    notifications.success('Alertas resueltas', 'Las alertas han sido marcadas como resueltas');
-  };
-
-  const statCards = [
-    {
-      title: 'Becarios Activos',
-      value: estadisticas.becariosActivos,
-      icon: <FiUserCheck />,
-      color: 'var(--grnb)',
-      change: 'En formación'
-    },
-    {
-      title: 'Psicólogos Activos',
-      value: estadisticas.psicologosActivos,
-      icon: <FiUsers />,
-      color: 'var(--blu)',
-      change: 'En supervisión'
-    },
-    {
-      title: 'Pacientes Activos',
-      value: estadisticas.pacientesActivos,
-      icon: <FiActivity />,
-      color: 'var(--yy)',
-      change: 'En tratamiento'
-    },
-    {
-      title: 'Citas Hoy',
-      value: estadisticas.citasHoy,
-      icon: <FiCalendar />,
-      color: 'var(--grnd)',
-      change: `${estadisticas.citasCompletadasHoy} completadas`
-    },
-    {
-      title: 'Altas Este Mes',
-      value: estadisticas.altasMesActual,
-      icon: <FiTrendingUp />,
-      color: 'var(--grnl)',
-      change: 'Pacientes finalizados'
-    },
-    {
-      title: 'Alertas Pendientes',
-      value: alertas.reduce((total, alerta) => total + (alerta.cantidad || 0), 0),
-      icon: <FiAlertCircle />,
-      color: 'var(--rl)',
-      change: 'Requieren atención'
+  // --- LÓGICA DE APROBACIÓN (POST) ---
+  const handleAprobarSolicitud = async () => {
+    if (!rolAsignar || rolAsignar === "") {
+        notifications.error("No se seleccionó un rol.");
+        return;
     }
+
+    if (!selectedSolicitud || !selectedSolicitud.id) {
+        notifications.error("Error", "Solicitud no válida.");
+        return;
+    }
+
+    try {
+        await DashboardService.aprobarSolicitud(selectedSolicitud.id, rolAsignar);
+        notifications.success('Solicitud Aprobada', `Usuario creado para ${selectedSolicitud.nombre}`);
+        setSolicitudes(prev => prev.filter(s => s.id !== selectedSolicitud.id));
+        handleCerrarModal();
+    } catch (error) {
+        console.error("=== ERROR en handleAprobarSolicitud ===");
+        const msg = error?.response?.data?.message || error.message || "Error al procesar la solicitud";
+        notifications.error("Error", msg);
+    }
+  };
+
+  // --- LÓGICA DE RECHAZO (POST) ---
+  const handleDenegarSolicitud = async () => {
+    if (!selectedSolicitud || !selectedSolicitud.id) {
+        notifications.error("Error", "Solicitud no válida.");
+        return;
+    }
+
+    try {
+        await DashboardService.denegarSolicitud(selectedSolicitud.id);
+        notifications.success('Solicitud Rechazada', `Solicitud rechazada para ${selectedSolicitud.nombre}`);
+        setSolicitudes(prev => prev.filter(s => s.id !== selectedSolicitud.id));
+        handleCerrarModal();
+    } catch (error) {
+        console.error("=== ERROR en handleDenegarSolicitud ===");
+        const msg = error?.response?.data?.message || error.message || "Error al rechazar la solicitud";
+        notifications.error("Error", msg);
+    }
+  };
+
+  const handleVerTodaActividad = () => navigate('/coordinador/agenda');
+  const handleReasignar = () => navigate('/coordinador/asignaciones');
+
+  // Terminology updated inside generic helper
+  const statCards = [
+    { title: 'Coterapeutas Activos', value: estadisticas.coterapeutasActivos ?? estadisticas.coterapeutas_activos ?? 0, icon: <FiUserCheck />, color: 'var(--grnb)', change: 'En formación' },
+    { title: 'Terapeutas Activos', value: estadisticas.terapeutasActivos ?? estadisticas.terapeutas_activos ?? 0, icon: <FiUsers />, color: 'var(--blu)', change: 'En supervisión' },
+    { title: 'Pacientes Activos', value: estadisticas.pacientesActivos, icon: <FiActivity />, color: 'var(--yy)', change: 'En tratamiento' },
+    { title: 'Citas Hoy', value: estadisticas.citasHoy, icon: <FiCalendar />, color: 'var(--grnd)', change: `${estadisticas.citasCompletadasHoy} completadas` },
+    { title: 'Altas Este Mes', value: estadisticas.altasMesActual, icon: <FiTrendingUp />, color: 'var(--grnl)', change: 'Pacientes finalizados' },
+    { title: 'Alertas Pendientes', value: alertas.reduce((total, a) => total + (a.cantidad || 0), 0), icon: <FiAlertCircle />, color: 'var(--rl)', change: 'Requieren atención' }
   ];
 
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <div className="loading-text">Cargando panel de coordinación...</div>
-      </div>
-    );
-  }
+  const totalSolicitudes = solicitudes.length;
+  const totalSolicitudesPages = Math.max(1, Math.ceil(totalSolicitudes / solicitudesPerPage));
+  const solicitudesPaginadas = useMemo(() => {
+    const start = (solicitudesPage - 1) * solicitudesPerPage;
+    return solicitudes.slice(start, start + solicitudesPerPage);
+  }, [solicitudes, solicitudesPage, solicitudesPerPage]);
+
+  useEffect(() => {
+    setSolicitudesPage(prev => Math.min(prev, totalSolicitudesPages));
+  }, [totalSolicitudesPages]);
+
+  if (loading) return <div className="loading-container"><div className="loading-spinner"></div><div className="loading-text">Cargando...</div></div>;
 
   return (
     <div className="dashboard-page">
@@ -159,14 +182,10 @@ const CoordinadorDashboard = () => {
         <div>
           <h1>Panel de Coordinación</h1>
           <p>Vista general del sistema y gestión administrativa</p>
-          {error && (
-            <div className="alert alert-warning mt-10">
-              <FiAlertCircle /> {error}
-            </div>
-          )}
+          {error && <div className="alert alert-warning mt-10"><FiAlertCircle /> {error}</div>}
         </div>
         <button className="btn-secondary" onClick={fetchDashboardData} disabled={loading}>
-          <FiRefreshCw /> {loading ? 'Cargando...' : 'Actualizar'}
+          <FiRefreshCw /> Actualizar
         </button>
       </div>
 
@@ -175,9 +194,7 @@ const CoordinadorDashboard = () => {
         {statCards.map((stat, index) => (
           <div key={index} className="stat-card">
             <div className="stat-header">
-              <div className="stat-icon" style={{ color: stat.color }}>
-                {stat.icon}
-              </div>
+              <div className="stat-icon" style={{ color: stat.color }}>{stat.icon}</div>
               <h3>{stat.title}</h3>
             </div>
             <div className="stat-value">{stat.value}</div>
@@ -186,17 +203,79 @@ const CoordinadorDashboard = () => {
         ))}
       </div>
 
-      {/* Main Content Grid */}
       <div className="dashboard-content-grid">
-        {/* Actividad Reciente */}
+        
+        {/* SECCIÓN SOLICITUDES */}
         <div className="dashboard-section">
           <div className="section-header">
-            <h3>Actividad Reciente del Sistema</h3>
-            <button className="btn-text" onClick={handleVerTodaActividad}>
-              Ver todo
-            </button>
+            <h3>Solicitudes de Registro</h3>
+            <span className="badge badge-danger">{solicitudes.length} Pendientes</span>
           </div>
           
+          <div className="solicitudes-list">
+            {solicitudes.length > 0 ? (
+              solicitudesPaginadas.map((solicitud) => (
+                <div key={solicitud.id} className="timeline-item" style={{ alignItems: 'center' }}>
+                  <div className="timeline-content" style={{ width: '100%' }}>
+                    <div className="flex-row justify-between align-center">
+                      <div className="solicitud-info">
+                          <div className="flex-row gap-2 align-center">
+                            <FiUserPlus className="text-muted" />
+                            <strong>{solicitud.nombre}</strong>
+                          </div>
+                          <div className="text-small text-muted" style={{ marginLeft: '20px' }}>
+                            {solicitud.rol} • {solicitud.fecha ? new Date(solicitud.fecha).toLocaleDateString() : 'Fecha N/A'}
+                          </div>
+                      </div>
+                      <button 
+                          className="btn-text"
+                          onClick={() => handleAbrirModal(solicitud)}
+                          title="Ver detalles"
+                          style={{ fontSize: '18px', padding: '8px', color: 'var(--blu)' }}
+                      >
+                          <FiEye />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="no-data-message">
+                <FiCheck size={40} style={{ color: 'var(--grnb)' }}/>
+                <p>No hay solicitudes pendientes</p>
+              </div>
+            )}
+          </div>
+
+          {totalSolicitudesPages > 1 && (
+            <div className="solicitudes-pagination">
+              <button
+                className="btn-pagination"
+                onClick={() => setSolicitudesPage(prev => Math.max(1, prev - 1))}
+                disabled={solicitudesPage === 1}
+              >
+                Anterior
+              </button>
+              <span className="pagination-info">
+                Página {solicitudesPage} de {totalSolicitudesPages}
+              </span>
+              <button
+                className="btn-pagination"
+                onClick={() => setSolicitudesPage(prev => Math.min(totalSolicitudesPages, prev + 1))}
+                disabled={solicitudesPage === totalSolicitudesPages}
+              >
+                Siguiente
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ACTIVIDAD RECIENTE */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            <h3>Actividad Reciente</h3>
+            <button className="btn-text" onClick={handleVerTodaActividad}>Ver todo</button>
+          </div>
           <div className="timeline">
             {actividadReciente.length > 0 ? (
               actividadReciente.map((actividad) => (
@@ -204,148 +283,171 @@ const CoordinadorDashboard = () => {
                   <div className="timeline-content">
                     <div className="flex-row justify-between">
                       <strong>{actividad.descripcion}</strong>
-                      <span className="text-small">
-                        {new Date(actividad.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      </span>
+                      <span className="text-small">{new Date(actividad.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
-                    <div className="text-small mt-5">
-                      Por: {actividad.usuario} • {new Date(actividad.fecha).toLocaleDateString()}
-                    </div>
+                    <div className="text-small mt-5">Por: {actividad.usuario}</div>
                   </div>
                 </div>
               ))
-            ) : (
-              <div className="timeline-item">
-                <div className="timeline-content">
-                  <div className="flex-row justify-between">
-                    <strong>No hay actividad reciente</strong>
-                    <FiClock className="text-small" />
-                  </div>
-                  <div className="text-small mt-5">
-                    El sistema no registra actividad en este momento
-                  </div>
-                </div>
-              </div>
-            )}
+            ) : <div className="no-data-message"><p>Sin actividad</p></div>}
           </div>
         </div>
 
-        {/* Distribución de Citas */}
+        {/* === CITAS POR TERAPEUTA (CORREGIDO) === */}
         <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Citas Completadas por Psicólogo</h3>
-          </div>
-          
+          <div className="section-header"><h3>Citas por Terapeuta</h3></div>
           <div className="distribution-list-simple">
-            {distribucionPsicologos.length > 0 ? (
+            {distribucionTerapeutas.length > 0 ? (
               <div className="psychologist-list">
-                {distribucionPsicologos.map((psicologo, index) => (
-                  <div key={index} className="psychologist-item">
-                    <div className="psychologist-info">
-                      <div className="psychologist-name">{psicologo.nombre}</div>
-                      <div className="psychologist-citas-count">{psicologo.citas} citas completadas</div>
+                {distribucionTerapeutas.map((terapeuta, index) => {
+                  // Normalizar datos por si vienen con nombres diferentes
+                  const citasCount = terapeuta.citas || terapeuta.cantidad || terapeuta.count || 0;
+                  const colorBarra = terapeuta.color || 'var(--blu)';
+                  
+                  return (
+                    <div key={index} className="psychologist-item">
+                      <div className="psychologist-info">
+                        <div className="psychologist-name">{terapeuta.nombre}</div>
+                        <div className="psychologist-citas-count">{citasCount} pendientes/activas</div>
+                      </div>
+                      <div className="psychologist-badge" style={{ backgroundColor: colorBarra }}>
+                        {citasCount}
+                      </div>
                     </div>
-                    <div 
-                      className="psychologist-badge"
-                      style={{ backgroundColor: psicologo.color }}
-                    >
-                      {psicologo.citas}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            ) : (
-              <div className="no-data-message">
-                <FiBarChart2 size={40} />
-                <p>No hay datos disponibles</p>
-              </div>
-            )}
+            ) : <div className="no-data-message"><p>No hay citas pendientes</p></div>}
           </div>
         </div>
 
-        {/* Becarios por Carga */}
+        {/* CARGA DE COTERAPEUTAS */}
         <div className="dashboard-section">
           <div className="section-header">
-            <h3>Carga de Pacientes por Becario</h3>
-            <button className="btn-text" onClick={handleReasignar}>
-              Reasignar
-            </button>
+            <h3>Carga de Coterapeutas</h3>
+            <button className="btn-text" onClick={handleReasignar}>Reasignar</button>
           </div>
-          
           <div className="becarios-list">
-            {becariosCarga.length > 0 ? (
+            {coterapeutasCarga.length > 0 ? (
               <div className="becarios-items">
-                {becariosCarga.map((becario) => (
-                  <div key={becario.id} className="becario-item">
+                {coterapeutasCarga.map((coterapeuta) => (
+                  <div key={coterapeuta.id} className="becario-item">
                     <div className="becario-header">
-                      <div className="becario-name">{becario.nombre}</div>
-                      <div className="becario-stats">
-                        <span className="stat-badge">{becario.pacientes_asignados} pacientes</span>
-                        <span className="stat-badge secondary">{becario.citas_mes} citas</span>
-                      </div>
+                      <div className="becario-name">{coterapeuta.nombre}</div>
+                      <div className="becario-stats"><span className="stat-badge">{coterapeuta.pacientes_asignados} pacientes</span></div>
                     </div>
-                    {becario.pacientes.length > 0 && (
-                      <div className="becario-pacientes">
-                        <div className="pacientes-label">Pacientes asignados:</div>
-                        <div className="pacientes-list">
-                          {becario.pacientes.map((paciente, idx) => (
-                            <div key={idx} className="paciente-tag">{paciente}</div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="no-data-message">
-                <FiUser size={40} />
-                <p>No hay becarios con pacientes asignados</p>
-              </div>
-            )}
+            ) : <div className="no-data-message"><p>Sin coterapeutas</p></div>}
           </div>
         </div>
 
-        {/* Alertas Pendientes */}
+        {/* ALERTAS */}
         <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Alertas Pendientes</h3>
-            {/* <button className="btn-text" onClick={handleResolverAlertas}>
-              Resolver
-            </button> */}
-          </div>
-          
+          <div className="section-header"><h3>Alertas Pendientes</h3></div>
           <div className="alertas-list">
-            {alertas.length > 0 ? (
-              alertas.map((alerta, index) => (
+            {alertas.length > 0 ? alertas.map((alerta, index) => (
                 <div key={index} className="alerta-item">
-                  <div className="alerta-icon">
-                    <FiAlertCircle style={{ color: 'var(--rl)' }} />
-                  </div>
-                  <div className="alerta-content">
-                    <div className="alerta-titulo">{alerta.descripcion}</div>
-                    <div className="alerta-subtitulo">
-                      {alerta.cantidad} {alerta.cantidad === 1 ? 'elemento' : 'elementos'} pendientes
-                    </div>
-                  </div>
+                  <div className="alerta-icon"><FiAlertCircle style={{ color: 'var(--rl)' }} /></div>
+                  <div className="alerta-content"><div className="alerta-titulo">{alerta.descripcion}</div><div className="alerta-subtitulo">{alerta.cantidad} pendientes</div></div>
                 </div>
-              ))
-            ) : (
-              <div className="alerta-item alerta-item-success">
-                <div className="alerta-icon">
-                  <FiCheckCircle style={{ color: 'var(--grnb)' }} />
-                </div>
-                <div className="alerta-content">
-                  <div className="alerta-titulo">Sin alertas pendientes</div>
-                  <div className="alerta-subtitulo">Todo está al día en el sistema</div>
-                </div>
-              </div>
-            )}
+              )) : <div className="alerta-item alerta-item-success"><div className="alerta-content">Sin alertas</div></div>}
           </div>
         </div>
-
-        
       </div>
+
+      {/* MODAL */}
+      {showModal && selectedSolicitud && (
+        <div className="modal-overlay-custom">
+          <div className="modal-card-custom modal-container"> 
+            
+            <div className="modal-header-custom border-bottom" style={{ padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: 'var(--white)' }}>Aprobar Solicitud</h3>
+              <button onClick={handleCerrarModal} className="btn-text" style={{ fontSize: '20px' }}><FiX /></button>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+                <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: 'var(--blu)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', fontWeight: 'bold', color: 'white' }}>
+                  {selectedSolicitud.nombre ? selectedSolicitud.nombre.charAt(0) : '?'}
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '18px', color: 'var(--white)' }}>{selectedSolicitud.nombre}</h4>
+                  <span className="badge badge-warning" style={{ marginTop: '5px' }}>{selectedSolicitud.rol || 'Sin rol'}</span>
+                </div>
+              </div>
+
+              <div className="form-grid mb-30" style={{ gap: '15px' }}>
+                <div className="stat-box">
+                  <FiMail className="stat-icon" style={{ fontSize: '16px' }} />
+                  <div className="stat-content">
+                    <div className="stat-label">Correo</div>
+                    <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.email}</div>
+                  </div>
+                </div>
+                <div className="stat-box">
+                   <FiPhone className="stat-icon" style={{ fontSize: '16px' }} />
+                   <div className="stat-content">
+                    <div className="stat-label">Teléfono</div>
+                    <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.telefono || 'N/A'}</div>
+                   </div>
+                </div>
+                <div className="stat-box">
+                   <FiBook className="stat-icon" style={{ fontSize: '16px' }} />
+                   <div className="stat-content">
+                    <div className="stat-label">Matrícula</div>
+                    <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.matricula || 'N/A'}</div>
+                   </div>
+                </div>
+                <div className="stat-box">
+                   <FiMapPin className="stat-icon" style={{ fontSize: '16px' }} />
+                   <div className="stat-content">
+                    <div className="stat-label">Institución</div>
+                    <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.institucion || 'N/A'}</div>
+                   </div>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="stat-label"><FiBriefcase style={{ marginRight: '5px' }}/> Motivo de solicitud</label>
+                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', fontSize: '13px', color: 'var(--white)' }}>
+                  {selectedSolicitud.motivo || 'No especificado'}
+                </div>
+              </div>
+
+              <div className="mt-30 border-top" style={{ paddingTop: '20px' }}>
+                <div className="form-group">
+                   <label>Asignar Rol en el Sistema:</label>
+                   <select 
+                      className="form-control" 
+                      value={rolAsignar} 
+                      onChange={(e) => setRolAsignar(e.target.value)}
+                      style={{ width: '100%', padding: '10px', borderRadius: '6px', background: 'var(--blud)', border: '1px solid var(--blub)', color: 'white' }}
+                   >
+                      <option value="">-- Seleccionar --</option>
+                      <option value="psicopedagogico">Psicopedagógico</option>
+                       <option value="terapeuta">Terapeuta</option>
+                       <option value="coterapeuta">Coterapeuta</option>
+                   </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                  <button className="btn-secondary" onClick={handleCerrarModal}>Cancelar</button>
+                  <button className="action-btn" onClick={handleDenegarSolicitud} style={{ background: 'var(--rl)', color: 'white', border: 'none' }}>
+                    <FiX /> Denegar
+                  </button>
+                  <button className="action-btn" onClick={handleAprobarSolicitud} style={{ background: 'var(--grnb)', color: 'white', border: 'none' }}>
+                    <FiCheck /> Confirmar Acceso
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

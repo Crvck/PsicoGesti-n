@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { FiCalendar, FiUser, FiFileText, FiPlus, FiEdit2, FiSave } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 
 const PsicologoSesiones = () => {
+  const location = useLocation();
+  const lastPrefillRef = useRef('');
   const [sesiones, setSesiones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -54,6 +57,33 @@ const PsicologoSesiones = () => {
       return '11:00';
     }
   };
+
+  useEffect(() => {
+    if (!location.search) return;
+    if (lastPrefillRef.current === location.search) return;
+
+    const params = new URLSearchParams(location.search);
+    const pacienteId = params.get('paciente_id');
+    const citaId = params.get('cita_id');
+    const fecha = params.get('fecha');
+    const hora = params.get('hora');
+    const motivo = params.get('motivo');
+
+    if (!pacienteId && !citaId) return;
+
+    lastPrefillRef.current = location.search;
+
+    setShowForm(true);
+    setFormData(prev => ({
+      ...prev,
+      paciente_id: pacienteId || prev.paciente_id,
+      cita_id: citaId || prev.cita_id,
+      fecha: fecha || prev.fecha,
+      hora_inicio: hora || prev.hora_inicio,
+      hora_fin: hora ? calcularHoraFin(hora, 50) : prev.hora_fin,
+      motivo_consulta: motivo || prev.motivo_consulta
+    }));
+  }, [location.search]);
 
   // Ensure numbering uses chronological order (newest = Sesión 1)
   const sesionesOrdenadas = useMemo(() => {

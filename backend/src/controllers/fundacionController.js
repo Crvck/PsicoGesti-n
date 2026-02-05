@@ -1,6 +1,10 @@
+const { Op } = require('sequelize');
 const Fundacion = require('../models/fundacionModel');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
+const Paciente = require('../models/pacienteModel');
+const User = require('../models/userModel');
+const Cita = require('../models/citaModel');
+const Alta = require('../models/altaModel');
+const LogSistema = require('../models/logSistemaModel');
 
 class FundacionController {
     
@@ -12,11 +16,13 @@ class FundacionController {
             const fundacion = await Fundacion.create(fundacionData);
             
             // Log
-            await sequelize.query(
-                `INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                 VALUES (?, 'creacion', 'fundaciones', 'Crear fundación', ?, NOW())`,
-                { replacements: [usuarioId, `Nueva fundación: ${fundacion.nombre}`] }
-            );
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'creacion',
+                modulo: 'fundaciones',
+                accion: 'Crear fundación',
+                descripcion: `Nueva fundación: ${fundacion.nombre}`
+            });
             
             res.json({
                 success: true,
@@ -76,33 +82,58 @@ class FundacionController {
                 });
             }
             
-            // Obtener estadísticas de la fundación
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    COUNT(DISTINCT p.id) AS total_pacientes,
-                    COUNT(DISTINCT u.id) AS total_profesionales,
-                    COUNT(DISTINCT c.id) AS citas_mes_actual,
-                    (SELECT COUNT(*) FROM altas a 
-                     JOIN pacientes p ON a.paciente_id = p.id 
-                     WHERE p.fundacion_id = :fundacionId 
-                     AND MONTH(a.fecha_alta) = MONTH(CURDATE())) AS altas_mes_actual
-                FROM fundaciones f
-                LEFT JOIN pacientes p ON f.id = p.fundacion_id AND p.activo = TRUE
-                LEFT JOIN users u ON f.id = u.fundacion_id AND u.activo = TRUE
-                LEFT JOIN citas c ON p.id = c.paciente_id 
-                    AND MONTH(c.fecha) = MONTH(CURDATE())
-                WHERE f.id = :fundacionId
-                GROUP BY f.id
-            `, {
-                replacements: { fundacionId: id },
-                type: QueryTypes.SELECT
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+            const total_pacientes = await Paciente.count({
+                where: { fundacion_id: id, activo: true }
+            });
+
+            const total_profesionales = await User.count({
+                where: { fundacion_id: id, activo: true }
+            });
+
+            const citas_mes_actual = await Cita.count({
+                include: [
+                    {
+                        model: Paciente,
+                        where: { fundacion_id: id }
+                    }
+                ],
+                where: {
+                    fecha: {
+                        [Op.gte]: startOfMonth.toISOString().slice(0, 10),
+                        [Op.lt]: startOfNextMonth.toISOString().slice(0, 10)
+                    }
+                }
+            });
+
+            const altas_mes_actual = await Alta.count({
+                include: [
+                    {
+                        model: Paciente,
+                        where: { fundacion_id: id }
+                    }
+                ],
+                where: {
+                    fecha_alta: {
+                        [Op.gte]: startOfMonth.toISOString().slice(0, 10),
+                        [Op.lt]: startOfNextMonth.toISOString().slice(0, 10)
+                    }
+                }
             });
             
             res.json({
                 success: true,
                 data: {
                     fundacion: fundacion,
-                    estadisticas: estadisticas || {}
+                    estadisticas: {
+                        total_pacientes,
+                        total_profesionales,
+                        citas_mes_actual,
+                        altas_mes_actual
+                    }
                 }
             });
             
@@ -136,18 +167,15 @@ class FundacionController {
             await fundacion.update(updates);
             
             // Log
-            await sequelize.query(
-                `INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                 VALUES (?, 'modificacion', 'fundaciones', 'Actualizar fundación', ?, ?, ?, NOW())`,
-                { 
-                    replacements: [
-                        usuarioId, 
-                        `Fundación actualizada: ${fundacion.nombre}`,
-                        JSON.stringify(datosAntes),
-                        JSON.stringify(fundacion.toJSON())
-                    ] 
-                }
-            );
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'fundaciones',
+                accion: 'Actualizar fundación',
+                descripcion: `Fundación actualizada: ${fundacion.nombre}`,
+                datos_antes: datosAntes,
+                datos_despues: fundacion.toJSON()
+            });
             
             res.json({
                 success: true,
@@ -180,12 +208,11 @@ class FundacionController {
             }
             
             // Verificar que no haya pacientes activos
-            const [pacientesActivos] = await sequelize.query(
-                `SELECT COUNT(*) as count FROM pacientes WHERE fundacion_id = ? AND activo = TRUE`,
-                { replacements: [id], type: QueryTypes.SELECT }
-            );
-            
-            if (pacientesActivos.count > 0) {
+            const pacientesActivos = await Paciente.count({
+                where: { fundacion_id: id, activo: true }
+            });
+
+            if (pacientesActivos > 0) {
                 return res.status(400).json({
                     success: false,
                     message: 'No se puede desactivar la fundación porque tiene pacientes activos'
@@ -195,16 +222,13 @@ class FundacionController {
             await fundacion.update({ activo: false });
             
             // Log
-            await sequelize.query(
-                `INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                 VALUES (?, 'modificacion', 'fundaciones', 'Desactivar fundación', ?, NOW())`,
-                { 
-                    replacements: [
-                        usuarioId, 
-                        `Fundación desactivada: ${fundacion.nombre}. Motivo: ${motivo}`
-                    ] 
-                }
-            );
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'fundaciones',
+                accion: 'Desactivar fundación',
+                descripcion: `Fundación desactivada: ${fundacion.nombre}. Motivo: ${motivo}`
+            });
             
             res.json({
                 success: true,

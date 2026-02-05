@@ -4,26 +4,44 @@ const verifyToken = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
 const bcrypt = require('bcryptjs');
 const User = require('../models/userModel');
+const { Op } = require('sequelize');
+const EmailService = require('../services/emailService');
 
-// Obtener todos los becarios
+// Obtener todos los coterapeutas
 router.get('/becarios', verifyToken, async (req, res) => {
   try {
     const becarios = await User.findAll({
-      where: { rol: 'becario', activo: true },
+      where: { rol: 'coterapeuta', activo: true },
       attributes: ['id', 'nombre', 'apellido', 'email'],
       order: [['apellido', 'ASC'], ['nombre', 'ASC']]
     });
     
     res.json(becarios);
   } catch (error) {
-    res.status(500).json({ message: 'Error al obtener becarios' });
+    res.status(500).json({ message: 'Error al obtener coterapeutas' });
   }
 });
 
 // Obtener todos los usuarios (coordinadores pueden acceder)
 router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
   try {
+    const whereClause = {};
+    if (req.query.rol) {
+      const rol = req.query.rol;
+      if (rol === 'terapeuta') {
+        whereClause.rol = { [Op.in]: ['terapeuta', 'psicologo'] };
+      } else if (rol === 'coterapeuta') {
+        whereClause.rol = { [Op.in]: ['coterapeuta', 'becario'] };
+      } else {
+        whereClause.rol = rol;
+      }
+    }
+    if (req.query.activo !== undefined) {
+      whereClause.activo = req.query.activo === 'true' || req.query.activo === true;
+    }
+
     const users = await User.findAll({
+      where: whereClause,
       attributes: ['id', 'nombre', 'apellido', 'email', 'telefono', 'rol', 'especialidad', 'fundacion_id', 'activo', 'created_at'],
       order: [['apellido', 'ASC'], ['nombre', 'ASC']]
     });
@@ -67,12 +85,21 @@ router.post('/', verifyToken, requireRole(['coordinador']), async (req, res) => 
       apellido,
       email,
       telefono,
-      rol: rol || 'becario',
+      rol: rol || 'coterapeuta',
       especialidad,
       fundacion_id: fundacion_id || null,
       activo: typeof activo === 'boolean' ? activo : true,
       password: hashed
     });
+
+    // Enviar correo con credenciales (no bloqueante)
+    EmailService.enviarBienvenidaUsuario({
+      nombre,
+      apellido,
+      email,
+      passwordTemporal: password,
+      rol: rol || 'coterapeuta'
+    }).catch(() => {});
 
     res.status(201).json({
       id: newUser.id,
@@ -159,7 +186,22 @@ router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res
     // Soft-delete
     await user.update({ activo: false });
 
-    res.json({ message: 'Usuario eliminado (inactivado) correctamente', id: user.id });
+    res.json({
+      message: 'Usuario eliminado (inactivado) correctamente',
+      id: user.id,
+      usuario: {
+        id: user.id,
+        nombre: user.nombre,
+        apellido: user.apellido,
+        email: user.email,
+        telefono: user.telefono,
+        rol: user.rol,
+        especialidad: user.especialidad,
+        fundacion_id: user.fundacion_id,
+        activo: user.activo,
+        fecha_registro: user.created_at
+      }
+    });
   } catch (error) {
     console.error('Error al eliminar usuario:', error);
     res.status(500).json({ message: 'Error al eliminar usuario' });

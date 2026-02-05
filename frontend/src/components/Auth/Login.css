@@ -1,9 +1,12 @@
-
+/* =========================================
+   ESTILOS GENERALES (BASE)
+   ========================================= */
 .login-page {
   position: relative;
   width: 100vw;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh; /* Cambiado de height a min-height */
+  overflow-y: auto;  /* PERMITE SCROLL si el formulario es alto */
+  overflow-x: hidden;
 }
 
 .background-video {
@@ -34,14 +37,16 @@
 
 .login-container {
   width: 100%;
-  height: 100%;
+  min-height: 100vh; /* Asegura que cubra la pantalla */
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   z-index: 1;
+  padding: 20px; /* Padding extra para móviles */
 }
 
+/* Tarjeta de Login Normal */
 .login-card {
   background: linear-gradient(180deg, 
     var(--blud) 0%, 
@@ -52,6 +57,7 @@
   width: 100%;
   max-width: 400px;
   backdrop-filter: blur(10px);
+  transition: max-width 0.3s ease, padding 0.3s ease;
 }
 
 .login-header {
@@ -70,6 +76,7 @@
   max-width: 250px;
   height: auto;
   object-fit: contain;
+  transition: all 0.3s ease;
 }
 
 .login-subtitle {
@@ -148,7 +155,6 @@
   text-align: center;
 }
 
-
 .app-info {
   margin-top: 30px;
   text-align: center;
@@ -163,46 +169,29 @@
   opacity: 0.7;
 }
 
-/* Responsive */
+/* =========================================
+   MODIFICACIONES RESPONSIVAS Y UTILS
+   ========================================= */
 @media (max-width: 480px) {
   .login-card {
     padding: 30px 20px;
-    margin: 20px;
   }
-  
   .login-logo {
     max-width: 200px;
   }
-  
-  .instructions {
-    flex-direction: column;
-    gap: 10px;
-  }
 }
 
-/* Deshabilitar el ícono nativo del navegador */
+/* Ocultar iconos de contraseña nativos */
 input[type="password"]::-webkit-textfield-decoration-container,
 input[type="password"]::-webkit-contacts-auto-fill-button,
-input[type="password"]::-webkit-credentials-auto-fill-button {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  position: absolute !important;
-  right: 0 !important;
-}
-
-/* Para Firefox */
-input[type="password"]::-moz-textfield-decoration-container {
-  display: none !important;
-}
-
-/* Para Microsoft Edge y otros navegadores */
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-moz-textfield-decoration-container,
 input[type="password"]::-ms-reveal,
 input[type="password"]::-ms-clear {
   display: none !important;
+  visibility: hidden !important;
 }
 
-/* Asegurar que nuestro ícono esté encima */
 .password-toggle {
   position: absolute;
   right: 10px;
@@ -215,11 +204,11 @@ input[type="password"]::-ms-clear {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10; /* Asegurar que esté por encima */
+  z-index: 10;
 }
 
 .password-toggle svg {
-  color: var(--white); /* Color azul */
+  color: var(--white);
   width: 22px;
   height: 22px;
   transition: all 0.3s ease;
@@ -227,33 +216,253 @@ input[type="password"]::-ms-clear {
 }
 
 .password-toggle:hover svg {
-  color: var(--blu); /* Blanco al hacer hover */
+  color: var(--blu);
   transform: scale(1.1);
 }
 
-/* Asegurar espacio suficiente para el ícono */
 #password-field {
   padding-right: 45px !important;
-  /* Forzar que no muestre el ícono nativo */
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
 }
 
-/* Estilos específicos para el input de contraseña */
 .password-input-container {
   position: relative;
   width: 100%;
 }
 
-.password-input-container input {
+/* =========================================
+   NUEVOS ESTILOS AJUSTADOS: PRE-REGISTRO
+   ========================================= */
+
+/* --- TARJETA COMPACTA Y PROPORCIONAL --- */
+.login-card.preregistro-card {
+  max-width: 650px; /* Reducido de 700px a 650px */
+  padding: 30px 35px; /* Padding interno reducido para que no se vea enorme */
+  background: rgba(16, 16, 16, 0.90); 
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Ajustes específicos para elementos DENTRO de la tarjeta de registro */
+.login-card.preregistro-card .login-header {
+  margin-bottom: 20px; /* Menos espacio debajo del header */
+}
+
+.login-card.preregistro-card .login-logo {
+  max-height: 100px; /* Logo más pequeño */
+  width: auto;
+  margin-bottom: 5px;
+}
+
+.login-card.preregistro-card .login-title {
+  font-size: 1.4rem; /* Título un poco más pequeño */
+  margin-bottom: 0;
+}
+
+.login-card.preregistro-card .login-subtitle {
+  font-size: 0.9rem;
+  margin-top: 5px;
+}
+
+.login-card.preregistro-card .form-group {
+  margin-bottom: 15px; /* Espacio entre inputs reducido */
+}
+
+/* --- SWITCH COMPACTO --- */
+.switch-container {
+  position: relative;
+  display: flex;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 30px;
+  padding: 3px; /* Más delgado */
+  margin: 0 auto 25px auto;
+  height: 42px; /* Altura reducida */
   width: 100%;
-  /* Eliminar cualquier estilo nativo */
-  &::-webkit-inner-spin-button,
-  &::-webkit-outer-spin-button,
-  &::-webkit-search-cancel-button,
-  &::-webkit-clear-button {
-    display: none;
-    -webkit-appearance: none;
+  max-width: 380px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.switch-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+  font-weight: 500;
+  z-index: 2;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  border-radius: 25px;
+  outline: none;
+}
+
+.switch-btn:hover {
+  color: var(--white);
+}
+
+.switch-btn.active {
+  color: var(--white);
+  font-weight: 700;
+}
+
+.switch-bg {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  height: calc(100% - 6px);
+  background: var(--blu);
+  border-radius: 25px;
+  transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  z-index: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.switch-bg.slide-right {
+  transform: translateX(100%);
+}
+
+/* --- GRID AJUSTADO --- */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px; /* Espacio horizontal */
+}
+
+@media (max-width: 600px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+    gap: 0; /* En móvil eliminamos el gap vertical extra porque ya hay margin-bottom */
   }
+  
+  .login-card.preregistro-card {
+    padding: 25px 20px; /* Aún más compacto en móvil */
+  }
+}
+
+/* --- INPUTS PRO --- */
+.input-with-icon {
+  position: relative;
+  width: 100%;
+}
+
+.input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--blu);
+  display: flex;
+  opacity: 0.9;
+}
+
+.input-field-pro {
+  width: 100%;
+  padding: 10px 15px 10px 40px; /* Altura (padding vertical) reducida a 10px */
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--blud);
+  border-radius: 10px;
+  color: var(--white);
+  font-size: 0.9rem; /* Fuente ligeramente más chica */
+  transition: all 0.3s ease;
+}
+
+.input-field-pro:focus {
+  outline: none;
+  border-color: var(--blu);
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 2px rgba(var(--blu), 0.2);
+}
+
+.input-field-pro::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.textarea-pro {
+  padding: 10px 10px 10px 15px; /* Sin icono, padding normal */
+  min-height: 70px; /* Textarea menos alta por defecto */
+  resize: none;
+}
+
+.form-label {
+  display: block;
+  color: var(--white);
+  font-size: 0.8rem; /* Label más discreto */
+  margin-bottom: 4px;
+  margin-left: 5px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* --- BOTONES DE ACCIÓN --- */
+.actions-container {
+  display: flex;
+  justify-content: space-between; /* Separa los botones a los extremos */
+  align-items: center;
+  margin-top: 20px;
+  gap: 15px;
+}
+
+.btn-submit-pro {
+  background: var(--blu);
+  color: var(--white);
+  border: none;
+  padding: 12px 25px; /* Botón menos "gordo" */
+  border-radius: 10px;
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex-grow: 1; /* Ocupa el espacio restante */
+  max-width: 250px; /* Pero no demasiado ancho */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.btn-submit-pro:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.btn-submit-pro:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.btn-text {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  padding: 8px 12px;
+  transition: color 0.2s;
+}
+
+.btn-text:hover {
+  color: var(--white);
+}
+
+/* --- ERROR Y ANIMACIONES --- */
+.error-message-pro {
+  background: rgba(255, 71, 87, 0.15);
+  border: 1px solid rgba(255, 71, 87, 0.3);
+  color: #ff6b81;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-top: 15px;
+  text-align: center;
+}
+
+.fade-in-field {
+  animation: slideInUp 0.3s ease forwards;
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }

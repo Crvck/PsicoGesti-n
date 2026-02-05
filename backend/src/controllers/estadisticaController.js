@@ -1,102 +1,177 @@
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
+const { Op } = require('sequelize');
+const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
+const User = require('../models/userModel');
+const Sesion = require('../models/sesionModel');
+const Asignacion = require('../models/asignacionModel');
+const ObservacionBecario = require('../models/observacionBecarioModel');
+const Alta = require('../models/altaModel');
+const Disponibilidad = require('../models/disponibilidadModel');
+
+const toDate = (value) => (value ? new Date(value) : null);
+const formatMonth = (value) => (value ? String(value).slice(0, 7) : null);
+const toMinutes = (hora) => {
+    if (!hora) return null;
+    const [h, m] = String(hora).split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+};
+
+const buildDateFilter = (fecha_inicio, fecha_fin) => {
+    if (fecha_inicio && fecha_fin) return { [Op.between]: [fecha_inicio, fecha_fin] };
+    if (fecha_inicio) return { [Op.gte]: fecha_inicio };
+    if (fecha_fin) return { [Op.lte]: fecha_fin };
+    return null;
+};
 
 class EstadisticaController {
-    
     static async obtenerEstadisticasGenerales(req, res) {
         try {
             const { fecha_inicio, fecha_fin } = req.query;
-            
-            // Construir condiciones de fecha
-            let condicionesFecha = '';
-            const replacements = [];
-            
-            if (fecha_inicio && fecha_fin) {
-                condicionesFecha = 'WHERE fecha BETWEEN ? AND ?';
-                replacements.push(fecha_inicio, fecha_fin);
-            } else if (fecha_inicio) {
-                condicionesFecha = 'WHERE fecha >= ?';
-                replacements.push(fecha_inicio);
-            } else if (fecha_fin) {
-                condicionesFecha = 'WHERE fecha <= ?';
-                replacements.push(fecha_fin);
-            }
-            
-            // Estadísticas de citas
-            const [estadisticasCitas] = await sequelize.query(`
-                SELECT 
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) as programadas,
-                    SUM(CASE WHEN estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
-                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-                    SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) as canceladas,
-                    ROUND(SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as tasa_completitud,
-                    ROUND(SUM(CASE WHEN estado = 'cancelada' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as tasa_cancelacion,
-                    COUNT(DISTINCT paciente_id) as pacientes_unicos,
-                    COUNT(DISTINCT psicologo_id) as psicologos_activos,
-                    COUNT(DISTINCT becario_id) as becarios_activos,
-                    ROUND(AVG(duracion_minutos), 1) as duracion_promedio
-                FROM citas
-                ${condicionesFecha}
-            `, { replacements, type: QueryTypes.SELECT });
-            
-            // Estadísticas de pacientes
-            const [estadisticasPacientes] = await sequelize.query(`
-                SELECT 
-                    COUNT(*) as total_pacientes,
-                    SUM(CASE WHEN activo = TRUE THEN 1 ELSE 0 END) as pacientes_activos,
-                    SUM(CASE WHEN activo = FALSE THEN 1 ELSE 0 END) as pacientes_inactivos,
-                    COUNT(DISTINCT genero) as generos_unicos,
-                    ROUND(AVG(YEAR(CURDATE()) - YEAR(fecha_nacimiento)), 1) as edad_promedio,
-                    (SELECT COUNT(*) FROM altas ${condicionesFecha.replace('fecha', 'fecha_alta')}) as altas_totales
-                FROM pacientes
-            `, { replacements, type: QueryTypes.SELECT });
-            
-            // Distribución por género
-            const distribucionGenero = await sequelize.query(`
-                SELECT 
-                    COALESCE(genero, 'no especificado') as genero,
-                    COUNT(*) as cantidad,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM pacientes
-                GROUP BY genero
-                ORDER BY cantidad DESC
-            `, { type: QueryTypes.SELECT });
-            
-            // Evolución mensual
-            const evolucionMensual = await sequelize.query(`
-                SELECT 
-                    DATE_FORMAT(fecha, '%Y-%m') as mes,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    COUNT(DISTINCT paciente_id) as pacientes_unicos,
-                    COUNT(DISTINCT psicologo_id) as psicologos_activos
-                FROM citas
-                ${condicionesFecha ? condicionesFecha.replace('fecha', 'fecha') : 'WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)'}
-                GROUP BY DATE_FORMAT(fecha, '%Y-%m')
-                ORDER BY mes DESC
-                LIMIT 12
-            `, { replacements, type: QueryTypes.SELECT });
-            
-            // Top psicólogos por productividad
-            const topPsicologos = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as psicologo,
-                    u.especialidad,
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                    COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                    ROUND(AVG(c.duracion_minutos), 1) as duracion_promedio
-                FROM users u
-                LEFT JOIN citas c ON u.id = c.psicologo_id ${condicionesFecha ? `AND ${condicionesFecha.replace('WHERE', '')}` : ''}
-                WHERE u.rol = 'psicologo' AND u.activo = TRUE
-                GROUP BY u.id, u.nombre, u.apellido, u.especialidad
-                ORDER BY citas_completadas DESC
-                LIMIT 10
-            `, { replacements, type: QueryTypes.SELECT });
-            
+            const whereFecha = buildDateFilter(fecha_inicio, fecha_fin);
+
+            const whereCitas = whereFecha ? { fecha: whereFecha } : {};
+            const citas = await Cita.findAll({
+                where: whereCitas,
+                attributes: ['id', 'estado', 'paciente_id', 'psicologo_id', 'becario_id', 'duracion', 'fecha']
+            });
+
+            const total_citas = citas.length;
+            const programadas = citas.filter(c => c.estado === 'programada').length;
+            const confirmadas = citas.filter(c => c.estado === 'confirmada').length;
+            const completadas = citas.filter(c => c.estado === 'completada').length;
+            const canceladas = citas.filter(c => c.estado === 'cancelada').length;
+            const tasa_completitud = total_citas > 0 ? Math.round((completadas / total_citas) * 10000) / 100 : 0;
+            const tasa_cancelacion = total_citas > 0 ? Math.round((canceladas / total_citas) * 10000) / 100 : 0;
+            const pacientes_unicos = new Set(citas.map(c => c.paciente_id)).size;
+            const psicologos_activos = new Set(citas.map(c => c.psicologo_id).filter(Boolean)).size;
+            const becarios_activos = new Set(citas.map(c => c.becario_id).filter(Boolean)).size;
+            const duracion_promedio = total_citas > 0
+                ? Math.round((citas.reduce((sum, c) => sum + (c.duracion || 0), 0) / total_citas) * 10) / 10
+                : 0;
+
+            const estadisticasCitas = {
+                total_citas,
+                programadas,
+                confirmadas,
+                completadas,
+                canceladas,
+                tasa_completitud,
+                tasa_cancelacion,
+                pacientes_unicos,
+                psicologos_activos,
+                becarios_activos,
+                duracion_promedio
+            };
+
+            const pacientes = await Paciente.findAll({
+                attributes: ['id', 'genero', 'activo', 'fecha_nacimiento', 'created_at']
+            });
+            const total_pacientes = pacientes.length;
+            const pacientes_activos = pacientes.filter(p => p.activo).length;
+            const pacientes_inactivos = total_pacientes - pacientes_activos;
+            const generos_unicos = new Set(pacientes.map(p => p.genero || 'no especificado')).size;
+
+            const edades = pacientes
+                .map(p => {
+                    if (!p.fecha_nacimiento) return null;
+                    const n = toDate(p.fecha_nacimiento);
+                    if (!n) return null;
+                    const hoy = new Date();
+                    return hoy.getFullYear() - n.getFullYear();
+                })
+                .filter(v => typeof v === 'number');
+            const edad_promedio = edades.length > 0
+                ? Math.round((edades.reduce((a, b) => a + b, 0) / edades.length) * 10) / 10
+                : 0;
+
+            const whereAltas = whereFecha ? { fecha_alta: whereFecha } : {};
+            const altas_totales = await Alta.count({ where: whereAltas });
+
+            const estadisticasPacientes = {
+                total_pacientes,
+                pacientes_activos,
+                pacientes_inactivos,
+                generos_unicos,
+                edad_promedio,
+                altas_totales
+            };
+
+            const distribucionMap = pacientes.reduce((acc, p) => {
+                const genero = p.genero || 'no especificado';
+                acc[genero] = (acc[genero] || 0) + 1;
+                return acc;
+            }, {});
+            const distribucionGenero = Object.entries(distribucionMap)
+                .map(([genero, cantidad]) => ({
+                    genero,
+                    cantidad,
+                    porcentaje: total_pacientes > 0 ? Math.round((cantidad / total_pacientes) * 10000) / 100 : 0
+                }))
+                .sort((a, b) => b.cantidad - a.cantidad);
+
+            const fechaLimite = whereFecha ? null : (() => {
+                const d = new Date();
+                d.setMonth(d.getMonth() - 6);
+                return d.toISOString().split('T')[0];
+            })();
+            const citasEvolucion = whereFecha
+                ? citas
+                : citas.filter(c => c.fecha >= fechaLimite);
+
+            const evolucionMap = citasEvolucion.reduce((acc, c) => {
+                const mes = formatMonth(c.fecha);
+                if (!mes) return acc;
+                if (!acc[mes]) {
+                    acc[mes] = {
+                        mes,
+                        total_citas: 0,
+                        citas_completadas: 0,
+                        pacientes_unicos: new Set(),
+                        psicologos_activos: new Set()
+                    };
+                }
+                acc[mes].total_citas += 1;
+                if (c.estado === 'completada') acc[mes].citas_completadas += 1;
+                if (c.paciente_id) acc[mes].pacientes_unicos.add(c.paciente_id);
+                if (c.psicologo_id) acc[mes].psicologos_activos.add(c.psicologo_id);
+                return acc;
+            }, {});
+
+            const evolucion_mensual = Object.values(evolucionMap)
+                .map(item => ({
+                    mes: item.mes,
+                    total_citas: item.total_citas,
+                    citas_completadas: item.citas_completadas,
+                    pacientes_unicos: item.pacientes_unicos.size,
+                    psicologos_activos: item.psicologos_activos.size
+                }))
+                .sort((a, b) => a.mes.localeCompare(b.mes));
+
+            const psicologos = await User.findAll({
+                where: { rol: 'psicologo', activo: true },
+                attributes: ['id', 'nombre', 'apellido', 'especialidad']
+            });
+            const top_psicologos = psicologos.map(p => {
+                const citasPsi = citas.filter(c => c.psicologo_id === p.id);
+                const total = citasPsi.length;
+                const comp = citasPsi.filter(c => c.estado === 'completada').length;
+                const pacientesUnicos = new Set(citasPsi.map(c => c.paciente_id)).size;
+                const durProm = total > 0
+                    ? Math.round((citasPsi.reduce((s, c) => s + (c.duracion || 0), 0) / total) * 10) / 10
+                    : 0;
+                return {
+                    id: p.id,
+                    psicologo: `${p.nombre} ${p.apellido}`,
+                    especialidad: p.especialidad,
+                    total_citas: total,
+                    citas_completadas: comp,
+                    tasa_completitud: total > 0 ? Math.round((comp / total) * 10000) / 100 : 0,
+                    pacientes_unicos: pacientesUnicos,
+                    duracion_promedio: durProm
+                };
+            }).sort((a, b) => b.citas_completadas - a.citas_completadas).slice(0, 10);
+
             res.json({
                 success: true,
                 data: {
@@ -107,170 +182,204 @@ class EstadisticaController {
                     citas: estadisticasCitas,
                     pacientes: estadisticasPacientes,
                     distribucion_genero: distribucionGenero,
-                    evolucion_mensual: evolucionMensual.reverse(),
-                    top_psicologos: topPsicologos,
+                    evolucion_mensual,
+                    top_psicologos,
                     fecha_consulta: new Date().toISOString()
                 }
             });
-            
         } catch (error) {
             console.error('Error en obtenerEstadisticasGenerales:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener estadísticas generales'
-            });
+            res.status(500).json({ success: false, message: 'Error al obtener estadísticas generales' });
         }
     }
-    
+
     static async obtenerEstadisticasPsicologo(req, res) {
         try {
             const { psicologo_id, fecha_inicio, fecha_fin } = req.query;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
-            // Verificar permisos
+
             let psicologoConsulta = psicologo_id;
             if (!psicologoConsulta && usuarioRol === 'psicologo') {
                 psicologoConsulta = usuarioId;
             } else if (!psicologoConsulta) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Se requiere especificar un psicólogo'
-                });
+                return res.status(400).json({ success: false, message: 'Se requiere especificar un psicólogo' });
             }
-            
-            // Verificar que el psicólogo existe
-            const [psicologo] = await sequelize.query(
-                'SELECT id, nombre, apellido, especialidad FROM users WHERE id = ? AND rol = "psicologo"',
-                { replacements: [psicologoConsulta], type: QueryTypes.SELECT }
-            );
-            
+
+            const psicologo = await User.findOne({
+                where: { id: psicologoConsulta, rol: 'psicologo' },
+                attributes: ['id', 'nombre', 'apellido', 'especialidad']
+            });
+
             if (!psicologo) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Psicólogo no encontrado'
-                });
+                return res.status(404).json({ success: false, message: 'Psicólogo no encontrado' });
             }
-            
-            // Construir condiciones de fecha
-            let condicionesFecha = '';
-            const replacements = [psicologoConsulta];
-            
-            if (fecha_inicio && fecha_fin) {
-                condicionesFecha = 'AND c.fecha BETWEEN ? AND ?';
-                replacements.push(fecha_inicio, fecha_fin);
-            } else if (fecha_inicio) {
-                condicionesFecha = 'AND c.fecha >= ?';
-                replacements.push(fecha_inicio);
-            } else if (fecha_fin) {
-                condicionesFecha = 'AND c.fecha <= ?';
-                replacements.push(fecha_fin);
-            }
-            
-            // Estadísticas generales del psicólogo
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Citas
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                    
-                    -- Pacientes
-                    COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                    (SELECT COUNT(DISTINCT paciente_id) FROM asignaciones WHERE psicologo_id = ? AND estado = 'activa') as pacientes_activos,
-                    
-                    -- Sesiones
-                    COUNT(s.id) as sesiones_registradas,
-                    ROUND(AVG(TIMESTAMPDIFF(MINUTE, s.hora_inicio, s.hora_fin)), 1) as duracion_promedio_sesiones,
-                    
-                    -- Becarios supervisados
-                    COUNT(DISTINCT a.becario_id) as becarios_supervisados,
-                    
-                    -- Observaciones
-                    COUNT(ob.id) as observaciones_realizadas,
-                    ROUND(AVG(ob.calificacion), 2) as promedio_calificacion_observaciones,
-                    
-                    -- Altas
-                    COUNT(al.id) as altas_realizadas,
-                    SUM(CASE WHEN al.tipo_alta = 'terapeutica' THEN 1 ELSE 0 END) as altas_terapeuticas
-                    
-                FROM users u
-                LEFT JOIN citas c ON u.id = c.psicologo_id ${condicionesFecha}
-                LEFT JOIN sesiones s ON c.id = s.cita_id
-                LEFT JOIN asignaciones a ON u.id = a.psicologo_id AND a.estado = 'activa'
-                LEFT JOIN observaciones_becarios ob ON u.id = ob.supervisor_id
-                LEFT JOIN altas al ON u.id = al.usuario_id ${condicionesFecha.replace('c.fecha', 'al.fecha_alta')}
-                WHERE u.id = ?
-                GROUP BY u.id
-            `, { replacements, type: QueryTypes.SELECT });
-            
-            // Evolución mensual
-            const evolucionMensual = await sequelize.query(`
-                SELECT 
-                    DATE_FORMAT(c.fecha, '%Y-%m') as mes,
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                    COUNT(s.id) as sesiones_registradas,
-                    COUNT(al.id) as altas_realizadas
-                FROM citas c
-                LEFT JOIN sesiones s ON c.id = s.cita_id
-                LEFT JOIN altas al ON c.paciente_id = al.paciente_id AND DATE_FORMAT(al.fecha_alta, '%Y-%m') = DATE_FORMAT(c.fecha, '%Y-%m')
-                WHERE c.psicologo_id = ?
-                ${condicionesFecha ? condicionesFecha : 'AND c.fecha >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)'}
-                GROUP BY DATE_FORMAT(c.fecha, '%Y-%m')
-                ORDER BY mes DESC
-                LIMIT 6
-            `, { replacements: [psicologoConsulta, ...(condicionesFecha ? replacements.slice(1) : [])], type: QueryTypes.SELECT });
-            
-            // Distribución por tipo de consulta
-            const distribucionConsulta = await sequelize.query(`
-                SELECT 
-                    c.tipo_consulta,
-                    COUNT(*) as cantidad,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM citas c
-                WHERE c.psicologo_id = ?
-                ${condicionesFecha}
-                GROUP BY c.tipo_consulta
-                ORDER BY cantidad DESC
-            `, { replacements, type: QueryTypes.SELECT });
-            
-            // Pacientes con más sesiones
-            const pacientesTop = await sequelize.query(`
-                SELECT 
-                    p.id,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    COUNT(c.id) as total_sesiones,
-                    MIN(c.fecha) as primera_sesion,
-                    MAX(c.fecha) as ultima_sesion,
-                    AVG(c.duracion_minutos) as duracion_promedio
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                WHERE c.psicologo_id = ?
-                AND c.estado = 'completada'
-                ${condicionesFecha}
-                GROUP BY p.id, p.nombre, p.apellido
-                ORDER BY total_sesiones DESC
-                LIMIT 10
-            `, { replacements, type: QueryTypes.SELECT });
-            
-            // Horarios más productivos
-            const horariosProductivos = await sequelize.query(`
-                SELECT 
-                    HOUR(c.hora) as hora,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as tasa_completitud
-                FROM citas c
-                WHERE c.psicologo_id = ?
-                ${condicionesFecha}
-                GROUP BY HOUR(c.hora)
-                ORDER BY total_citas DESC
-                LIMIT 8
-            `, { replacements, type: QueryTypes.SELECT });
-            
+
+            const whereFecha = buildDateFilter(fecha_inicio, fecha_fin);
+            const whereCitas = { psicologo_id: psicologoConsulta, ...(whereFecha ? { fecha: whereFecha } : {}) };
+            const citas = await Cita.findAll({
+                where: whereCitas,
+                attributes: ['id', 'estado', 'paciente_id', 'duracion', 'fecha', 'tipo_consulta', 'hora']
+            });
+
+            const total_citas = citas.length;
+            const citas_completadas = citas.filter(c => c.estado === 'completada').length;
+            const citas_canceladas = citas.filter(c => c.estado === 'cancelada').length;
+            const tasa_completitud = total_citas > 0 ? Math.round((citas_completadas / total_citas) * 10000) / 100 : 0;
+            const pacientes_unicos = new Set(citas.map(c => c.paciente_id)).size;
+
+            const pacientes_activos = await Asignacion.count({
+                where: { psicologo_id: psicologoConsulta, estado: 'activa' },
+                distinct: true,
+                col: 'paciente_id'
+            });
+
+            const sesiones = await Sesion.findAll({
+                where: { psicologo_id: psicologoConsulta, ...(whereFecha ? { fecha: whereFecha } : {}) },
+                attributes: ['hora_inicio', 'hora_fin']
+            });
+            const duraciones = sesiones
+                .map(s => {
+                    const ini = toMinutes(s.hora_inicio);
+                    const fin = toMinutes(s.hora_fin);
+                    return ini !== null && fin !== null ? fin - ini : null;
+                })
+                .filter(v => typeof v === 'number' && v >= 0);
+            const duracion_promedio_sesiones = duraciones.length > 0
+                ? Math.round((duraciones.reduce((a, b) => a + b, 0) / duraciones.length) * 10) / 10
+                : 0;
+
+            const becarios_supervisados = await Asignacion.count({
+                where: { psicologo_id: psicologoConsulta, estado: 'activa', becario_id: { [Op.ne]: null } },
+                distinct: true,
+                col: 'becario_id'
+            });
+
+            const observaciones = await ObservacionBecario.findAll({
+                where: { supervisor_id: psicologoConsulta, ...(whereFecha ? { fecha: whereFecha } : {}) },
+                attributes: ['calificacion']
+            });
+            const observaciones_realizadas = observaciones.length;
+            const promedio_calificacion_observaciones = observaciones.length > 0
+                ? Math.round((observaciones.reduce((s, o) => s + (o.calificacion || 0), 0) / observaciones.length) * 100) / 100
+                : 0;
+
+            const altas_realizadas = await Alta.count({
+                where: { usuario_id: psicologoConsulta, ...(whereFecha ? { fecha_alta: whereFecha } : {}) }
+            });
+            const altas_terapeuticas = await Alta.count({
+                where: { usuario_id: psicologoConsulta, tipo_alta: 'terapeutica', ...(whereFecha ? { fecha_alta: whereFecha } : {}) }
+            });
+
+            const estadisticas = {
+                total_citas,
+                citas_completadas,
+                citas_canceladas,
+                tasa_completitud,
+                pacientes_unicos,
+                pacientes_activos,
+                sesiones_registradas: sesiones.length,
+                duracion_promedio_sesiones,
+                becarios_supervisados,
+                observaciones_realizadas,
+                promedio_calificacion_observaciones,
+                altas_realizadas,
+                altas_terapeuticas
+            };
+
+            const evolucionMap = citas.reduce((acc, c) => {
+                const mes = formatMonth(c.fecha);
+                if (!mes) return acc;
+                if (!acc[mes]) acc[mes] = { mes, total_citas: 0, citas_completadas: 0, pacientes_unicos: new Set(), sesiones_registradas: 0, altas_realizadas: 0 };
+                acc[mes].total_citas += 1;
+                if (c.estado === 'completada') acc[mes].citas_completadas += 1;
+                if (c.paciente_id) acc[mes].pacientes_unicos.add(c.paciente_id);
+                return acc;
+            }, {});
+
+            const sesionesPorMes = sesiones.reduce((acc, s) => {
+                const mes = formatMonth(s.fecha);
+                if (!mes) return acc;
+                acc[mes] = (acc[mes] || 0) + 1;
+                return acc;
+            }, {});
+
+            const altas = await Alta.findAll({
+                where: { psicologo_id: psicologoConsulta, ...(whereFecha ? { fecha_alta: whereFecha } : {}) },
+                attributes: ['fecha_alta']
+            });
+            const altasPorMes = altas.reduce((acc, a) => {
+                const mes = formatMonth(a.fecha_alta);
+                if (!mes) return acc;
+                acc[mes] = (acc[mes] || 0) + 1;
+                return acc;
+            }, {});
+
+            const evolucion_mensual = Object.values(evolucionMap)
+                .map(item => ({
+                    mes: item.mes,
+                    total_citas: item.total_citas,
+                    citas_completadas: item.citas_completadas,
+                    pacientes_unicos: item.pacientes_unicos.size,
+                    sesiones_registradas: sesionesPorMes[item.mes] || 0,
+                    altas_realizadas: altasPorMes[item.mes] || 0
+                }))
+                .sort((a, b) => a.mes.localeCompare(b.mes));
+
+            const distribucionMap = citas.reduce((acc, c) => {
+                const tipo = c.tipo_consulta || 'no especificado';
+                acc[tipo] = (acc[tipo] || 0) + 1;
+                return acc;
+            }, {});
+            const distribucion_consulta = Object.entries(distribucionMap).map(([tipo_consulta, cantidad]) => ({
+                tipo_consulta,
+                cantidad,
+                porcentaje: total_citas > 0 ? Math.round((cantidad / total_citas) * 10000) / 100 : 0
+            }));
+
+            const pacientesTopMap = citas.filter(c => c.estado === 'completada').reduce((acc, c) => {
+                if (!acc[c.paciente_id]) {
+                    acc[c.paciente_id] = { paciente_id: c.paciente_id, total_sesiones: 0, primera_sesion: c.fecha, ultima_sesion: c.fecha, duraciones: [] };
+                }
+                acc[c.paciente_id].total_sesiones += 1;
+                if (c.fecha < acc[c.paciente_id].primera_sesion) acc[c.paciente_id].primera_sesion = c.fecha;
+                if (c.fecha > acc[c.paciente_id].ultima_sesion) acc[c.paciente_id].ultima_sesion = c.fecha;
+                if (c.duracion) acc[c.paciente_id].duraciones.push(c.duracion);
+                return acc;
+            }, {});
+
+            const pacienteIds = Object.keys(pacientesTopMap).map(Number);
+            const pacientesInfo = await Paciente.findAll({ where: { id: { [Op.in]: pacienteIds } }, attributes: ['id', 'nombre', 'apellido'] });
+            const pacienteMap = pacientesInfo.reduce((acc, p) => { acc[p.id] = `${p.nombre} ${p.apellido}`; return acc; }, {});
+
+            const pacientes_top = Object.values(pacientesTopMap).map(item => ({
+                id: item.paciente_id,
+                paciente: pacienteMap[item.paciente_id] || 'Paciente',
+                total_sesiones: item.total_sesiones,
+                primera_sesion: item.primera_sesion,
+                ultima_sesion: item.ultima_sesion,
+                duracion_promedio: item.duraciones.length > 0
+                    ? Math.round((item.duraciones.reduce((a, b) => a + b, 0) / item.duraciones.length) * 10) / 10
+                    : 0
+            })).sort((a, b) => b.total_sesiones - a.total_sesiones).slice(0, 10);
+
+            const horariosMap = citas.reduce((acc, c) => {
+                if (!c.hora) return acc;
+                const hora = parseInt(String(c.hora).split(':')[0], 10);
+                if (Number.isNaN(hora)) return acc;
+                if (!acc[hora]) acc[hora] = { hora, total_citas: 0, citas_completadas: 0 };
+                acc[hora].total_citas += 1;
+                if (c.estado === 'completada') acc[hora].citas_completadas += 1;
+                return acc;
+            }, {});
+            const horarios_productivos = Object.values(horariosMap)
+                .map(item => ({
+                    ...item,
+                    tasa_completitud: item.total_citas > 0 ? Math.round((item.citas_completadas / item.total_citas) * 10000) / 100 : 0
+                }))
+                .sort((a, b) => b.total_citas - a.total_citas)
+                .slice(0, 8);
+
             res.json({
                 success: true,
                 data: {
@@ -279,177 +388,199 @@ class EstadisticaController {
                         fecha_inicio: fecha_inicio || 'No especificado',
                         fecha_fin: fecha_fin || 'No especificado'
                     },
-                    estadisticas: estadisticas || {},
-                    evolucion_mensual: evolucionMensual.reverse(),
-                    distribucion_consulta: distribucionConsulta,
-                    pacientes_top: pacientesTop,
-                    horarios_productivos: horariosProductivos,
+                    estadisticas,
+                    evolucion_mensual,
+                    distribucion_consulta,
+                    pacientes_top,
+                    horarios_productivos,
                     fecha_consulta: new Date().toISOString()
                 }
             });
-            
         } catch (error) {
             console.error('Error en obtenerEstadisticasPsicologo:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener estadísticas del psicólogo'
-            });
+            res.status(500).json({ success: false, message: 'Error al obtener estadísticas del psicólogo' });
         }
     }
-    
+
     static async obtenerEstadisticasBecario(req, res) {
         try {
             const { becario_id, fecha_inicio, fecha_fin } = req.query;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
-            // Verificar permisos
+
             let becarioConsulta = becario_id;
             if (!becarioConsulta && usuarioRol === 'becario') {
                 becarioConsulta = usuarioId;
             } else if (!becarioConsulta) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Se requiere especificar un becario'
-                });
+                return res.status(400).json({ success: false, message: 'Se requiere especificar un becario' });
             }
-            
-            // Verificar que el becario existe
-            const [becario] = await sequelize.query(
-                'SELECT id, nombre, apellido FROM users WHERE id = ? AND rol = "becario"',
-                { replacements: [becarioConsulta], type: QueryTypes.SELECT }
-            );
-            
+
+            const becario = await User.findOne({
+                where: { id: becarioConsulta, rol: 'becario' },
+                attributes: ['id', 'nombre', 'apellido']
+            });
+
             if (!becario) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Becario no encontrado'
-                });
+                return res.status(404).json({ success: false, message: 'Becario no encontrado' });
             }
-            
-            // Construir condiciones de fecha
-            let condicionesFecha = '';
-            const replacements = [becarioConsulta];
-            
-            if (fecha_inicio && fecha_fin) {
-                condicionesFecha = 'AND c.fecha BETWEEN ? AND ?';
-                replacements.push(fecha_inicio, fecha_fin);
-            } else if (fecha_inicio) {
-                condicionesFecha = 'AND c.fecha >= ?';
-                replacements.push(fecha_inicio);
-            } else if (fecha_fin) {
-                condicionesFecha = 'AND c.fecha <= ?';
-                replacements.push(fecha_fin);
-            }
-            
-            // Estadísticas generales del becario
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Citas
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                    
-                    -- Pacientes
-                    COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                    (SELECT COUNT(DISTINCT paciente_id) FROM asignaciones WHERE becario_id = ? AND estado = 'activa') as pacientes_activos,
-                    
-                    -- Observaciones recibidas
-                    COUNT(ob.id) as observaciones_recibidas,
-                    ROUND(AVG(ob.calificacion), 2) as promedio_calificacion,
-                    MIN(ob.calificacion) as calificacion_minima,
-                    MAX(ob.calificacion) as calificacion_maxima,
-                    
-                    -- Supervisor
-                    (SELECT CONCAT(u.nombre, ' ', u.apellido) FROM asignaciones a 
-                     JOIN users u ON a.psicologo_id = u.id 
-                     WHERE a.becario_id = ? AND a.estado = 'activa' LIMIT 1) as supervisor,
-                    
-                    -- Disponibilidad
-                    (SELECT COUNT(*) FROM disponibilidades WHERE usuario_id = ? AND activo = TRUE) as horarios_configurados,
-                    
-                    -- Tiempo promedio entre citas
-                    ROUND(AVG(DATEDIFF(
-                        (SELECT MIN(c2.fecha) FROM citas c2 
-                         WHERE c2.becario_id = c.becario_id 
-                         AND c2.paciente_id = c.paciente_id 
-                         AND c2.id > c.id),
-                        c.fecha
-                    )), 1) as dias_promedio_entre_citas
-                    
-                FROM users u
-                LEFT JOIN citas c ON u.id = c.becario_id ${condicionesFecha}
-                LEFT JOIN observaciones_becarios ob ON u.id = ob.becario_id
-                WHERE u.id = ?
-                GROUP BY u.id
-            `, { replacements: [...replacements, becarioConsulta, becarioConsulta], type: QueryTypes.SELECT });
-            
-            // Evolución de calificaciones
-            const evolucionCalificaciones = await sequelize.query(`
-                SELECT 
-                    DATE_FORMAT(ob.fecha, '%Y-%m') as mes,
-                    COUNT(ob.id) as total_observaciones,
-                    ROUND(AVG(ob.calificacion), 2) as promedio_calificacion,
-                    MIN(ob.calificacion) as calificacion_minima,
-                    MAX(ob.calificacion) as calificacion_maxima
-                FROM observaciones_becarios ob
-                WHERE ob.becario_id = ?
-                ${condicionesFecha ? condicionesFecha.replace('c.fecha', 'ob.fecha') : 'AND ob.fecha >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)'}
-                GROUP BY DATE_FORMAT(ob.fecha, '%Y-%m')
-                ORDER BY mes DESC
-                LIMIT 6
-            `, { replacements: [becarioConsulta, ...(condicionesFecha ? replacements.slice(1) : [])], type: QueryTypes.SELECT });
-            
-            // Distribución por aspecto evaluado
-            const distribucionAspectos = await sequelize.query(`
-                SELECT 
-                    ob.aspecto_evaluado,
-                    COUNT(*) as cantidad,
-                    ROUND(AVG(ob.calificacion), 2) as promedio_calificacion,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM observaciones_becarios ob
-                WHERE ob.becario_id = ?
-                ${condicionesFecha ? condicionesFecha.replace('c.fecha', 'ob.fecha') : ''}
-                GROUP BY ob.aspecto_evaluado
-                ORDER BY cantidad DESC
-            `, { replacements, type: QueryTypes.SELECT });
-            
-            // Citas por día de la semana
-            const citasPorDia = await sequelize.query(`
-                SELECT 
-                    DAYNAME(c.fecha) as dia_semana,
-                    COUNT(*) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as tasa_completitud
-                FROM citas c
-                WHERE c.becario_id = ?
-                ${condicionesFecha}
-                GROUP BY DAYNAME(c.fecha), DAYOFWEEK(c.fecha)
-                ORDER BY DAYOFWEEK(c.fecha)
-            `, { replacements, type: QueryTypes.SELECT });
-            
-            // Pacientes atendidos
-            const pacientesAtendidos = await sequelize.query(`
-                SELECT 
-                    p.id,
-                    CONCAT(p.nombre, ' ', p.apellido) as paciente,
-                    COUNT(c.id) as total_sesiones,
-                    MIN(c.fecha) as primera_sesion,
-                    MAX(c.fecha) as ultima_sesion,
-                    (SELECT COUNT(*) FROM sesiones s 
-                     JOIN citas c2 ON s.cita_id = c2.id 
-                     WHERE c2.paciente_id = p.id AND c2.becario_id = ?) as sesiones_registradas
-                FROM citas c
-                JOIN pacientes p ON c.paciente_id = p.id
-                WHERE c.becario_id = ?
-                AND c.estado = 'completada'
-                ${condicionesFecha}
-                GROUP BY p.id, p.nombre, p.apellido
-                ORDER BY total_sesiones DESC
-                LIMIT 10
-            `, { replacements: [becarioConsulta, ...replacements], type: QueryTypes.SELECT });
-            
+
+            const whereFecha = buildDateFilter(fecha_inicio, fecha_fin);
+            const whereCitas = { becario_id: becarioConsulta, ...(whereFecha ? { fecha: whereFecha } : {}) };
+            const citas = await Cita.findAll({
+                where: whereCitas,
+                attributes: ['id', 'estado', 'paciente_id', 'fecha']
+            });
+
+            const total_citas = citas.length;
+            const citas_completadas = citas.filter(c => c.estado === 'completada').length;
+            const citas_canceladas = citas.filter(c => c.estado === 'cancelada').length;
+            const tasa_completitud = total_citas > 0 ? Math.round((citas_completadas / total_citas) * 10000) / 100 : 0;
+            const pacientes_unicos = new Set(citas.map(c => c.paciente_id)).size;
+
+            const pacientes_activos = await Asignacion.count({
+                where: { becario_id: becarioConsulta, estado: 'activa' },
+                distinct: true,
+                col: 'paciente_id'
+            });
+
+            const observaciones = await ObservacionBecario.findAll({
+                where: { becario_id: becarioConsulta, ...(whereFecha ? { fecha: whereFecha } : {}) },
+                attributes: ['calificacion', 'aspecto_evaluado', 'fecha']
+            });
+
+            const observaciones_recibidas = observaciones.length;
+            const promedio_calificacion = observaciones.length > 0
+                ? Math.round((observaciones.reduce((s, o) => s + (o.calificacion || 0), 0) / observaciones.length) * 100) / 100
+                : 0;
+            const calificacion_minima = observaciones.length > 0 ? Math.min(...observaciones.map(o => o.calificacion || 0)) : 0;
+            const calificacion_maxima = observaciones.length > 0 ? Math.max(...observaciones.map(o => o.calificacion || 0)) : 0;
+
+            const supervisorAsignacion = await Asignacion.findOne({
+                where: { becario_id: becarioConsulta, estado: 'activa' },
+                include: [{ model: User, as: 'Psicologo', attributes: ['nombre', 'apellido'] }]
+            });
+            const supervisor = supervisorAsignacion?.Psicologo
+                ? `${supervisorAsignacion.Psicologo.nombre} ${supervisorAsignacion.Psicologo.apellido}`
+                : null;
+
+            const horarios_configurados = await Disponibilidad.count({
+                where: { usuario_id: becarioConsulta, activo: true }
+            });
+
+            const citasPorPaciente = citas
+                .filter(c => c.estado === 'completada')
+                .sort((a, b) => a.fecha.localeCompare(b.fecha));
+            const diffs = [];
+            const lastByPaciente = {};
+            citasPorPaciente.forEach(c => {
+                const prev = lastByPaciente[c.paciente_id];
+                if (prev) {
+                    const diff = (new Date(c.fecha) - new Date(prev)) / (1000 * 60 * 60 * 24);
+                    if (!Number.isNaN(diff)) diffs.push(diff);
+                }
+                lastByPaciente[c.paciente_id] = c.fecha;
+            });
+            const dias_promedio_entre_citas = diffs.length > 0
+                ? Math.round((diffs.reduce((a, b) => a + b, 0) / diffs.length) * 10) / 10
+                : 0;
+
+            const estadisticas = {
+                total_citas,
+                citas_completadas,
+                citas_canceladas,
+                tasa_completitud,
+                pacientes_unicos,
+                pacientes_activos,
+                observaciones_recibidas,
+                promedio_calificacion,
+                calificacion_minima,
+                calificacion_maxima,
+                supervisor,
+                horarios_configurados,
+                dias_promedio_entre_citas
+            };
+
+            const evolucionMap = observaciones.reduce((acc, o) => {
+                const mes = formatMonth(o.fecha);
+                if (!mes) return acc;
+                if (!acc[mes]) acc[mes] = { mes, total_observaciones: 0, suma: 0, min: o.calificacion, max: o.calificacion };
+                acc[mes].total_observaciones += 1;
+                acc[mes].suma += o.calificacion || 0;
+                acc[mes].min = Math.min(acc[mes].min, o.calificacion || 0);
+                acc[mes].max = Math.max(acc[mes].max, o.calificacion || 0);
+                return acc;
+            }, {});
+            const evolucion_calificaciones = Object.values(evolucionMap)
+                .map(item => ({
+                    mes: item.mes,
+                    total_observaciones: item.total_observaciones,
+                    promedio_calificacion: item.total_observaciones > 0 ? Math.round((item.suma / item.total_observaciones) * 100) / 100 : 0,
+                    calificacion_minima: item.min,
+                    calificacion_maxima: item.max
+                }))
+                .sort((a, b) => a.mes.localeCompare(b.mes));
+
+            const aspectosMap = observaciones.reduce((acc, o) => {
+                const key = o.aspecto_evaluado || 'no especificado';
+                if (!acc[key]) acc[key] = { aspecto_evaluado: key, cantidad: 0, suma: 0 };
+                acc[key].cantidad += 1;
+                acc[key].suma += o.calificacion || 0;
+                return acc;
+            }, {});
+            const distribucion_aspectos = Object.values(aspectosMap).map(item => ({
+                aspecto_evaluado: item.aspecto_evaluado,
+                cantidad: item.cantidad,
+                promedio_calificacion: item.cantidad > 0 ? Math.round((item.suma / item.cantidad) * 100) / 100 : 0,
+                porcentaje: observaciones_recibidas > 0 ? Math.round((item.cantidad / observaciones_recibidas) * 10000) / 100 : 0
+            }));
+
+            const citasPorDia = citas.reduce((acc, c) => {
+                const dia = new Date(c.fecha).toLocaleDateString('es-MX', { weekday: 'long' });
+                if (!acc[dia]) acc[dia] = { dia_semana: dia, total_citas: 0, citas_completadas: 0 };
+                acc[dia].total_citas += 1;
+                if (c.estado === 'completada') acc[dia].citas_completadas += 1;
+                return acc;
+            }, {});
+            const citas_por_dia = Object.values(citasPorDia)
+                .map(item => ({
+                    ...item,
+                    tasa_completitud: item.total_citas > 0 ? Math.round((item.citas_completadas / item.total_citas) * 10000) / 100 : 0
+                }));
+
+            const pacientesMap = citas.filter(c => c.estado === 'completada').reduce((acc, c) => {
+                if (!acc[c.paciente_id]) acc[c.paciente_id] = { paciente_id: c.paciente_id, total_sesiones: 0, primera_sesion: c.fecha, ultima_sesion: c.fecha };
+                acc[c.paciente_id].total_sesiones += 1;
+                if (c.fecha < acc[c.paciente_id].primera_sesion) acc[c.paciente_id].primera_sesion = c.fecha;
+                if (c.fecha > acc[c.paciente_id].ultima_sesion) acc[c.paciente_id].ultima_sesion = c.fecha;
+                return acc;
+            }, {});
+            const pacienteIds = Object.keys(pacientesMap).map(Number);
+            const pacientesInfo = await Paciente.findAll({ where: { id: { [Op.in]: pacienteIds } }, attributes: ['id', 'nombre', 'apellido'] });
+            const pacienteMap = pacientesInfo.reduce((acc, p) => { acc[p.id] = `${p.nombre} ${p.apellido}`; return acc; }, {});
+
+            const sesionesRegistradas = await Sesion.findAll({
+                include: [{ model: Cita, where: { becario_id: becarioConsulta }, attributes: ['paciente_id'] }],
+                attributes: ['id']
+            });
+            const sesionesPorPaciente = sesionesRegistradas.reduce((acc, s) => {
+                const pacienteId = s.Cita?.paciente_id;
+                if (!pacienteId) return acc;
+                acc[pacienteId] = (acc[pacienteId] || 0) + 1;
+                return acc;
+            }, {});
+
+            const pacientes_atendidos = Object.values(pacientesMap)
+                .map(item => ({
+                    id: item.paciente_id,
+                    paciente: pacienteMap[item.paciente_id] || 'Paciente',
+                    total_sesiones: item.total_sesiones,
+                    primera_sesion: item.primera_sesion,
+                    ultima_sesion: item.ultima_sesion,
+                    sesiones_registradas: sesionesPorPaciente[item.paciente_id] || 0
+                }))
+                .sort((a, b) => b.total_sesiones - a.total_sesiones)
+                .slice(0, 10);
+
             res.json({
                 success: true,
                 data: {
@@ -458,215 +589,202 @@ class EstadisticaController {
                         fecha_inicio: fecha_inicio || 'No especificado',
                         fecha_fin: fecha_fin || 'No especificado'
                     },
-                    estadisticas: estadisticas || {},
-                    evolucion_calificaciones: evolucionCalificaciones.reverse(),
-                    distribucion_aspectos: distribucionAspectos,
-                    citas_por_dia: citasPorDia,
-                    pacientes_atendidos: pacientesAtendidos,
+                    estadisticas,
+                    evolucion_calificaciones,
+                    distribucion_aspectos,
+                    citas_por_dia,
+                    pacientes_atendidos,
                     fecha_consulta: new Date().toISOString()
                 }
             });
-            
         } catch (error) {
             console.error('Error en obtenerEstadisticasBecario:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener estadísticas del becario'
-            });
+            res.status(500).json({ success: false, message: 'Error al obtener estadísticas del becario' });
         }
     }
-    
+
     static async obtenerEstadisticasPaciente(req, res) {
         try {
             const { paciente_id } = req.params;
-            
-            // Verificar que el paciente existe
-            const [paciente] = await sequelize.query(
-                'SELECT id, nombre, apellido, fecha_nacimiento, genero FROM pacientes WHERE id = ?',
-                { replacements: [paciente_id], type: QueryTypes.SELECT }
-            );
-            
+
+            const paciente = await Paciente.findByPk(paciente_id, {
+                attributes: ['id', 'nombre', 'apellido', 'fecha_nacimiento', 'genero']
+            });
+
             if (!paciente) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Paciente no encontrado'
-                });
+                return res.status(404).json({ success: false, message: 'Paciente no encontrado' });
             }
-            
-            // Estadísticas del paciente
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    -- Citas
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_asistencia,
-                    
-                    -- Tiempo
-                    MIN(c.fecha) as primera_cita,
-                    MAX(c.fecha) as ultima_cita,
-                    DATEDIFF(MAX(c.fecha), MIN(c.fecha)) as dias_tratamiento,
-                    ROUND(AVG(c.duracion_minutos), 1) as duracion_promedio,
-                    
-                    -- Profesionales
-                    COUNT(DISTINCT c.psicologo_id) as psicologos_atendieron,
-                    COUNT(DISTINCT c.becario_id) as becarios_atendieron,
-                    
-                    -- Sesiones registradas
-                    COUNT(s.id) as sesiones_registradas,
-                    
-                    -- Asignaciones
-                    COUNT(DISTINCT a.id) as total_asignaciones,
-                    (SELECT COUNT(*) FROM asignaciones WHERE paciente_id = ? AND estado = 'activa') as asignaciones_activas,
-                    
-                    -- Altas
-                    (SELECT tipo_alta FROM altas WHERE paciente_id = ? ORDER BY fecha_alta DESC LIMIT 1) as ultimo_tipo_alta
-                    
-                FROM pacientes p
-                LEFT JOIN citas c ON p.id = c.paciente_id
-                LEFT JOIN sesiones s ON c.id = s.cita_id
-                LEFT JOIN asignaciones a ON p.id = a.paciente_id
-                WHERE p.id = ?
-                GROUP BY p.id
-            `, { replacements: [paciente_id, paciente_id, paciente_id], type: QueryTypes.SELECT });
-            
-            // Evolución de citas
-            const evolucionCitas = await sequelize.query(`
-                SELECT 
-                    DATE_FORMAT(c.fecha, '%Y-%m') as mes,
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    GROUP_CONCAT(
-                        CONCAT(
-                            DAY(c.fecha), ': ',
-                            CASE c.estado 
-                                WHEN 'completada' THEN '✓'
-                                WHEN 'cancelada' THEN '✗'
-                                ELSE '○'
-                            END
-                        ) 
-                        ORDER BY c.fecha 
-                        SEPARATOR ', '
-                    ) as detalle_dias
-                FROM citas c
-                WHERE c.paciente_id = ?
-                GROUP BY DATE_FORMAT(c.fecha, '%Y-%m')
-                ORDER BY mes DESC
-                LIMIT 6
-            `, { replacements: [paciente_id], type: QueryTypes.SELECT });
-            
-            // Distribución por psicólogo
-            const distribucionPsicologos = await sequelize.query(`
-                SELECT 
-                    u.id,
-                    CONCAT(u.nombre, ' ', u.apellido) as psicologo,
-                    u.especialidad,
-                    COUNT(c.id) as total_citas,
-                    SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                    ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                    MIN(c.fecha) as primera_cita,
-                    MAX(c.fecha) as ultima_cita
-                FROM citas c
-                JOIN users u ON c.psicologo_id = u.id
-                WHERE c.paciente_id = ?
-                GROUP BY u.id, u.nombre, u.apellido, u.especialidad
-                ORDER BY total_citas DESC
-            `, { replacements: [paciente_id], type: QueryTypes.SELECT });
-            
-            // Frecuencia de citas
-            const frecuenciaCitas = await sequelize.query(`
-                SELECT 
-                    CONCAT(
-                        CASE 
-                            WHEN dias BETWEEN 0 AND 7 THEN '1 semana o menos'
-                            WHEN dias BETWEEN 8 AND 14 THEN '2 semanas'
-                            WHEN dias BETWEEN 15 AND 21 THEN '3 semanas'
-                            WHEN dias BETWEEN 22 AND 30 THEN '4 semanas'
-                            ELSE 'Más de 1 mes'
-                        END
-                    ) as intervalo,
-                    COUNT(*) as cantidad,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as porcentaje
-                FROM (
-                    SELECT 
-                        DATEDIFF(
-                            c2.fecha,
-                            (SELECT MAX(c3.fecha) FROM citas c3 
-                             WHERE c3.paciente_id = c.paciente_id 
-                             AND c3.id < c2.id)
-                        ) as dias
-                    FROM citas c2
-                    WHERE c2.paciente_id = ?
-                    AND c2.estado = 'completada'
-                    ORDER BY c2.fecha
-                ) as intervalos
-                WHERE dias IS NOT NULL
-                GROUP BY 
-                    CASE 
-                        WHEN dias BETWEEN 0 AND 7 THEN '1 semana o menos'
-                        WHEN dias BETWEEN 8 AND 14 THEN '2 semanas'
-                        WHEN dias BETWEEN 15 AND 21 THEN '3 semanas'
-                        WHEN dias BETWEEN 22 AND 30 THEN '4 semanas'
-                        ELSE 'Más de 1 mes'
-                    END
-                ORDER BY cantidad DESC
-            `, { replacements: [paciente_id], type: QueryTypes.SELECT });
-            
+
+            const citas = await Cita.findAll({
+                where: { paciente_id },
+                attributes: ['id', 'estado', 'fecha', 'duracion', 'psicologo_id', 'becario_id']
+            });
+
+            const total_citas = citas.length;
+            const citas_completadas = citas.filter(c => c.estado === 'completada').length;
+            const citas_canceladas = citas.filter(c => c.estado === 'cancelada').length;
+            const tasa_asistencia = total_citas > 0 ? Math.round((citas_completadas / total_citas) * 10000) / 100 : 0;
+
+            const primera_cita = citas.reduce((min, c) => (!min || c.fecha < min ? c.fecha : min), null);
+            const ultima_cita = citas.reduce((max, c) => (!max || c.fecha > max ? c.fecha : max), null);
+            const dias_tratamiento = primera_cita && ultima_cita
+                ? Math.round((new Date(ultima_cita) - new Date(primera_cita)) / (1000 * 60 * 60 * 24))
+                : 0;
+            const duracion_promedio = total_citas > 0
+                ? Math.round((citas.reduce((s, c) => s + (c.duracion || 0), 0) / total_citas) * 10) / 10
+                : 0;
+
+            const psicologos_atendieron = new Set(citas.map(c => c.psicologo_id).filter(Boolean)).size;
+            const becarios_atendieron = new Set(citas.map(c => c.becario_id).filter(Boolean)).size;
+
+            const sesiones_registradas = await Sesion.count({
+                include: [{ model: Cita, where: { paciente_id } }]
+            });
+
+            const total_asignaciones = await Asignacion.count({ where: { paciente_id } });
+            const asignaciones_activas = await Asignacion.count({ where: { paciente_id, estado: 'activa' } });
+            const ultimo_alta = await Alta.findOne({ where: { paciente_id }, order: [['fecha_alta', 'DESC']] });
+
+            const estadisticas = {
+                total_citas,
+                citas_completadas,
+                citas_canceladas,
+                tasa_asistencia,
+                primera_cita,
+                ultima_cita,
+                dias_tratamiento,
+                duracion_promedio,
+                psicologos_atendieron,
+                becarios_atendieron,
+                sesiones_registradas,
+                total_asignaciones,
+                asignaciones_activas,
+                ultimo_tipo_alta: ultimo_alta?.tipo_alta || null
+            };
+
+            const evolucionMap = citas.reduce((acc, c) => {
+                const mes = formatMonth(c.fecha);
+                if (!mes) return acc;
+                if (!acc[mes]) acc[mes] = { mes, total_citas: 0, citas_completadas: 0, detalle_dias: [] };
+                acc[mes].total_citas += 1;
+                if (c.estado === 'completada') acc[mes].citas_completadas += 1;
+                acc[mes].detalle_dias.push(`${new Date(c.fecha).getDate()}: ${c.estado === 'completada' ? '✓' : c.estado === 'cancelada' ? '✗' : '○'}`);
+                return acc;
+            }, {});
+
+            const evolucion_citas = Object.values(evolucionMap)
+                .map(item => ({
+                    mes: item.mes,
+                    total_citas: item.total_citas,
+                    citas_completadas: item.citas_completadas,
+                    detalle_dias: item.detalle_dias.join(', ')
+                }))
+                .sort((a, b) => a.mes.localeCompare(b.mes));
+
+            const distribucionPsiMap = citas.reduce((acc, c) => {
+                if (!c.psicologo_id) return acc;
+                if (!acc[c.psicologo_id]) acc[c.psicologo_id] = { psicologo_id: c.psicologo_id, total_citas: 0, citas_completadas: 0, primera_cita: c.fecha, ultima_cita: c.fecha };
+                acc[c.psicologo_id].total_citas += 1;
+                if (c.estado === 'completada') acc[c.psicologo_id].citas_completadas += 1;
+                if (c.fecha < acc[c.psicologo_id].primera_cita) acc[c.psicologo_id].primera_cita = c.fecha;
+                if (c.fecha > acc[c.psicologo_id].ultima_cita) acc[c.psicologo_id].ultima_cita = c.fecha;
+                return acc;
+            }, {});
+
+            const psicologoIds = Object.keys(distribucionPsiMap).map(Number);
+            const psicologosInfo = await User.findAll({ where: { id: { [Op.in]: psicologoIds } }, attributes: ['id', 'nombre', 'apellido', 'especialidad'] });
+            const psiMap = psicologosInfo.reduce((acc, u) => { acc[u.id] = u; return acc; }, {});
+
+            const distribucion_psicologos = Object.values(distribucionPsiMap)
+                .map(item => ({
+                    id: item.psicologo_id,
+                    psicologo: psiMap[item.psicologo_id] ? `${psiMap[item.psicologo_id].nombre} ${psiMap[item.psicologo_id].apellido}` : 'Psicólogo',
+                    especialidad: psiMap[item.psicologo_id]?.especialidad || null,
+                    total_citas: item.total_citas,
+                    citas_completadas: item.citas_completadas,
+                    tasa_completitud: item.total_citas > 0 ? Math.round((item.citas_completadas / item.total_citas) * 10000) / 100 : 0,
+                    primera_cita: item.primera_cita,
+                    ultima_cita: item.ultima_cita
+                }))
+                .sort((a, b) => b.total_citas - a.total_citas);
+
+            const completadasOrdenadas = citas
+                .filter(c => c.estado === 'completada')
+                .sort((a, b) => a.fecha.localeCompare(b.fecha));
+            const intervalos = [];
+            for (let i = 1; i < completadasOrdenadas.length; i++) {
+                const prev = new Date(completadasOrdenadas[i - 1].fecha);
+                const curr = new Date(completadasOrdenadas[i].fecha);
+                const dias = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
+                if (!Number.isNaN(dias)) intervalos.push(dias);
+            }
+            const buckets = {
+                '1 semana o menos': 0,
+                '2 semanas': 0,
+                '3 semanas': 0,
+                '4 semanas': 0,
+                'Más de 1 mes': 0
+            };
+            intervalos.forEach(dias => {
+                if (dias <= 7) buckets['1 semana o menos'] += 1;
+                else if (dias <= 14) buckets['2 semanas'] += 1;
+                else if (dias <= 21) buckets['3 semanas'] += 1;
+                else if (dias <= 30) buckets['4 semanas'] += 1;
+                else buckets['Más de 1 mes'] += 1;
+            });
+            const totalIntervalos = intervalos.length || 1;
+            const frecuencia_citas = Object.entries(buckets).map(([intervalo, cantidad]) => ({
+                intervalo,
+                cantidad,
+                porcentaje: Math.round((cantidad / totalIntervalos) * 10000) / 100
+            }));
+
             res.json({
                 success: true,
                 data: {
                     paciente,
-                    estadisticas: estadisticas || {},
-                    evolucion_citas: evolucionCitas.reverse(),
-                    distribucion_psicologos: distribucionPsicologos,
-                    frecuencia_citas: frecuenciaCitas,
+                    estadisticas,
+                    evolucion_citas,
+                    distribucion_psicologos,
+                    frecuencia_citas,
                     fecha_consulta: new Date().toISOString()
                 }
             });
-            
         } catch (error) {
             console.error('Error en obtenerEstadisticasPaciente:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al obtener estadísticas del paciente'
-            });
+            res.status(500).json({ success: false, message: 'Error al obtener estadísticas del paciente' });
         }
     }
-    
+
     static async obtenerReporteComparativo(req, res) {
         try {
             const { periodo = 'mes', tipo_comparacion = 'psicologos' } = req.query;
-            
-            let intervalo;
+
+            let days;
             switch (periodo) {
                 case 'semana':
-                    intervalo = 'INTERVAL 7 DAY';
-                    break;
-                case 'mes':
-                    intervalo = 'INTERVAL 30 DAY';
+                    days = 7;
                     break;
                 case 'trimestre':
-                    intervalo = 'INTERVAL 90 DAY';
+                    days = 90;
                     break;
+                case 'mes':
                 default:
-                    intervalo = 'INTERVAL 30 DAY';
+                    days = 30;
+                    break;
             }
-            
+
             let reporte;
-            
             if (tipo_comparacion === 'psicologos') {
-                reporte = await this.generarComparativoPsicologos(intervalo);
+                reporte = await this.generarComparativoPsicologos(days);
             } else if (tipo_comparacion === 'becarios') {
-                reporte = await this.generarComparativoBecarios(intervalo);
+                reporte = await this.generarComparativoBecarios(days);
             } else if (tipo_comparacion === 'meses') {
-                reporte = await this.generarComparativoMeses(intervalo);
+                reporte = await this.generarComparativoMeses(days);
             } else {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Tipo de comparación no válido'
-                });
+                return res.status(400).json({ success: false, message: 'Tipo de comparación no válido' });
             }
-            
+
             res.json({
                 success: true,
                 data: {
@@ -676,86 +794,178 @@ class EstadisticaController {
                     fecha_generacion: new Date().toISOString()
                 }
             });
-            
         } catch (error) {
             console.error('Error en obtenerReporteComparativo:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error al generar reporte comparativo'
-            });
+            res.status(500).json({ success: false, message: 'Error al generar reporte comparativo' });
         }
     }
-    
-    // Métodos auxiliares para comparativos
-    static async generarComparativoPsicologos(intervalo) {
-        return await sequelize.query(`
-            SELECT 
-                u.id,
-                CONCAT(u.nombre, ' ', u.apellido) as psicologo,
-                u.especialidad,
-                COUNT(c.id) as total_citas,
-                SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                ROUND(AVG(c.duracion_minutos), 1) as duracion_promedio,
-                COUNT(s.id) as sesiones_registradas,
-                COUNT(DISTINCT a.becario_id) as becarios_supervisados,
-                COUNT(ob.id) as observaciones_realizadas
-            FROM users u
-            LEFT JOIN citas c ON u.id = c.psicologo_id AND c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-            LEFT JOIN sesiones s ON c.id = s.cita_id
-            LEFT JOIN asignaciones a ON u.id = a.psicologo_id AND a.estado = 'activa'
-            LEFT JOIN observaciones_becarios ob ON u.id = ob.supervisor_id AND ob.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-            WHERE u.rol = 'psicologo' AND u.activo = TRUE
-            GROUP BY u.id, u.nombre, u.apellido, u.especialidad
-            ORDER BY citas_completadas DESC
-        `, { type: QueryTypes.SELECT });
+
+    static async generarComparativoPsicologos(days) {
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - days);
+        const limiteStr = fechaLimite.toISOString().split('T')[0];
+
+        const psicologos = await User.findAll({
+            where: { rol: 'psicologo', activo: true },
+            attributes: ['id', 'nombre', 'apellido', 'especialidad']
+        });
+        const citas = await Cita.findAll({
+            where: { fecha: { [Op.gte]: limiteStr } },
+            attributes: ['id', 'estado', 'paciente_id', 'psicologo_id', 'duracion']
+        });
+        const sesiones = await Sesion.findAll({
+            where: { fecha: { [Op.gte]: limiteStr } },
+            attributes: ['id', 'psicologo_id']
+        });
+        const observaciones = await ObservacionBecario.findAll({
+            where: { fecha: { [Op.gte]: limiteStr } },
+            attributes: ['id', 'supervisor_id']
+        });
+        const asignaciones = await Asignacion.findAll({
+            where: { estado: 'activa' },
+            attributes: ['psicologo_id', 'becario_id']
+        });
+
+        return psicologos.map(p => {
+            const citasPsi = citas.filter(c => c.psicologo_id === p.id);
+            const total = citasPsi.length;
+            const completadas = citasPsi.filter(c => c.estado === 'completada').length;
+            const canceladas = citasPsi.filter(c => c.estado === 'cancelada').length;
+            const pacientes_unicos = new Set(citasPsi.map(c => c.paciente_id)).size;
+            const duracion_promedio = total > 0
+                ? Math.round((citasPsi.reduce((s, c) => s + (c.duracion || 0), 0) / total) * 10) / 10
+                : 0;
+            const sesiones_registradas = sesiones.filter(s => s.psicologo_id === p.id).length;
+            const becarios_supervisados = new Set(asignaciones.filter(a => a.psicologo_id === p.id).map(a => a.becario_id).filter(Boolean)).size;
+            const observaciones_realizadas = observaciones.filter(o => o.supervisor_id === p.id).length;
+
+            return {
+                id: p.id,
+                psicologo: `${p.nombre} ${p.apellido}`,
+                especialidad: p.especialidad,
+                total_citas: total,
+                citas_completadas: completadas,
+                citas_canceladas: canceladas,
+                tasa_completitud: total > 0 ? Math.round((completadas / total) * 10000) / 100 : 0,
+                pacientes_unicos,
+                duracion_promedio,
+                sesiones_registradas,
+                becarios_supervisados,
+                observaciones_realizadas
+            };
+        }).sort((a, b) => b.citas_completadas - a.citas_completadas);
     }
-    
-    static async generarComparativoBecarios(intervalo) {
-        return await sequelize.query(`
-            SELECT 
-                u.id,
-                CONCAT(u.nombre, ' ', u.apellido) as becario,
-                COUNT(c.id) as total_citas,
-                SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                COUNT(ob.id) as observaciones_recibidas,
-                ROUND(AVG(ob.calificacion), 2) as promedio_calificacion,
-                (SELECT CONCAT(u2.nombre, ' ', u2.apellido) FROM asignaciones a 
-                 JOIN users u2 ON a.psicologo_id = u2.id 
-                 WHERE a.becario_id = u.id AND a.estado = 'activa' LIMIT 1) as supervisor
-            FROM users u
-            LEFT JOIN citas c ON u.id = c.becario_id AND c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-            LEFT JOIN observaciones_becarios ob ON u.id = ob.becario_id AND ob.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-            WHERE u.rol = 'becario' AND u.activo = TRUE
-            GROUP BY u.id, u.nombre, u.apellido
-            ORDER BY citas_completadas DESC
-        `, { type: QueryTypes.SELECT });
+
+    static async generarComparativoBecarios(days) {
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - days);
+        const limiteStr = fechaLimite.toISOString().split('T')[0];
+
+        const becarios = await User.findAll({
+            where: { rol: 'becario', activo: true },
+            attributes: ['id', 'nombre', 'apellido']
+        });
+        const citas = await Cita.findAll({
+            where: { fecha: { [Op.gte]: limiteStr } },
+            attributes: ['id', 'estado', 'paciente_id', 'becario_id']
+        });
+        const observaciones = await ObservacionBecario.findAll({
+            where: { fecha: { [Op.gte]: limiteStr } },
+            attributes: ['id', 'becario_id', 'calificacion']
+        });
+        const asignaciones = await Asignacion.findAll({
+            where: { estado: 'activa' },
+            attributes: ['becario_id', 'psicologo_id']
+        });
+        const psicologoMap = await User.findAll({
+            where: { id: { [Op.in]: asignaciones.map(a => a.psicologo_id).filter(Boolean) } },
+            attributes: ['id', 'nombre', 'apellido']
+        }).then(list => list.reduce((acc, u) => { acc[u.id] = `${u.nombre} ${u.apellido}`; return acc; }, {}));
+
+        return becarios.map(b => {
+            const citasBec = citas.filter(c => c.becario_id === b.id);
+            const total = citasBec.length;
+            const completadas = citasBec.filter(c => c.estado === 'completada').length;
+            const pacientes_unicos = new Set(citasBec.map(c => c.paciente_id)).size;
+            const observacionesBec = observaciones.filter(o => o.becario_id === b.id);
+            const promedio_calificacion = observacionesBec.length > 0
+                ? Math.round((observacionesBec.reduce((s, o) => s + (o.calificacion || 0), 0) / observacionesBec.length) * 100) / 100
+                : 0;
+            const supervisorAsignacion = asignaciones.find(a => a.becario_id === b.id);
+            const supervisor = supervisorAsignacion ? psicologoMap[supervisorAsignacion.psicologo_id] || null : null;
+
+            return {
+                id: b.id,
+                becario: `${b.nombre} ${b.apellido}`,
+                total_citas: total,
+                citas_completadas: completadas,
+                tasa_completitud: total > 0 ? Math.round((completadas / total) * 10000) / 100 : 0,
+                pacientes_unicos,
+                observaciones_recibidas: observacionesBec.length,
+                promedio_calificacion,
+                supervisor
+            };
+        }).sort((a, b) => b.citas_completadas - a.citas_completadas);
     }
-    
-    static async generarComparativoMeses(intervalo) {
-        return await sequelize.query(`
-            SELECT 
-                DATE_FORMAT(c.fecha, '%Y-%m') as mes,
-                COUNT(c.id) as total_citas,
-                SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as citas_completadas,
-                SUM(CASE WHEN c.estado = 'cancelada' THEN 1 ELSE 0 END) as citas_canceladas,
-                ROUND(SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) * 100.0 / COUNT(c.id), 2) as tasa_completitud,
-                COUNT(DISTINCT c.paciente_id) as pacientes_unicos,
-                COUNT(DISTINCT c.psicologo_id) as psicologos_activos,
-                COUNT(DISTINCT c.becario_id) as becarios_activos,
-                COUNT(s.id) as sesiones_registradas,
-                COUNT(a.id) as altas_realizadas
-            FROM citas c
-            LEFT JOIN sesiones s ON c.id = s.cita_id
-            LEFT JOIN altas a ON c.paciente_id = a.paciente_id AND DATE_FORMAT(a.fecha_alta, '%Y-%m') = DATE_FORMAT(c.fecha, '%Y-%m')
-            WHERE c.fecha >= DATE_SUB(CURDATE(), ${intervalo})
-            GROUP BY DATE_FORMAT(c.fecha, '%Y-%m')
-            ORDER BY mes DESC
-        `, { type: QueryTypes.SELECT });
+
+    static async generarComparativoMeses(days) {
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - days);
+        const limiteStr = fechaLimite.toISOString().split('T')[0];
+
+        const citas = await Cita.findAll({
+            where: { fecha: { [Op.gte]: limiteStr } },
+            attributes: ['id', 'estado', 'paciente_id', 'psicologo_id', 'becario_id', 'fecha']
+        });
+        const sesiones = await Sesion.findAll({
+            where: { fecha: { [Op.gte]: limiteStr } },
+            attributes: ['id', 'fecha']
+        });
+        const altas = await Alta.findAll({
+            where: { fecha_alta: { [Op.gte]: limiteStr } },
+            attributes: ['id', 'fecha_alta']
+        });
+
+        const sesionesPorMes = sesiones.reduce((acc, s) => {
+            const mes = formatMonth(s.fecha);
+            if (!mes) return acc;
+            acc[mes] = (acc[mes] || 0) + 1;
+            return acc;
+        }, {});
+        const altasPorMes = altas.reduce((acc, a) => {
+            const mes = formatMonth(a.fecha_alta);
+            if (!mes) return acc;
+            acc[mes] = (acc[mes] || 0) + 1;
+            return acc;
+        }, {});
+
+        const mesesMap = citas.reduce((acc, c) => {
+            const mes = formatMonth(c.fecha);
+            if (!mes) return acc;
+            if (!acc[mes]) acc[mes] = { mes, total_citas: 0, citas_completadas: 0, citas_canceladas: 0, pacientes_unicos: new Set(), psicologos_activos: new Set(), becarios_activos: new Set() };
+            acc[mes].total_citas += 1;
+            if (c.estado === 'completada') acc[mes].citas_completadas += 1;
+            if (c.estado === 'cancelada') acc[mes].citas_canceladas += 1;
+            if (c.paciente_id) acc[mes].pacientes_unicos.add(c.paciente_id);
+            if (c.psicologo_id) acc[mes].psicologos_activos.add(c.psicologo_id);
+            if (c.becario_id) acc[mes].becarios_activos.add(c.becario_id);
+            return acc;
+        }, {});
+
+        return Object.values(mesesMap)
+            .map(item => ({
+                mes: item.mes,
+                total_citas: item.total_citas,
+                citas_completadas: item.citas_completadas,
+                citas_canceladas: item.citas_canceladas,
+                tasa_completitud: item.total_citas > 0 ? Math.round((item.citas_completadas / item.total_citas) * 10000) / 100 : 0,
+                pacientes_unicos: item.pacientes_unicos.size,
+                psicologos_activos: item.psicologos_activos.size,
+                becarios_activos: item.becarios_activos.size,
+                sesiones_registradas: sesionesPorMes[item.mes] || 0,
+                altas_realizadas: altasPorMes[item.mes] || 0
+            }))
+            .sort((a, b) => a.mes.localeCompare(b.mes));
     }
 }
 

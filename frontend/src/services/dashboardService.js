@@ -7,7 +7,8 @@ class DashboardService {
       console.log('Obteniendo dashboard coordinador...');
       const response = await ApiService.getDashboardCoordinador();
       console.log('Respuesta recibida:', response);
-      return response.data;
+      // Ajuste: A veces axios devuelve la data en response.data, a veces directo.
+      return response.data || response; 
     } catch (error) {
       console.error('Error obteniendo dashboard coordinador:', error);
       throw error;
@@ -34,26 +35,64 @@ class DashboardService {
     }
   }
 
+  // --- MÉTODOS PARA GESTIONAR SOLICITUDES ---
+  // Método para aprobar solicitud
+  static async aprobarSolicitud(id, rol) {
+    try {
+      console.log('DashboardService.aprobarSolicitud called with:', { id, rol });
+      const response = await ApiService.post('/dashboard/aprobar-solicitud', { 
+        solicitudId: id, 
+        rolAsignado: rol 
+      });
+      console.log('DashboardService response:', response);
+      return response.data;
+    } catch (error) {
+      console.error('Error en DashboardService.aprobarSolicitud:', error);
+      throw error;
+    }
+  }
+
+  // Método para denegar solicitud
+  static async denegarSolicitud(id) {
+    try {
+      console.log('DashboardService.denegarSolicitud called with:', { id });
+      const response = await ApiService.post('/dashboard/denegar-solicitud', { 
+        solicitudId: id 
+      });
+      console.log('DashboardService denegar response:', response);
+      return response.data;
+    } catch (error) {
+      console.error('Error en DashboardService.denegarSolicitud:', error);
+      throw error;
+    }
+  }
+  // ---------------------------------
+
   // Método para transformar los datos del backend al formato que usa el frontend
   static transformarDatosCoordinador(datosBackend) {
     if (!datosBackend) {
       throw new Error('No se recibieron datos del backend');
     }
     
+    console.log('transformarDatosCoordinador recibió:', datosBackend);
+    
+    // 1. EXTRAEMOS LOS DATOS (Incluyendo 'solicitudes')
     const { 
       estadisticas = {}, 
-      top_psicologos = [], 
-      becarios_carga = [],
+      top_terapeutas = [], 
+      coterapeutas_con_carga = [],
       actividad_reciente = [],
       alertas = [], 
       evolucion_mensual = [], 
-      citas_por_dia = [] 
+      citas_por_dia = [],
+      solicitudes_pendientes = [],
+      solicitudes = [] // <--- Correcto
     } = datosBackend;
     
     // Transformar estadísticas principales
     const estadisticasTransformadas = {
-      becariosActivos: estadisticas.becarios_activos || 0,
-      psicologosActivos: estadisticas.psicologos_activos || 0,
+      coterapeutasActivos: estadisticas.coterapeutas_activos || 0,
+      terapeutasActivos: estadisticas.terapeutas_activos || 0,
       pacientesActivos: estadisticas.pacientes_activos || 0,
       citasHoy: estadisticas.citas_hoy || 0,
       citasCompletadasHoy: estadisticas.citas_completadas_hoy || 0,
@@ -71,20 +110,22 @@ class DashboardService {
         }))
       : this.generarActividadReciente(datosBackend);
 
-    // Transformar distribución de citas por psicólogo (simplificado a máximo 5)
-    const distribucionPsicologos = top_psicologos.map(psicologo => ({
-      nombre: psicologo.nombre_completo || psicologo.nombre || 'Psicólogo',
-      citas: psicologo.citas_completadas || 0,
-      color: this.asignarColor(psicologo.id || 0)
+    // Transformar distribución de citas por terapeuta
+    const terapeutasData = top_terapeutas;
+    const distribucionTerapeutas = terapeutasData.map(terapeuta => ({
+      nombre: terapeuta.nombre_completo || terapeuta.nombre || 'Terapeuta',
+      citas: terapeuta.citas_completadas || 0,
+      color: this.asignarColor(terapeuta.id || 0)
     }));
 
-    // Transformar becarios con carga
-    const becariosCargaTr = becarios_carga.map(becario => ({
-      id: becario.id,
-      nombre: becario.nombre_completo || 'Becario',
-      pacientes_asignados: becario.pacientes_asignados || 0,
-      citas_mes: becario.citas_este_mes || 0,
-      pacientes: becario.pacientes ? becario.pacientes.split(', ') : []
+    // Transformar coterapeutas con carga
+    const coterapeutasData = coterapeutas_con_carga;
+    const coterapeutasCargaTr = coterapeutasData.map(coterapeuta => ({
+      id: coterapeuta.id,
+      nombre: coterapeuta.nombre_completo || 'Coterapeuta',
+      pacientes_asignados: coterapeuta.pacientes_asignados || 0,
+      citas_mes: coterapeuta.citas_este_mes || 0,
+      pacientes: coterapeuta.pacientes ? coterapeuta.pacientes.split(', ') : []
     }));
 
     // Transformar alertas
@@ -95,14 +136,28 @@ class DashboardService {
       cantidad: alerta.cantidad || 1
     }));
 
+    // 2. RETORNAMOS EL OBJETO COMPLETO (Incluyendo solicitudes)
+    const solicitudesTransformadas = (solicitudes_pendientes.length > 0 ? solicitudes_pendientes : solicitudes).map(sol => ({
+      id: sol.id,
+      nombre: sol.nombre_completo || sol.nombre || 'Sin nombre',
+      email: sol.email || '',
+      telefono: sol.telefono || '',
+      rol: sol.rol_solicitado || sol.rol || 'No especificado',
+      fecha: sol.fecha_solicitud || sol.fecha || new Date().toISOString(),
+      estado: sol.estado || 'PENDIENTE'
+    }));
+    const solicitudesFinales = solicitudesTransformadas;
+    console.log('Solicitudes finales:', solicitudesFinales);
+    
     return {
       estadisticas: estadisticasTransformadas,
       actividadReciente: actividadRecienteTr,
-      distribucionPsicologos,
-      becariosCarga: becariosCargaTr,
+      distribucionTerapeutas,
+      coterapeutasCarga: coterapeutasCargaTr,
       alertas: alertasTransformadas,
       evolucionMensual: evolucion_mensual,
-      citasPorDia: citas_por_dia
+      citasPorDia: citas_por_dia,
+      solicitudes: solicitudesFinales // <--- Correcto
     };
   }
 
@@ -124,7 +179,6 @@ class DashboardService {
     const ahora = new Date().toISOString();
     
     if (datosBackend.estadisticas) {
-      // Si hay nuevas altas hoy
       if (datosBackend.estadisticas.altas_hoy > 0) {
         actividades.push({
           id: 1,
@@ -135,7 +189,6 @@ class DashboardService {
         });
       }
 
-      // Si hay pacientes nuevos hoy
       if (datosBackend.estadisticas.pacientes_nuevos_hoy > 0) {
         actividades.push({
           id: 2,
@@ -146,7 +199,6 @@ class DashboardService {
         });
       }
 
-      // Si hay citas hoy
       if (datosBackend.estadisticas.citas_hoy > 0) {
         actividades.push({
           id: 3,
@@ -157,7 +209,6 @@ class DashboardService {
         });
       }
 
-      // Si hay citas completadas hoy
       if (datosBackend.estadisticas.citas_completadas_hoy > 0) {
         actividades.push({
           id: 4,
@@ -169,7 +220,6 @@ class DashboardService {
       }
     }
 
-    // Si no hay actividades específicas, mostrar mensaje de sistema
     if (actividades.length === 0) {
       actividades.push({
         id: 1,

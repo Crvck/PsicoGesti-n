@@ -24,8 +24,8 @@ const DEFAULT_CONFIG = {
     duracionSesionDefault: 50,
     sesionesGratuitas: 3,
     edadMinima: 16,
-    maxPacientesPsicologo: 15,
-    maxPacientesBecario: 5,
+    maxPacientesTerapeuta: 15,
+    maxPacientesCoterapeuta: 5,
     requiereSupervision: true,
     frecuenciaSupervision: 'semanal'
   },
@@ -88,13 +88,28 @@ const CoordinadorConfiguracion = () => {
     fetchConfiguraciones();
   }, []);
 
+  const normalizarClinica = (clinica = {}) => {
+    const maxPacientesTerapeuta = clinica.maxPacientesTerapeuta ?? clinica.maxPacientesPsicologo ?? DEFAULT_CONFIG.clinica.maxPacientesTerapeuta;
+    const maxPacientesCoterapeuta = clinica.maxPacientesCoterapeuta ?? clinica.maxPacientesBecario ?? DEFAULT_CONFIG.clinica.maxPacientesCoterapeuta;
+
+    return {
+      ...DEFAULT_CONFIG.clinica,
+      ...clinica,
+      maxPacientesTerapeuta,
+      maxPacientesCoterapeuta
+    };
+  };
+
   const fetchConfiguraciones = async () => {
     try {
       setLoading(true);
       const response = await ConfiguracionService.obtenerTodas();
       const data = response?.data || response;
 
-      setConfiguraciones(prev => ({ ...DEFAULT_CONFIG, ...prev, ...data }));
+      setConfiguraciones(prev => {
+        const merged = { ...DEFAULT_CONFIG, ...prev, ...data };
+        return { ...merged, clinica: normalizarClinica(merged.clinica) };
+      });
     } catch (error) {
       console.error('Error cargando configuraciones:', error);
       setMessage({ type: 'error', text: 'No se pudieron cargar las configuraciones' });
@@ -120,7 +135,15 @@ const CoordinadorConfiguracion = () => {
       setMessage({ type: '', text: '' });
 
       const payload = configuraciones[categoria] || {};
-      const response = await ConfiguracionService.guardarCategoria(categoria, payload);
+      const payloadClinica = categoria === 'clinica'
+        ? {
+            ...payload,
+            maxPacientesPsicologo: payload.maxPacientesTerapeuta ?? payload.maxPacientesPsicologo,
+            maxPacientesBecario: payload.maxPacientesCoterapeuta ?? payload.maxPacientesBecario
+          }
+        : payload;
+
+      const response = await ConfiguracionService.guardarCategoria(categoria, payloadClinica);
       const valoresActualizados = response?.data || payload;
       setConfiguraciones(prev => ({ ...prev, [categoria]: valoresActualizados }));
       setMessage({ 
@@ -161,8 +184,10 @@ const CoordinadorConfiguracion = () => {
     reader.onload = async (e) => {
       try {
         const config = JSON.parse(e.target.result);
-        setConfiguraciones(prev => ({ ...prev, ...config }));
-        await ConfiguracionService.guardarMultiples(config);
+        const merged = { ...DEFAULT_CONFIG, ...config };
+        const normalizado = { ...merged, clinica: normalizarClinica(merged.clinica) };
+        setConfiguraciones(prev => ({ ...prev, ...normalizado }));
+        await ConfiguracionService.guardarMultiples(normalizado);
         setMessage({ type: 'success', text: 'Configuración importada y guardada' });
       } catch (error) {
         console.error('Error al importar la configuración:', error);
@@ -430,11 +455,11 @@ const CoordinadorConfiguracion = () => {
                 </div> */}
                 
                 <div className="form-group">
-                  <label>Máx. pacientes por psicólogo</label>
+                  <label>Máx. pacientes por terapeuta</label>
                   <input
                     type="number"
-                    value={configuraciones.clinica?.maxPacientesPsicologo ?? 15}
-                    onChange={(e) => handleInputChange('clinica', 'maxPacientesPsicologo', parseInt(e.target.value))}
+                    value={configuraciones.clinica?.maxPacientesTerapeuta ?? configuraciones.clinica?.maxPacientesPsicologo ?? 15}
+                    onChange={(e) => handleInputChange('clinica', 'maxPacientesTerapeuta', parseInt(e.target.value))}
                     className="input-field"
                     min="5"
                     max="30"
@@ -442,11 +467,11 @@ const CoordinadorConfiguracion = () => {
                 </div>
                 
                 <div className="form-group">
-                  <label>Máx. pacientes por becario</label>
+                  <label>Máx. pacientes por coterapeuta</label>
                   <input
                     type="number"
-                    value={configuraciones.clinica?.maxPacientesBecario ?? 5}
-                    onChange={(e) => handleInputChange('clinica', 'maxPacientesBecario', parseInt(e.target.value))}
+                    value={configuraciones.clinica?.maxPacientesCoterapeuta ?? configuraciones.clinica?.maxPacientesBecario ?? 5}
+                    onChange={(e) => handleInputChange('clinica', 'maxPacientesCoterapeuta', parseInt(e.target.value))}
                     className="input-field"
                     min="1"
                     max="10"
@@ -473,7 +498,7 @@ const CoordinadorConfiguracion = () => {
                       checked={configuraciones.clinica?.requiereSupervision ?? true}
                       onChange={(e) => handleInputChange('clinica', 'requiereSupervision', e.target.checked)}
                     />
-                    <span>Requerir supervisión para becarios</span>
+                    <span>Requerir supervisión para coterapeutas</span>
                   </label>
                 </div>
               </div>

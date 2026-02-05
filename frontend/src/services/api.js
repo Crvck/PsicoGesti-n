@@ -33,10 +33,12 @@ class ApiService {
     }
     
     try {
+      console.log("ApiService.request sending:", { method, url: `${API_BASE_URL}${url}`, headers: this.getHeaders(), data });
       const response = await fetch(`${API_BASE_URL}${url}`, config);
+      console.log("ApiService.request raw response:", { status: response.status, statusText: response.statusText });
       return this.handleResponse(response);
     } catch (error) {
-      console.error('Fetch error:', error);
+      console.error('ApiService.request fetch error:', error);
       throw error;
     }
   }
@@ -46,6 +48,7 @@ class ApiService {
   }
 
   static async post(url, data) {
+    console.log("ApiService.post called:", { url, data });
     return this.request(url, { method: 'POST', data });
   }
 
@@ -58,6 +61,7 @@ class ApiService {
   }
 
   static async handleResponse(response) {
+      console.log("ApiService.handleResponse called:", { status: response.status, statusText: response.statusText, contentType: response.headers.get('content-type') });
       // Primero verificar si hay contenido
       if (response.status === 204 || response.status === 205) {
           return {};
@@ -68,6 +72,7 @@ class ApiService {
       // IMPORTANTE: Si es CSV, devolver como texto sin parsear como JSON
       if (contentType && contentType.includes('text/csv')) {
           const text = await response.text();
+          console.log("ApiService.handleResponse CSV response:", text.substring(0, 200));
           
           if (!response.ok) {
               throw new Error(text || `HTTP error! status: ${response.status}`);
@@ -80,6 +85,7 @@ class ApiService {
       // Si no es CSV, verificar si es JSON
       if (!contentType || !contentType.includes('application/json')) {
           const text = await response.text();
+          console.log("ApiService.handleResponse non-JSON response:", text);
           
           if (!response.ok) {
               throw new Error(text || `HTTP error! status: ${response.status}`);
@@ -95,9 +101,11 @@ class ApiService {
       
       // Si es JSON, parsearlo normalmente
       const data = await response.json();
+      console.log("ApiService.handleResponse JSON data:", data);
       
       if (!response.ok) {
           const errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
+          console.log("ApiService.handleResponse throwing error:", errorMessage);
           const error = new Error(errorMessage);
           error.status = response.status;
           error.data = data;
@@ -107,13 +115,25 @@ class ApiService {
       return data;
   }
 
+  // ----------------------------------------------------
   // Métodos específicos para el dashboard
+  // ----------------------------------------------------
+  
   static async getDashboardCoordinador() {
     return this.get('/dashboard/coordinador');
   }
 
   static async getMetricasGlobales(periodo = 'mes') {
     return this.get(`/dashboard/metricas-globales?periodo=${periodo}`);
+  }
+
+  // --- NUEVA FUNCIÓN AGREGADA ---
+  static async aprobarSolicitud(solicitudId, rolAsignado) {
+    // Esto llamará a POST http://localhost:3000/api/dashboard/aprobar-solicitud
+    return this.post('/dashboard/aprobar-solicitud', { 
+        solicitudId, 
+        rolAsignado 
+    });
   }
 
   static async getEstadisticas() {

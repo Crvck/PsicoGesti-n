@@ -1,15 +1,26 @@
+const { Op, fn, col, literal } = require('sequelize');
 const Asignacion = require('../models/asignacionModel');
 const Paciente = require('../models/pacienteModel');
 const User = require('../models/userModel');
-const { QueryTypes } = require('sequelize');
-const sequelize = require('../config/db');
+const Notificacion = require('../models/notificacionModel');
+const LogSistema = require('../models/logSistemaModel');
+const BecarioHoras = require('../models/becarioHorasModel');
 
 class AsignacionController {
     
     static async crearAsignacion(req, res) {
         try {
-            const { paciente_id, psicologo_id, becario_id, notas } = req.body;
+            const { paciente_id, psicologo_id, becario_id, notas, terapeuta_id, coterapeuta_id } = req.body;
             const usuarioId = req.user.id;
+            const finalPsicologoId = psicologo_id || terapeuta_id;
+            const finalBecarioId = becario_id || coterapeuta_id;
+
+            if (!finalPsicologoId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Falta terapeuta_id para asignar'
+                });
+            }
             
             // Validar que el paciente existe y está activo
             const paciente = await Paciente.findByPk(paciente_id);
@@ -20,28 +31,28 @@ class AsignacionController {
                 });
             }
             
-            // Validar que el psicólogo existe y es psicólogo
+            // Validar que el terapeuta existe y es terapeuta
             const psicologo = await User.findOne({
-                where: { id: psicologo_id, rol: 'psicologo', activo: true }
+                where: { id: finalPsicologoId, rol: { [Op.in]: ['terapeuta', 'psicologo'] }, activo: true }
             });
             
             if (!psicologo) {
                 return res.status(404).json({
                     success: false,
-                    message: 'Psicólogo no encontrado o inactivo'
+                    message: 'Terapeuta no encontrado o inactivo'
                 });
             }
             
-            // Validar que el becario existe si se especifica
-            if (becario_id) {
+            // Validar que el coterapeuta existe si se especifica
+            if (finalBecarioId) {
                 const becario = await User.findOne({
-                    where: { id: becario_id, rol: 'becario', activo: true }
+                    where: { id: finalBecarioId, rol: { [Op.in]: ['coterapeuta', 'becario'] }, activo: true }
                 });
                 
                 if (!becario) {
                     return res.status(404).json({
                         success: false,
-                        message: 'Becario no encontrado o inactivo'
+                        message: 'Coterapeuta no encontrado o inactivo'
                     });
                 }
             }
@@ -66,51 +77,47 @@ class AsignacionController {
             // Crear nueva asignación
             const asignacion = await Asignacion.create({
                 paciente_id,
-                psicologo_id,
-                becario_id,
+                psicologo_id: finalPsicologoId,
+                becario_id: finalBecarioId || null,
                 notas,
                 fecha_inicio: new Date().toISOString().split('T')[0]
             });
             
-            // Actualizar paciente con psicólogo asignado
+            // Actualizar paciente con terapeuta asignado
             await paciente.update({ fundacion_id: psicologo.fundacion_id });
             
             // Crear notificaciones
-            await sequelize.query(`
-                INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                VALUES 
-                (?, 'asignacion_nueva', 'Nueva asignación', CONCAT('Se le ha asignado el paciente: ', ?), NOW()),
-                (?, 'asignacion_nueva', 'Nueva asignación', CONCAT('Ha sido asignado como supervisor del paciente: ', ?), NOW())
-            `, {
-                replacements: [
-                    psicologo_id,
-                    `${paciente.nombre} ${paciente.apellido}`,
-                    usuarioId,
-                    `${paciente.nombre} ${paciente.apellido}`
-                ]
-            });
+            await Notificacion.bulkCreate([
+                {
+                    usuario_id: finalPsicologoId,
+                    tipo: 'asignacion_nueva',
+                    titulo: 'Nueva asignación',
+                    mensaje: `Se le ha asignado el paciente: ${paciente.nombre} ${paciente.apellido}`
+                },
+                {
+                    usuario_id: usuarioId,
+                    tipo: 'asignacion_nueva',
+                    titulo: 'Nueva asignación',
+                    mensaje: `Ha sido asignado como supervisor del paciente: ${paciente.nombre} ${paciente.apellido}`
+                }
+            ]);
             
-            if (becario_id) {
-                await sequelize.query(`
-                    INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
-                    VALUES (?, 'asignacion_nueva', 'Nueva asignación', CONCAT('Se le ha asignado el paciente: ', ?), NOW())
-                `, {
-                    replacements: [
-                        becario_id,
-                        `${paciente.nombre} ${paciente.apellido}`
-                    ]
+            if (finalBecarioId) {
+                await Notificacion.create({
+                    usuario_id: finalBecarioId,
+                    tipo: 'asignacion_nueva',
+                    titulo: 'Nueva asignación',
+                    mensaje: `Se le ha asignado el paciente: ${paciente.nombre} ${paciente.apellido}`
                 });
             }
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'creacion', 'asignaciones', 'Crear asignación', ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Asignación creada: Paciente ${paciente.id} → Psicólogo ${psicologo_id}${becario_id ? ` + Becario ${becario_id}` : ''}`
-                ]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'creacion',
+                modulo: 'asignaciones',
+                accion: 'Crear asignación',
+                descripcion: `Asignación creada: Paciente ${paciente.id} → Terapeuta ${finalPsicologoId}${finalBecarioId ? ` + Coterapeuta ${finalBecarioId}` : ''}`
             });
             
             // Recuperar asignación creada con asociaciones para devolver datos completos al cliente
@@ -193,94 +200,113 @@ class AsignacionController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
             
-            let query = '';
-            let replacements = [usuarioId];
-            
-            if (usuarioRol === 'psicologo') {
-                query = `
-                    SELECT 
-                        p.*,
-                        a.fecha_inicio,
-                        a.becario_id,
-                        u_bec.nombre AS becario_nombre,
-                        u_bec.apellido AS becario_apellido,
-                        e.diagnostico_presuntivo,
-                        e.diagnostico_definitivo,
-                        e.motivo_consulta,
-                        TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) AS edad,
-                        (SELECT COUNT(*) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.estado = 'completada') AS sesiones_completadas,
-                        (SELECT MAX(c.fecha) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.estado = 'completada') AS ultima_sesion,
-                        (SELECT MIN(c.fecha) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.estado = 'programada'
-                         AND c.fecha >= CURDATE()) AS proxima_cita,
-                        (SELECT COUNT(*) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.estado = 'programada'
-                         AND c.fecha >= CURDATE()) AS citas_pendientes
-                    FROM asignaciones a
-                    JOIN pacientes p ON a.paciente_id = p.id
-                    LEFT JOIN expedientes e ON e.paciente_id = p.id
-                    LEFT JOIN users u_bec ON a.becario_id = u_bec.id
-                    WHERE a.psicologo_id = ? 
-                    AND a.estado = 'activa'
-                    AND p.activo = TRUE
-                    ORDER BY p.apellido, p.nombre
-                `;
-            } else if (usuarioRol === 'becario') {
-                query = `
-                    SELECT 
-                        p.*,
-                        a.fecha_inicio,
-                        a.psicologo_id,
-                        u_psi.nombre AS psicologo_nombre,
-                        u_psi.apellido AS psicologo_apellido,
-                        e.diagnostico_presuntivo,
-                        e.diagnostico_definitivo,
-                        e.motivo_consulta,
-                        TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) AS edad,
-                        (SELECT COUNT(*) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.becario_id = ?
-                         AND c.estado = 'completada') AS sesiones_completadas,
-                        (SELECT MAX(c.fecha) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.becario_id = ?
-                         AND c.estado = 'completada') AS ultima_sesion,
-                        (SELECT MIN(c.fecha) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.becario_id = ?
-                         AND c.estado = 'programada'
-                         AND c.fecha >= CURDATE()) AS proxima_cita,
-                        (SELECT COUNT(*) FROM citas c 
-                         WHERE c.paciente_id = p.id 
-                         AND c.becario_id = ?
-                         AND c.estado = 'programada'
-                         AND c.fecha >= CURDATE()) AS citas_pendientes
-                    FROM asignaciones a
-                    JOIN pacientes p ON a.paciente_id = p.id
-                    LEFT JOIN expedientes e ON e.paciente_id = p.id
-                    JOIN users u_psi ON a.psicologo_id = u_psi.id
-                    WHERE a.becario_id = ? 
-                    AND a.estado = 'activa'
-                    AND p.activo = TRUE
-                    ORDER BY p.apellido, p.nombre
-                `;
-                replacements = [usuarioId, usuarioId, usuarioId, usuarioId, usuarioId];
-            } else {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Acceso no permitido para este rol'
+            const today = new Date().toISOString().slice(0, 10);
+
+            if (usuarioRol === 'terapeuta') {
+                const asignaciones = await Asignacion.findAll({
+                    where: {
+                        psicologo_id: usuarioId,
+                        estado: 'activa'
+                    },
+                    include: [
+                        {
+                            model: Paciente,
+                            where: { activo: true },
+                            attributes: {
+                                include: [
+                                    [literal('TIMESTAMPDIFF(YEAR, Paciente.fecha_nacimiento, CURDATE())'), 'edad'],
+                                    [literal("(SELECT COUNT(*) FROM citas c WHERE c.paciente_id = Paciente.id AND c.estado = 'completada')"), 'sesiones_completadas'],
+                                    [literal("(SELECT MAX(c.fecha) FROM citas c WHERE c.paciente_id = Paciente.id AND c.estado = 'completada')"), 'ultima_sesion'],
+                                    [literal("(SELECT MIN(c.fecha) FROM citas c WHERE c.paciente_id = Paciente.id AND c.estado = 'programada' AND c.fecha >= CURDATE())"), 'proxima_cita'],
+                                    [literal("(SELECT COUNT(*) FROM citas c WHERE c.paciente_id = Paciente.id AND c.estado = 'programada' AND c.fecha >= CURDATE())"), 'citas_pendientes'],
+                                    [literal("(SELECT e.diagnostico_presuntivo FROM expedientes e WHERE e.paciente_id = Paciente.id LIMIT 1)"), 'diagnostico_presuntivo'],
+                                    [literal("(SELECT e.diagnostico_definitivo FROM expedientes e WHERE e.paciente_id = Paciente.id LIMIT 1)"), 'diagnostico_definitivo'],
+                                    [literal("(SELECT e.motivo_consulta FROM expedientes e WHERE e.paciente_id = Paciente.id LIMIT 1)"), 'motivo_consulta']
+                                ]
+                            }
+                        },
+                        {
+                            model: User,
+                            as: 'Becario',
+                            attributes: ['id', 'nombre', 'apellido']
+                        }
+                    ],
+                    order: [[Paciente, 'apellido', 'ASC'], [Paciente, 'nombre', 'ASC']]
                 });
+
+                const pacientes = asignaciones.map((a) => {
+                    const p = a.Paciente?.toJSON ? a.Paciente.toJSON() : a.Paciente;
+                    return {
+                        ...p,
+                        fecha_inicio: a.fecha_inicio,
+                        becario_id: a.becario_id,
+                        becario_nombre: a.Becario?.nombre || null,
+                        becario_apellido: a.Becario?.apellido || null
+                    };
+                });
+
+                res.json({
+                    success: true,
+                    data: pacientes,
+                    count: pacientes.length
+                });
+                return;
             }
-            
-            const pacientes = await sequelize.query(query, {
-                replacements,
-                type: QueryTypes.SELECT
+
+            if (usuarioRol === 'coterapeuta') {
+                const asignaciones = await Asignacion.findAll({
+                    where: {
+                        becario_id: usuarioId,
+                        estado: 'activa'
+                    },
+                    include: [
+                        {
+                            model: Paciente,
+                            where: { activo: true },
+                            attributes: {
+                                include: [
+                                    [literal('TIMESTAMPDIFF(YEAR, Paciente.fecha_nacimiento, CURDATE())'), 'edad'],
+                                    [literal(`(SELECT COUNT(*) FROM citas c WHERE c.paciente_id = Paciente.id AND c.becario_id = ${usuarioId} AND c.estado = 'completada')`), 'sesiones_completadas'],
+                                    [literal(`(SELECT MAX(c.fecha) FROM citas c WHERE c.paciente_id = Paciente.id AND c.becario_id = ${usuarioId} AND c.estado = 'completada')`), 'ultima_sesion'],
+                                    [literal(`(SELECT MIN(c.fecha) FROM citas c WHERE c.paciente_id = Paciente.id AND c.becario_id = ${usuarioId} AND c.estado = 'programada' AND c.fecha >= CURDATE())`), 'proxima_cita'],
+                                    [literal(`(SELECT COUNT(*) FROM citas c WHERE c.paciente_id = Paciente.id AND c.becario_id = ${usuarioId} AND c.estado = 'programada' AND c.fecha >= CURDATE())`), 'citas_pendientes'],
+                                    [literal("(SELECT e.diagnostico_presuntivo FROM expedientes e WHERE e.paciente_id = Paciente.id LIMIT 1)"), 'diagnostico_presuntivo'],
+                                    [literal("(SELECT e.diagnostico_definitivo FROM expedientes e WHERE e.paciente_id = Paciente.id LIMIT 1)"), 'diagnostico_definitivo'],
+                                    [literal("(SELECT e.motivo_consulta FROM expedientes e WHERE e.paciente_id = Paciente.id LIMIT 1)"), 'motivo_consulta']
+                                ]
+                            }
+                        },
+                        {
+                            model: User,
+                            as: 'Psicologo',
+                            attributes: ['id', 'nombre', 'apellido']
+                        }
+                    ],
+                    order: [[Paciente, 'apellido', 'ASC'], [Paciente, 'nombre', 'ASC']]
+                });
+
+                const pacientes = asignaciones.map((a) => {
+                    const p = a.Paciente?.toJSON ? a.Paciente.toJSON() : a.Paciente;
+                    return {
+                        ...p,
+                        fecha_inicio: a.fecha_inicio,
+                        psicologo_id: a.psicologo_id,
+                        psicologo_nombre: a.Psicologo?.nombre || null,
+                        psicologo_apellido: a.Psicologo?.apellido || null
+                    };
+                });
+
+                res.json({
+                    success: true,
+                    data: pacientes,
+                    count: pacientes.length
+                });
+                return;
+            }
+
+            return res.status(403).json({
+                success: false,
+                message: 'Acceso no permitido para este rol'
             });
             
             console.log('Pacientes encontrados:', pacientes.length);
@@ -329,16 +355,14 @@ class AsignacionController {
             });
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'asignaciones', 'Finalizar asignación', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Asignación finalizada ID: ${id}`,
-                    JSON.stringify(datosAntes),
-                    JSON.stringify(asignacion.toJSON())
-                ]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'asignaciones',
+                accion: 'Finalizar asignación',
+                descripcion: `Asignación finalizada ID: ${id}`,
+                datos_antes: datosAntes,
+                datos_despues: asignacion.toJSON()
             });
             
             res.json({
@@ -396,73 +420,58 @@ class AsignacionController {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
 
-            // Solo psicólogos pueden ver sus becarios asignados
-            if (usuarioRol !== 'psicologo') {
+            // Solo terapeutas pueden ver sus coterapeutas asignados
+            if (usuarioRol !== 'terapeuta') {
                 return res.status(403).json({
                     success: false,
                     message: 'Acceso no permitido para este rol'
                 });
             }
 
-            const query = `
-                SELECT DISTINCT
-                    u.id,
-                    u.nombre,
-                    u.apellido,
-                    u.email,
-                    u.telefono,
-                    u.especialidad,
-                    u.activo,
-                    u.created_at,
-                    COUNT(DISTINCT a.paciente_id) AS pacientes_asignados
-                FROM users u
-                INNER JOIN asignaciones a ON u.id = a.becario_id
-                WHERE a.psicologo_id = ?
-                AND a.estado = 'activa'
-                AND u.rol = 'becario'
-                AND u.activo = TRUE
-                AND a.becario_id IS NOT NULL
-                GROUP BY u.id, u.nombre, u.apellido, u.email, u.telefono, u.especialidad, u.activo, u.created_at
-                ORDER BY u.apellido, u.nombre
-            `;
-
-            const becarios = await sequelize.query(query, {
-                replacements: [usuarioId],
-                type: QueryTypes.SELECT
+            const asignaciones = await Asignacion.findAll({
+                where: {
+                    psicologo_id: usuarioId,
+                    estado: 'activa',
+                    becario_id: { [Op.ne]: null }
+                },
+                attributes: [
+                    'becario_id',
+                    [fn('COUNT', col('paciente_id')), 'pacientes_asignados']
+                ],
+                group: ['becario_id']
             });
 
-            // Obtener horas acumuladas por becario si existe la tabla
+            const becarioIds = asignaciones.map(a => a.becario_id);
+            const becarios = await User.findAll({
+                where: {
+                    id: { [Op.in]: becarioIds },
+                    rol: 'coterapeuta',
+                    activo: true
+                },
+                attributes: ['id', 'nombre', 'apellido', 'email', 'telefono', 'especialidad', 'activo', 'created_at'],
+                order: [['apellido', 'ASC'], ['nombre', 'ASC']]
+            });
+
+            const pacientesAsignadosMap = asignaciones.reduce((acc, item) => {
+                acc[item.becario_id] = parseInt(item.get('pacientes_asignados'), 10) || 0;
+                return acc;
+            }, {});
+
             let horasMap = {};
             if (becarios.length > 0) {
-                const becarioIds = becarios.map(b => b.id);
-                try {
-                    await sequelize.query(`
-                        CREATE TABLE IF NOT EXISTS becario_horas (
-                            id INT AUTO_INCREMENT PRIMARY KEY,
-                            becario_id INT NOT NULL,
-                            horas DECIMAL(6,2) NOT NULL DEFAULT 0,
-                            comentario TEXT NULL,
-                            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                            INDEX idx_becario (becario_id)
-                        ) ENGINE=InnoDB;
-                    `);
-
-                    const horasRows = await sequelize.query(
-                        'SELECT becario_id, COALESCE(SUM(horas), 0) as horas_acumuladas FROM becario_horas WHERE becario_id IN (:ids) GROUP BY becario_id',
-                        {
-                            replacements: { ids: becarioIds },
-                            type: QueryTypes.SELECT
-                        }
-                    );
-                    horasRows.forEach(r => { horasMap[r.becario_id] = parseFloat(r.horas_acumuladas) || 0; });
-                } catch (err) {
-                    console.warn('No se pudieron obtener horas acumuladas:', err.message);
-                }
+                const ids = becarios.map(b => b.id);
+                await BecarioHoras.sync();
+                const horasRows = await BecarioHoras.findAll({
+                    where: { becario_id: { [Op.in]: ids } },
+                    attributes: ['becario_id', [fn('SUM', col('horas')), 'horas_acumuladas']],
+                    group: ['becario_id']
+                });
+                horasRows.forEach(r => { horasMap[r.becario_id] = parseFloat(r.get('horas_acumuladas')) || 0; });
             }
 
             const becariosConHoras = becarios.map(b => ({
-                ...b,
+                ...b.toJSON(),
+                pacientes_asignados: pacientesAsignadosMap[b.id] ?? 0,
                 horas_acumuladas: horasMap[b.id] ?? 0
             }));
 
@@ -476,7 +485,7 @@ class AsignacionController {
             console.error('Error en obtenerMisBecarios:', error);
             res.status(500).json({
                 success: false,
-                message: 'Error al obtener becarios asignados'
+                message: 'Error al obtener coterapeutas asignados'
             });
         }
     }
@@ -488,34 +497,24 @@ class AsignacionController {
             const comentario = req.body.comentario || null;
 
             if (!becarioId || Number.isNaN(becarioId)) {
-                return res.status(400).json({ success: false, message: 'Becario inválido' });
+                return res.status(400).json({ success: false, message: 'Coterapeuta inválido' });
             }
             if (!valorHoras || Number.isNaN(valorHoras) || valorHoras <= 0) {
                 return res.status(400).json({ success: false, message: 'Horas debe ser mayor a 0' });
             }
 
-            // Crear tabla si no existe
-            await sequelize.query(`
-                CREATE TABLE IF NOT EXISTS becario_horas (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    becario_id INT NOT NULL,
-                    horas DECIMAL(6,2) NOT NULL DEFAULT 0,
-                    comentario TEXT NULL,
-                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_becario (becario_id)
-                ) ENGINE=InnoDB;
-            `);
+            await BecarioHoras.sync();
 
-            await sequelize.query(
-                'INSERT INTO becario_horas (becario_id, horas, comentario, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())',
-                { replacements: [becarioId, valorHoras, comentario] }
-            );
+            await BecarioHoras.create({
+                becario_id: becarioId,
+                horas: valorHoras,
+                comentario
+            });
 
-            const totalRow = await sequelize.query(
-                'SELECT COALESCE(SUM(horas), 0) as horas_acumuladas FROM becario_horas WHERE becario_id = ?',
-                { replacements: [becarioId], type: QueryTypes.SELECT }
-            );
+            const totalRow = await BecarioHoras.findOne({
+                where: { becario_id: becarioId },
+                attributes: [[fn('SUM', col('horas')), 'horas_acumuladas']]
+            });
 
             return res.json({
                 success: true,
@@ -523,7 +522,7 @@ class AsignacionController {
                 data: {
                     becario_id: becarioId,
                     horas: valorHoras,
-                    horas_acumuladas: parseFloat(totalRow[0]?.horas_acumuladas) || 0
+                    horas_acumuladas: parseFloat(totalRow?.get('horas_acumuladas')) || 0
                 }
             });
 

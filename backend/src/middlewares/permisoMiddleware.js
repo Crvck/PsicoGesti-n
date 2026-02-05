@@ -53,18 +53,24 @@ const permisoMiddleware = (permisoNombre) => {
                     'ver_expedientes_completos',
                     'configurar_sistema'
                 ],
-                psicologo: [
-                    'ver_panel_psicologo',
+                terapeuta: [
+                    'ver_panel_terapeuta',
                     'ver_mis_pacientes',
                     'gestionar_mis_citas',
                     'registrar_sesiones',
-                    'supervisar_becarios',
+                    'supervisar_coterapeutas',
                     'crear_observaciones',
                     'ver_expedientes_asignados',
                     'dar_altas_pacientes'
                 ],
-                becario: [
-                    'ver_panel_becario',
+                psicopedagogico: [
+                    'ver_panel_psicopedagogico',
+                    'ver_mis_pacientes',
+                    'ver_expedientes_asignados',
+                    'registrar_sesiones'
+                ],
+                coterapeuta: [
+                    'ver_panel_coterapeuta',
                     'ver_citas_dia',
                     'gestionar_citas_asignadas',
                     'ver_pacientes_asignados',
@@ -144,18 +150,24 @@ const algunPermisoMiddleware = (permisos) => {
                     'ver_expedientes_completos',
                     'configurar_sistema'
                 ],
-                psicologo: [
-                    'ver_panel_psicologo',
+                terapeuta: [
+                    'ver_panel_terapeuta',
                     'ver_mis_pacientes',
                     'gestionar_mis_citas',
                     'registrar_sesiones',
-                    'supervisar_becarios',
+                    'supervisar_coterapeutas',
                     'crear_observaciones',
                     'ver_expedientes_asignados',
                     'dar_altas_pacientes'
                 ],
-                becario: [
-                    'ver_panel_becario',
+                psicopedagogico: [
+                    'ver_panel_psicopedagogico',
+                    'ver_mis_pacientes',
+                    'ver_expedientes_asignados',
+                    'registrar_sesiones'
+                ],
+                coterapeuta: [
+                    'ver_panel_coterapeuta',
                     'ver_citas_dia',
                     'gestionar_citas_asignadas',
                     'ver_pacientes_asignados',

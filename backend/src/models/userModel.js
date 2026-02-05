@@ -40,9 +40,9 @@ const User = sequelize.define('User', {
         allowNull: true
     },
     rol: {
-        type: DataTypes.ENUM('coordinador', 'psicologo', 'becario'),
+        type: DataTypes.ENUM('coordinador', 'psicopedagogico', 'terapeuta', 'coterapeuta'),
         allowNull: false,
-        defaultValue: 'becario'
+        defaultValue: 'coterapeuta'
     },
     especialidad: {
         type: DataTypes.STRING(100),

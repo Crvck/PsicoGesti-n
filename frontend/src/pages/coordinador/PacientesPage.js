@@ -49,8 +49,8 @@ const CoordinadorPacientes = () => {
       const pacienteId = payload.paciente_id;
       if (!pacienteId) return;
 
-      const psicologoFromPayload = payload.psicologo || (payload.asignacion && payload.asignacion.Psicologo ? `${payload.asignacion.Psicologo.nombre} ${payload.asignacion.Psicologo.apellido}` : null);
-      const becarioFromPayload = payload.becario || (payload.asignacion && payload.asignacion.Becario ? `${payload.asignacion.Becario.nombre} ${payload.asignacion.Becario.apellido}` : null);
+      const terapeutaFromPayload = payload.terapeuta || payload.psicologo || (payload.asignacion && (payload.asignacion.Terapeuta || payload.asignacion.Psicologo) ? `${(payload.asignacion.Terapeuta || payload.asignacion.Psicologo).nombre} ${(payload.asignacion.Terapeuta || payload.asignacion.Psicologo).apellido}` : null);
+      const coterapeutaFromPayload = payload.coterapeuta || payload.becario || (payload.asignacion && (payload.asignacion.Coterapeuta || payload.asignacion.Becario) ? `${(payload.asignacion.Coterapeuta || payload.asignacion.Becario).nombre} ${(payload.asignacion.Coterapeuta || payload.asignacion.Becario).apellido}` : null);
 
       setPacientes(prev => {
         let found = false;
@@ -59,8 +59,8 @@ const CoordinadorPacientes = () => {
             found = true;
             const updated = {
               ...p,
-              psicologo_asignado: psicologoFromPayload || p.psicologo_asignado || 'Asignado',
-              becario_asignado: becarioFromPayload || p.becario_asignado || 'Asignado'
+              terapeuta_asignado: terapeutaFromPayload || p.terapeuta_asignado || p.psicologo_asignado || 'Asignado',
+              coterapeuta_asignado: coterapeutaFromPayload || p.coterapeuta_asignado || p.becario_asignado || 'Asignado'
             };
             console.log('Paciente actualizado localmente:', pacienteId, updated);
             return updated;
@@ -127,8 +127,8 @@ const CoordinadorPacientes = () => {
         fecha_ingreso: p.fecha_ingreso || p.created_at,
         fecha_alta: p.deleted_at || null,
         sesiones_completadas: p.sesiones_completadas || 0,
-        psicologo_asignado: p.psicologo_nombre || null,
-        becario_asignado: p.becario_nombre || null
+        terapeuta_asignado: p.terapeuta_nombre || p.psicologo_nombre || null,
+        coterapeuta_asignado: p.coterapeuta_nombre || p.becario_nombre || null
       }));
 
       setPacientes(mapped);
@@ -387,8 +387,8 @@ const CoordinadorPacientes = () => {
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Teléfono', bold: true })] })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Edad', bold: true })] })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Motivo', bold: true })] })] }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Psicólogo', bold: true })] })] }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Becario', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Terapeuta', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Coterapeuta', bold: true })] })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Sesiones', bold: true })] })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Estado', bold: true })] })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Activo', bold: true })] })] }),
@@ -404,8 +404,8 @@ const CoordinadorPacientes = () => {
             new TableCell({ children: [new Paragraph(p.telefono || '')] }),
             new TableCell({ children: [new Paragraph(calcularEdad(p.fecha_nacimiento) || '')] }),
             new TableCell({ children: [new Paragraph(p.motivo_consulta || '')] }),
-            new TableCell({ children: [new Paragraph(p.psicologo_asignado || '')] }),
-            new TableCell({ children: [new Paragraph(p.becario_asignado || '')] }),
+            new TableCell({ children: [new Paragraph(p.terapeuta_asignado || '')] }),
+            new TableCell({ children: [new Paragraph(p.coterapeuta_asignado || '')] }),
             new TableCell({ children: [new Paragraph(String(p.sesiones_completadas || 0))] }),
             new TableCell({ children: [new Paragraph(getEstadoLabel(p.estado).text || '')] }),
             new TableCell({ children: [new Paragraph(p.activo ? 'Sí' : 'No')] }),
@@ -560,13 +560,13 @@ const CoordinadorPacientes = () => {
                     </div>
                   </td>
                   <td>
-                    {paciente.psicologo_asignado || paciente.becario_asignado ? (
+                    {paciente.terapeuta_asignado || paciente.coterapeuta_asignado ? (
                       <>
-                        {paciente.psicologo_asignado && (
-                          <div className="text-small"><span className="badge badge-info">Psicólogo: {paciente.psicologo_asignado}</span></div>
+                        {paciente.terapeuta_asignado && (
+                          <div className="text-small"><span className="badge badge-info">Terapeuta: {paciente.terapeuta_asignado}</span></div>
                         )}
-                        {(!paciente.psicologo_asignado && paciente.becario_asignado) && (
-                          <div className="text-small"><span className="badge badge-warning">Becario: {paciente.becario_asignado}</span></div>
+                        {(!paciente.terapeuta_asignado && paciente.coterapeuta_asignado) && (
+                          <div className="text-small"><span className="badge badge-warning">Coterapeuta: {paciente.coterapeuta_asignado}</span></div>
                         )}
                       </>
                     ) : (
@@ -632,7 +632,9 @@ const CoordinadorPacientes = () => {
             <p>Total: {pacientes.length}</p>
             <p>Activos: {pacientes.filter(p => p.activo).length}</p>
             <p>Estudiantes: {pacientes.filter(p => p.es_estudiante).length}</p>
-            <p>Con becario: {pacientes.filter(p => p.becario_asignado).length}</p>            <p>Asignados: {pacientes.filter(p => p.psicologo_asignado || p.becario_asignado).length}</p>          </div>
+            <p>Con coterapeuta: {pacientes.filter(p => p.coterapeuta_asignado).length}</p>
+            <p>Asignados: {pacientes.filter(p => p.terapeuta_asignado || p.coterapeuta_asignado).length}</p>
+          </div>
         </div>
         
         <div className="card">
@@ -911,15 +913,15 @@ const CoordinadorPacientes = () => {
                   </span>
                 </div>
                 <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Psicólogo</div>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Terapeuta</div>
                   <div className="font-bold" style={{ fontSize: '16px' }}>
-                    {selectedPaciente.psicologo_asignado || 'No asignado'}
+                    {selectedPaciente.terapeuta_asignado || 'No asignado'}
                   </div>
                 </div>
                 <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Becario</div>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Coterapeuta</div>
                   <div className="font-bold" style={{ fontSize: '16px' }}>
-                    {selectedPaciente.becario_asignado || 'No asignado'}
+                    {selectedPaciente.coterapeuta_asignado || 'No asignado'}
                   </div>
                 </div>
               </div>
@@ -993,7 +995,7 @@ const CoordinadorPacientes = () => {
                         <th>Tipo</th>
                         <th>Horario</th>
                         <th>Desarrollo</th>
-                        <th>Psicólogo</th>
+                        <th>Terapeuta</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1012,7 +1014,7 @@ const CoordinadorPacientes = () => {
                                 {s.desarrollo || s.conclusion || 'Sin notas'}
                               </div>
                             </td>
-                            <td>{(s.psicologo_nombre || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || 'N/A')}</td>
+                            <td>{(s.terapeuta_nombre || (s.Terapeuta && `${s.Terapeuta.nombre} ${s.Terapeuta.apellido}`) || s.psicologo_nombre || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || 'N/A')}</td>
                           </tr>
                         ))
                       ) : (

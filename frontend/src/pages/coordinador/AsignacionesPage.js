@@ -10,7 +10,6 @@ import confirmations from '../../utils/confirmations';
 const CoordinadorAsignaciones = () => {
   const [becarios, setBecarios] = useState([]);
   const [psicologos, setPsicologos] = useState([]);
-  const [showListType, setShowListType] = useState('becarios');
   const [pacientesSinAsignar, setPacientesSinAsignar] = useState([]);
   const [asignaciones, setAsignaciones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +22,8 @@ const CoordinadorAsignaciones = () => {
   const [patientQuery, setPatientQuery] = useState('');
   const [becarioQuery, setBecarioQuery] = useState('');
   const [psicologoQuery, setPsicologoQuery] = useState('');
+  const [listaPacienteQuery, setListaPacienteQuery] = useState('');
+  const [listaPsicologoQuery, setListaPsicologoQuery] = useState('');
   const [showPatientList, setShowPatientList] = useState(false);
   const [showBecarioList, setShowBecarioList] = useState(false);
   const [showPsicologoList, setShowPsicologoList] = useState(false);
@@ -60,8 +61,8 @@ const CoordinadorAsignaciones = () => {
 
       const token = localStorage.getItem('token');
 
-      // Fetch becarios (normalizar campos para UI)
-      const resBec = await fetch('http://localhost:3000/api/users/becarios', {
+      // Fetch coterapeutas (normalizar campos para UI)
+      const resBec = await fetch('http://localhost:3000/api/users?rol=coterapeuta', {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const becariosData = await resBec.json();
@@ -74,12 +75,12 @@ const CoordinadorAsignaciones = () => {
       }));
       setBecarios(normalizedBecarios);
 
-      // Fetch all users and filter psicologos
-      const resUsers = await fetch('http://localhost:3000/api/users', {
+      // Fetch terapeutas
+      const resUsers = await fetch('http://localhost:3000/api/users?rol=terapeuta', {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const usersData = await resUsers.json();
-      const psicologosList = (usersData || []).filter(u => u.rol === 'psicologo');
+      const psicologosList = (usersData || []).filter(u => u.rol === 'terapeuta');
       setPsicologos(psicologosList);
 
       // Fetch pacientes sin asignar
@@ -88,7 +89,13 @@ const CoordinadorAsignaciones = () => {
       });
       const pacSinJson = await resPacSin.json();
       const pacSinData = Array.isArray(pacSinJson) ? pacSinJson : (pacSinJson.data || []);
-      setPacientesSinAsignar(pacSinData.map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}`, motivo: p.motivo_consulta || '', fecha_ingreso: p.fecha_ingreso })));
+      setPacientesSinAsignar(pacSinData.map(p => ({
+        id: p.id,
+        nombre: `${p.nombre} ${p.apellido}`,
+        email: p.email || '',
+        motivo: p.motivo_consulta || '',
+        fecha_ingreso: p.fecha_ingreso
+      })));
 
       // Fetch asignaciones activas
       const resAsig = await fetch('http://localhost:3000/api/asignaciones', {
@@ -99,8 +106,8 @@ const CoordinadorAsignaciones = () => {
       setAsignaciones(asigData.map(a => ({
         id: a.id,
         paciente: a.Paciente ? `${a.Paciente.nombre} ${a.Paciente.apellido}` : (a.paciente || ''),
-        becario: a.Becario ? `${a.Becario.nombre} ${a.Becario.apellido}` : (a.becario || ''),
-        psicologo: a.Psicologo ? `${a.Psicologo.nombre} ${a.Psicologo.apellido}` : (a.psicologo || ''),
+        coterapeuta: a.Coterapeuta ? `${a.Coterapeuta.nombre} ${a.Coterapeuta.apellido}` : (a.Becario ? `${a.Becario.nombre} ${a.Becario.apellido}` : (a.becario || '')),
+        terapeuta: a.Terapeuta ? `${a.Terapeuta.nombre} ${a.Terapeuta.apellido}` : (a.Psicologo ? `${a.Psicologo.nombre} ${a.Psicologo.apellido}` : (a.psicologo || '')),
         fecha_asignacion: a.fecha_inicio || a.created_at,
         estado: a.estado
       })));
@@ -113,8 +120,21 @@ const CoordinadorAsignaciones = () => {
   };
 
   const handleAsignarPaciente = async () => {
-    if (!selectedPaciente || !selectedPsicologo) {
-      notifications.error('Seleccione paciente y psicólogo');
+    const matchPaciente = (!selectedPaciente && patientQuery)
+      ? pacientesSinAsignar.find(p => (p.nombre || '').toLowerCase() === patientQuery.trim().toLowerCase())
+      : null;
+    const matchPsicologo = (!selectedPsicologo && psicologoQuery)
+      ? psicologos.find(p => (p.nombre || '').toLowerCase() === psicologoQuery.trim().toLowerCase())
+      : null;
+
+    const resolvedPaciente = selectedPaciente || matchPaciente;
+    const resolvedPsicologo = selectedPsicologo || matchPsicologo;
+
+    if (matchPaciente) setSelectedPaciente(matchPaciente);
+    if (matchPsicologo) setSelectedPsicologo(matchPsicologo);
+
+    if (!resolvedPaciente || !resolvedPsicologo) {
+      notifications.error('Seleccione paciente y terapeuta');
       return;
     }
 
@@ -122,9 +142,9 @@ const CoordinadorAsignaciones = () => {
       setAssigning(true);
       const token = localStorage.getItem('token');
       const body = {
-        paciente_id: selectedPaciente.id,
-        psicologo_id: selectedPsicologo.id,
-        becario_id: selectedBecario ? selectedBecario.id : null,
+        paciente_id: resolvedPaciente.id,
+        terapeuta_id: resolvedPsicologo.id,
+        coterapeuta_id: selectedBecario ? selectedBecario.id : null,
         notas: assignNotes
       };
 
@@ -146,12 +166,12 @@ const CoordinadorAsignaciones = () => {
 
       // Emitir evento global para que otras vistas (p. ej. PacientesPage) actualicen la UI inmediatamente
       try {
-        const psicologoName = (json && json.data && json.data.Psicologo) ? `${json.data.Psicologo.nombre} ${json.data.Psicologo.apellido || ''}`.trim() : (selectedPsicologo ? `${selectedPsicologo.nombre} ${selectedPsicologo.apellido || ''}`.trim() : null);
-        const becarioName = (json && json.data && json.data.Becario) ? `${json.data.Becario.nombre} ${json.data.Becario.apellido || ''}`.trim() : (selectedBecario ? `${selectedBecario.nombre} ${selectedBecario.apellido || ''}`.trim() : null);
+        const terapeutaName = (json && json.data && (json.data.Terapeuta || json.data.Psicologo)) ? `${(json.data.Terapeuta || json.data.Psicologo).nombre} ${(json.data.Terapeuta || json.data.Psicologo).apellido || ''}`.trim() : (selectedPsicologo ? `${selectedPsicologo.nombre} ${selectedPsicologo.apellido || ''}`.trim() : null);
+        const coterapeutaName = (json && json.data && (json.data.Coterapeuta || json.data.Becario)) ? `${(json.data.Coterapeuta || json.data.Becario).nombre} ${(json.data.Coterapeuta || json.data.Becario).apellido || ''}`.trim() : (selectedBecario ? `${selectedBecario.nombre} ${selectedBecario.apellido || ''}`.trim() : null);
         const payload = {
           paciente_id: selectedPaciente?.id,
-          psicologo: psicologoName,
-          becario: becarioName,
+          terapeuta: terapeutaName,
+          coterapeuta: coterapeutaName,
           asignacion: json && json.data ? json.data : null
         };
         console.log('Emitiendo evento asignacionCreada con payload:', payload);
@@ -169,8 +189,8 @@ const CoordinadorAsignaciones = () => {
         const newAsignacion = {
           id: asignData.id,
           paciente: asignData.Paciente ? `${asignData.Paciente.nombre} ${asignData.Paciente.apellido}` : (selectedPaciente ? selectedPaciente.nombre : ''),
-          becario: asignData.Becario ? `${asignData.Becario.nombre} ${asignData.Becario.apellido}` : (selectedBecario ? selectedBecario.nombre : ''),
-          psicologo: asignData.Psicologo ? `${asignData.Psicologo.nombre} ${asignData.Psicologo.apellido}` : (selectedPsicologo ? selectedPsicologo.nombre : ''),
+          coterapeuta: asignData.Coterapeuta ? `${asignData.Coterapeuta.nombre} ${asignData.Coterapeuta.apellido}` : (asignData.Becario ? `${asignData.Becario.nombre} ${asignData.Becario.apellido}` : (selectedBecario ? selectedBecario.nombre : '')),
+          terapeuta: asignData.Terapeuta ? `${asignData.Terapeuta.nombre} ${asignData.Terapeuta.apellido}` : (asignData.Psicologo ? `${asignData.Psicologo.nombre} ${asignData.Psicologo.apellido}` : (selectedPsicologo ? selectedPsicologo.nombre : '')),
           fecha_asignacion: asignData.fecha_inicio || asignData.created_at || new Date().toISOString(),
           estado: asignData.estado || 'activa'
         };
@@ -242,12 +262,36 @@ const CoordinadorAsignaciones = () => {
     );
   }
 
+  const LIST_LIMIT = 6;
+  const PACIENTES_LIMIT = 8;
+
+  const listaPacienteQueryLower = listaPacienteQuery.trim().toLowerCase();
+  const listaPsicologoQueryLower = listaPsicologoQuery.trim().toLowerCase();
+
+  const filteredPacientesSinAsignar = listaPacienteQueryLower
+    ? pacientesSinAsignar.filter(p => (
+        (p.nombre || '').toLowerCase().includes(listaPacienteQueryLower) ||
+        (p.email || '').toLowerCase().includes(listaPacienteQueryLower)
+      ))
+    : pacientesSinAsignar;
+
+  const filteredPsicologosList = listaPsicologoQueryLower
+    ? psicologos.filter(p => (
+        `${p.nombre || ''} ${p.apellido || ''}`.toLowerCase().includes(listaPsicologoQueryLower) ||
+        (p.especialidad || '').toLowerCase().includes(listaPsicologoQueryLower) ||
+        (p.email || '').toLowerCase().includes(listaPsicologoQueryLower)
+      ))
+    : psicologos;
+
+  const visiblePacientesSinAsignar = filteredPacientesSinAsignar.slice(0, PACIENTES_LIMIT);
+  const visiblePsicologos = filteredPsicologosList.slice(0, LIST_LIMIT);
+
   return (
     <div className="configuracion-page">
       <div className="page-header">
         <div>
           <h1>Gestión de Asignaciones</h1>
-          <p>Asignación de pacientes a becarios y psicólogos</p>
+          <p>Asignación de pacientes a terapeutas</p>
         </div>
         <button className="btn-secondary" onClick={fetchData}>
           <FiRefreshCw /> Actualizar
@@ -257,9 +301,9 @@ const CoordinadorAsignaciones = () => {
       {/* Estadísticas Rápidas */}
       <div className="grid-3 mb-30">
         <div className="card">
-          <h4>Becarios Activos</h4>
-          <div className="stat-value">{becarios.filter(b => b.activo).length}</div>
-          <div className="text-small">de {becarios.length} total</div>
+          <h4>Terapeutas Activos</h4>
+          <div className="stat-value">{psicologos.filter(p => p.activo).length}</div>
+          <div className="text-small">de {psicologos.length} total</div>
         </div>
         
         <div className="card">
@@ -275,18 +319,21 @@ const CoordinadorAsignaciones = () => {
         </div>
       </div>
 
-      {/* Becarios Disponibles */}
+      {/* Terapeutas Disponibles */}
       <div className="dashboard-section mb-20">
         <div className="section-header">
-          <h3>{showListType === 'becarios' ? 'Becarios Disponibles' : 'Psicólogos Disponibles'}</h3>
-          <div className="flex-row gap-10">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setShowListType(prev => prev === 'becarios' ? 'psicologos' : 'becarios')}
-            >
-              {showListType === 'becarios' ? 'Mostrar Psicólogos' : 'Mostrar Becarios'}
-            </button>
+          <h3>Terapeutas Disponibles</h3>
+          <div className="flex-row gap-10" style={{ alignItems: 'center' }}>
+            <div className="search-box" style={{ minWidth: '260px' }}>
+              <FiSearch />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Buscar terapeuta por nombre o correo..."
+                value={listaPsicologoQuery}
+                onChange={(e) => setListaPsicologoQuery(e.target.value)}
+              />
+            </div>
             <button 
               className="btn-primary"
               onClick={() => setShowModal(true)}
@@ -295,85 +342,56 @@ const CoordinadorAsignaciones = () => {
             </button>
           </div>
         </div>
-        
-        <div className="grid-4">
-          {showListType === 'becarios' ? (
-            becarios.map((becario) => (
-              <div key={becario.id} className="card">
-                <div className="flex-row align-center justify-between mb-10">
-                  <div className="flex-row align-center gap-10">
-                    <div className="avatar">
-                      {becario.nombre.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <div>
-                      <h4>{becario.nombre}</h4>
-                      <p className="text-small">{becario.especialidad}</p>
-                    </div>
-                  </div>
-                  {becario.activo ? (
-                    <span className="badge badge-success">Activo</span>
-                  ) : (
-                    <span className="badge badge-danger">Inactivo</span>
-                  )}
-                </div>
-                
-                <div className="card-progress">
-                  <div className="card-progress-label">
-                    <span>Capacidad</span>
-                    <span>{becario.pacientes_asignados}/{becario.capacidad}</span>
-                  </div>
-                  <div className="progress-container">
-                    <div 
-                      className="progress-bar"
-                      style={{ width: `${(becario.pacientes_asignados / Math.max(becario.capacidad || 1, 1)) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-                
-                {becario.activo && (
-                  <button 
-                    className="btn-text w-100 mt-10"
-                    onClick={() => {
-                      setSelectedBecario(becario);
-                      setShowModal(true);
-                    }}
-                  >
-                    Asignar paciente
-                  </button>
-                )}
-              </div>
-            ))
-          ) : (
-            psicologos.map((psicologo) => (
-              <div key={psicologo.id} className="card">
-                <div className="flex-row align-center justify-between mb-10">
-                  <div className="flex-row align-center gap-10">
-                    <div className="avatar">
-                      {psicologo.nombre.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <div>
-                      <h4>{psicologo.nombre}</h4>
-                      <p className="text-small">{psicologo.especialidad || ''}</p>
-                    </div>
-                  </div>
-                  {psicologo.activo ? (
-                    <span className="badge badge-success">Activo</span>
-                  ) : (
-                    <span className="badge badge-danger">Inactivo</span>
-                  )}
-                </div>
 
-                {psicologo.activo && (
-                  <button
-                    className="btn-text w-100 mt-10"
-                    onClick={() => { setSelectedPsicologo(psicologo); setShowModal(true); }}
-                  >
-                    Asignar paciente
-                  </button>
-                )}
-              </div>
-            ))
-          )}
+        <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '10px' }}>
+          Mostrando {visiblePsicologos.length} de {filteredPsicologosList.length} terapeutas
+        </div>
+        
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Terapeuta</th>
+                <th>Especialidad</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visiblePsicologos.map((psicologo) => (
+                <tr key={psicologo.id}>
+                  <td>
+                    <div className="flex-row align-center gap-10">
+                      <div className="avatar-small">
+                        {(psicologo.nombre || '').split(' ').map(n => n[0]).join('')}
+                      </div>
+                      <span>{psicologo.nombre}</span>
+                    </div>
+                  </td>
+                  <td>{psicologo.especialidad || ''}</td>
+                  <td>
+                    {psicologo.activo ? (
+                      <span className="badge badge-success">Activo</span>
+                    ) : (
+                      <span className="badge badge-danger">Inactivo</span>
+                    )}
+                  </td>
+                  <td>
+                    {psicologo.activo ? (
+                      <button
+                        className="btn-text"
+                        onClick={() => { setSelectedPsicologo(psicologo); setShowModal(true); }}
+                      >
+                        Asignar paciente
+                      </button>
+                    ) : (
+                      <span className="text-small">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -381,10 +399,24 @@ const CoordinadorAsignaciones = () => {
       <div className="dashboard-section mb-20">
         <div className="section-header">
           <h3>Pacientes Sin Asignar ({pacientesSinAsignar.length})</h3>
-          <button className="btn-text">Ver todos</button>
+          <div className="flex-row gap-10" style={{ alignItems: 'center' }}>
+            <div className="search-box" style={{ minWidth: '260px' }}>
+              <FiSearch />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Buscar paciente por nombre o correo..."
+                value={listaPacienteQuery}
+                onChange={(e) => setListaPacienteQuery(e.target.value)}
+              />
+            </div>
+            <span className="text-small" style={{ color: 'var(--gray)' }}>
+              Mostrando {visiblePacientesSinAsignar.length} de {filteredPacientesSinAsignar.length}
+            </span>
+          </div>
         </div>
         
-        {pacientesSinAsignar.length > 0 ? (
+        {filteredPacientesSinAsignar.length > 0 ? (
           <div className="table-container">
             <table className="data-table">
               <thead>
@@ -396,7 +428,7 @@ const CoordinadorAsignaciones = () => {
                 </tr>
               </thead>
               <tbody>
-                {pacientesSinAsignar.map((paciente) => (
+                {visiblePacientesSinAsignar.map((paciente) => (
                   <tr key={paciente.id}>
                     <td>
                       <div className="flex-row align-center gap-10">
@@ -454,8 +486,8 @@ const CoordinadorAsignaciones = () => {
             <thead>
               <tr>
                 <th>Paciente</th>
-                <th>Becario</th>
-                <th>Psicólogo Supervisor</th>
+                <th>Coterapeuta</th>
+                <th>Terapeuta Supervisor</th>
                 <th>Fecha Asignación</th>
                 <th>Estado</th>
                 <th>Acciones</th>
@@ -468,12 +500,12 @@ const CoordinadorAsignaciones = () => {
                   <td>
                     <div className="flex-row align-center gap-10">
                       <div className="avatar-small">
-                        {asignacion.becario.split(' ').map(n => n[0]).join('')}
+                        {asignacion.coterapeuta.split(' ').map(n => n[0]).join('')}
                       </div>
-                      <span>{asignacion.becario}</span>
+                      <span>{asignacion.coterapeuta}</span>
                     </div>
                   </td>
-                  <td>{asignacion.psicologo}</td>
+                  <td>{asignacion.terapeuta}</td>
                   <td>{new Date(asignacion.fecha_asignacion).toLocaleDateString()}</td>
                   <td>
                     <span className={`badge ${asignacion.estado === 'activa' ? 'badge-success' : 'badge-primary'}`}>
@@ -547,11 +579,11 @@ const CoordinadorAsignaciones = () => {
                 </div>
                 
                 <div className="form-group" style={{ position: 'relative' }}>
-                  <label>Seleccionar Becario</label>
+                  <label>Seleccionar Coterapeuta</label>
                   <input
                     type="text"
                     className="input-field"
-                    placeholder="Buscar becario..."
+                    placeholder="Buscar coterapeuta..."
                     value={becarioQuery}
                     onChange={(e) => { setBecarioQuery(e.target.value); setShowBecarioList(true); }}
                     onFocus={() => setShowBecarioList(true)}
@@ -570,18 +602,18 @@ const CoordinadorAsignaciones = () => {
                         </div>
                       ))}
                       {becarios.filter(b => (`${b.nombre}`.toLowerCase().includes(becarioQuery.toLowerCase()) || (b.especialidad || '').toLowerCase().includes(becarioQuery.toLowerCase()))).length === 0 && (
-                        <div className="text-small autocomplete-empty">No se encontraron becarios</div>
+                        <div className="text-small autocomplete-empty">No se encontraron coterapeutas</div>
                       )}
                     </div>
                   )}
                 </div>
                 
                 <div className="form-group" style={{ position: 'relative' }}>
-                  <label>Psicólogo Supervisor</label>
+                  <label>Terapeuta Supervisor</label>
                   <input
                     type="text"
                     className="input-field"
-                    placeholder="Buscar psicólogo..."
+                    placeholder="Buscar terapeuta..."
                     value={psicologoQuery}
                     onChange={(e) => { setPsicologoQuery(e.target.value); setShowPsicologoList(true); }}
                     onFocus={() => setShowPsicologoList(true)}
@@ -600,7 +632,7 @@ const CoordinadorAsignaciones = () => {
                         </div>
                       ))}
                       {psicologos.filter(p => (`${p.nombre}`.toLowerCase().includes(psicologoQuery.toLowerCase()) || (p.especialidad || '').toLowerCase().includes(psicologoQuery.toLowerCase()))).length === 0 && (
-                        <div className="text-small autocomplete-empty">No se encontraron psicólogos</div>
+                        <div className="text-small autocomplete-empty">No se encontraron terapeutas</div>
                       )}
                     </div>
                   )}

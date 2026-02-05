@@ -8,17 +8,17 @@ const { requireRole } = require('../middlewares/roleMiddleware');
 router.use(verifyToken);
 
 // Crear observación (solo psicólogos y coordinadores)
-router.post('/', requireRole(['psicologo', 'coordinador']), ObservacionController.crearObservacion);
+router.post('/', requireRole(['terapeuta', 'coordinador']), ObservacionController.crearObservacion);
 
 // Obtener observaciones
-router.get('/becario/:becario_id', requireRole(['psicologo', 'becario', 'coordinador']), ObservacionController.obtenerObservacionesBecario);
-router.get('/supervisor', requireRole(['psicologo', 'coordinador']), ObservacionController.obtenerObservacionesSupervisor);
+router.get('/becario/:becario_id', requireRole(['terapeuta', 'coterapeuta', 'coordinador']), ObservacionController.obtenerObservacionesBecario);
+router.get('/supervisor', requireRole(['terapeuta', 'coordinador']), ObservacionController.obtenerObservacionesSupervisor);
 
 // Enviar feedback
-router.post('/feedback/:becarioId', requireRole(['psicologo', 'coordinador']), ObservacionController.enviarFeedback);
+router.post('/feedback/:becarioId', requireRole(['terapeuta', 'coordinador']), ObservacionController.enviarFeedback);
 
 // Actualizar y eliminar observaciones
-router.put('/:id', requireRole(['psicologo', 'coordinador']), ObservacionController.actualizarObservacion);
-router.delete('/:id', requireRole(['psicologo', 'coordinador']), ObservacionController.eliminarObservacion);
+router.put('/:id', requireRole(['terapeuta', 'coordinador']), ObservacionController.actualizarObservacion);
+router.delete('/:id', requireRole(['terapeuta', 'coordinador']), ObservacionController.eliminarObservacion);
 
 module.exports = router;

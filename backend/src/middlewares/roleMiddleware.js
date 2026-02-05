@@ -39,14 +39,18 @@ const checkPermission = (permisoNombre) => {
                     'gestionar_asignaciones', 'ver_agenda_global', 'generar_reportes',
                     'gestionar_altas'
                 ],
-                'psicologo': [
-                    'ver_panel_psicologo', 'ver_mis_pacientes', 'ver_expedientes',
-                    'registrar_sesiones', 'gestionar_mis_citas', 'supervisar_becarios'
-                ],
-                'becario': [
-                    'ver_panel_becario', 'ver_citas_dia', 'gestionar_citas_asignadas',
-                    'ver_pacientes_asignados', 'registrar_observaciones', 'ver_notificaciones'
-                ]
+                    'terapeuta': [
+                        'ver_panel_terapeuta', 'gestionar_pacientes_terapeuta', 'ver_expedientes_terapeuta',
+                        'registrar_sesiones_terapeuta', 'gestionar_mis_citas_terapeuta'
+                    ],
+                    'coterapeuta': [
+                        'ver_panel_coterapeuta', 'gestionar_pacientes_coterapeuta', 'ver_expedientes_coterapeuta',
+                        'registrar_sesiones_coterapeuta', 'gestionar_mis_citas_coterapeuta'
+                    ],
+                    'psicopedagogico': [
+                        'ver_panel_psicopedagogico', 'gestionar_pacientes_psicopedagogico', 'ver_expedientes_psicopedagogico',
+                        'registrar_sesiones_psicopedagogico', 'gestionar_mis_citas_psicopedagogico'
+                    ]
             };
             
             if (userRole && rolePermissions[userRole]?.includes(permisoNombre)) {

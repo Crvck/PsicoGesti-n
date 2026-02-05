@@ -7,17 +7,17 @@ const { requireRole } = require('../middlewares/roleMiddleware');
 // Todas las rutas requieren autenticación
 router.use(verifyToken);
 
-// Registrar sesión (psicólogos, becarios y coordinadores)
-router.post('/', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.registrarSesion);
+// Registrar sesión (terapeutas, coterapeutas y coordinadores)
+router.post('/', requireRole(['terapeuta', 'coterapeuta', 'coordinador']), SesionController.registrarSesion);
 
 // Obtener sesiones por paciente
-router.get('/paciente/:paciente_id', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.obtenerSesionesPaciente);
+router.get('/paciente/:paciente_id', requireRole(['terapeuta', 'coterapeuta', 'coordinador']), SesionController.obtenerSesionesPaciente);
 // Obtener sesiones recientes (global)
-router.get('/recientes', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.obtenerSesionesRecientes);
+router.get('/recientes', requireRole(['terapeuta', 'coterapeuta', 'coordinador']), SesionController.obtenerSesionesRecientes);
 // Obtener detalle
-router.get('/:id', requireRole(['psicologo', 'becario', 'coordinador']), SesionController.obtenerSesionDetalle);
+router.get('/:id', requireRole(['terapeuta', 'coterapeuta', 'coordinador']), SesionController.obtenerSesionDetalle);
 
 // Actualizar sesión (solo psicólogo creador o coordinador)
-router.put('/:id', requireRole(['psicologo', 'coordinador']), SesionController.actualizarSesion);
+router.put('/:id', requireRole(['terapeuta', 'coordinador']), SesionController.actualizarSesion);
 
 module.exports = router;

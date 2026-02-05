@@ -1,11 +1,12 @@
+const { Op } = require('sequelize');
 const Expediente = require('../models/expedienteModel');
 const Paciente = require('../models/pacienteModel');
 const Sesion = require('../models/sesionModel');
 const Cita = require('../models/citaModel');
 const Asignacion = require('../models/asignacionModel');
 const User = require('../models/userModel');
-const { QueryTypes, Op } = require('sequelize');
-const sequelize = require('../config/db');
+const Alta = require('../models/altaModel');
+const LogSistema = require('../models/logSistemaModel');
 
 class ExpedienteController {
     
@@ -137,21 +138,42 @@ class ExpedienteController {
             console.log('Citas futuras encontradas:', citasFuturas.length);
             
             // Obtener estadísticas
-            const [estadisticas] = await sequelize.query(`
-                SELECT 
-                    COUNT(*) as total_sesiones,
-                    COUNT(CASE WHEN c.estado = 'completada' THEN 1 END) as sesiones_completadas,
-                    COUNT(CASE WHEN c.estado = 'cancelada' THEN 1 END) as sesiones_canceladas,
-                    MIN(c.fecha) as primera_sesion,
-                    MAX(c.fecha) as ultima_sesion,
-                    AVG(TIMESTAMPDIFF(MINUTE, s.hora_inicio, s.hora_fin)) as duracion_promedio
-                FROM citas c
-                LEFT JOIN sesiones s ON c.id = s.cita_id
-                WHERE c.paciente_id = ?
-            `, {
-                replacements: [paciente_id],
-                type: QueryTypes.SELECT
-            });
+            const [totalSesiones, sesionesCompletadas, sesionesCanceladas, primeraSesion, ultimaSesion] = await Promise.all([
+                Cita.count({ where: { paciente_id } }),
+                Cita.count({ where: { paciente_id, estado: 'completada' } }),
+                Cita.count({ where: { paciente_id, estado: 'cancelada' } }),
+                Cita.min('fecha', { where: { paciente_id } }),
+                Cita.max('fecha', { where: { paciente_id } })
+            ]);
+
+            let duracionPromedio = null;
+            if (citaIds.length > 0) {
+                const sesionesDuracion = await Sesion.findAll({
+                    where: { cita_id: { [Op.in]: citaIds } },
+                    attributes: ['hora_inicio', 'hora_fin']
+                });
+                const minutos = sesionesDuracion
+                    .map(s => {
+                        if (!s.hora_inicio || !s.hora_fin) return null;
+                        const [h1, m1] = String(s.hora_inicio).split(':').map(Number);
+                        const [h2, m2] = String(s.hora_fin).split(':').map(Number);
+                        if (Number.isNaN(h1) || Number.isNaN(m1) || Number.isNaN(h2) || Number.isNaN(m2)) return null;
+                        return (h2 * 60 + m2) - (h1 * 60 + m1);
+                    })
+                    .filter(v => typeof v === 'number' && v >= 0);
+                if (minutos.length > 0) {
+                    duracionPromedio = minutos.reduce((a, b) => a + b, 0) / minutos.length;
+                }
+            }
+
+            const estadisticas = {
+                total_sesiones: totalSesiones,
+                sesiones_completadas: sesionesCompletadas,
+                sesiones_canceladas: sesionesCanceladas,
+                primera_sesion: primeraSesion,
+                ultima_sesion: ultimaSesion,
+                duracion_promedio: duracionPromedio
+            };
             
             // Obtener historial de asignaciones
             const historialAsignaciones = await Asignacion.findAll({
@@ -172,11 +194,9 @@ class ExpedienteController {
             });
             
             // Obtener altas si las hay
-            const [altas] = await sequelize.query(`
-                SELECT * FROM altas WHERE paciente_id = ? ORDER BY fecha_alta DESC LIMIT 1
-            `, {
-                replacements: [paciente_id],
-                type: QueryTypes.SELECT
+            const alta = await Alta.findOne({
+                where: { paciente_id },
+                order: [['fecha_alta', 'DESC']]
             });
             
             res.json({
@@ -189,7 +209,7 @@ class ExpedienteController {
                     citas_futuras: citasFuturas,
                     estadisticas: estadisticas || {},
                     historial_asignaciones: historialAsignaciones,
-                    alta: altas || null
+                    alta: alta || null
                 }
             });
             
@@ -233,11 +253,12 @@ class ExpedienteController {
             console.log(`✅ Expediente creado exitosamente: ${expediente.id}`);
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'creacion', 'expedientes', 'Crear expediente', ?, NOW())
-            `, {
-                replacements: [usuarioId, `Expediente creado para paciente ${paciente_id}`]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'creacion',
+                modulo: 'expedientes',
+                accion: 'Crear expediente',
+                descripcion: `Expediente creado para paciente ${paciente_id}`
             });
             
             res.json({
@@ -291,16 +312,14 @@ class ExpedienteController {
             await expediente.update(updates);
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, datos_antes, datos_despues, created_at)
-                VALUES (?, 'modificacion', 'expedientes', 'Actualizar expediente', ?, ?, ?, NOW())
-            `, {
-                replacements: [
-                    usuarioId,
-                    `Expediente actualizado para paciente ${paciente_id}`,
-                    JSON.stringify(datosAntes),
-                    JSON.stringify(expediente.toJSON())
-                ]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'expedientes',
+                accion: 'Actualizar expediente',
+                descripcion: `Expediente actualizado para paciente ${paciente_id}`,
+                datos_antes: datosAntes,
+                datos_despues: expediente.toJSON()
             });
             
             res.json({
@@ -325,15 +344,13 @@ class ExpedienteController {
             const usuarioId = req.user.id;
             
             // Verificar que el usuario es psicólogo asignado
-            const [asignacion] = await sequelize.query(`
-                SELECT 1 FROM asignaciones 
-                WHERE paciente_id = ? 
-                AND psicologo_id = ?
-                AND estado = 'activa'
-                LIMIT 1
-            `, {
-                replacements: [paciente_id, usuarioId],
-                type: QueryTypes.SELECT
+            const asignacion = await Asignacion.findOne({
+                where: {
+                    paciente_id,
+                    psicologo_id: usuarioId,
+                    estado: 'activa'
+                },
+                attributes: ['id']
             });
             
             if (!asignacion && req.user.rol !== 'coordinador') {
@@ -364,11 +381,12 @@ class ExpedienteController {
             });
             
             // Log
-            await sequelize.query(`
-                INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
-                VALUES (?, 'modificacion', 'expedientes', 'Agregar nota confidencial', ?, NOW())
-            `, {
-                replacements: [usuarioId, `Nota confidencial agregada para paciente ${paciente_id}`]
+            await LogSistema.create({
+                usuario_id: usuarioId,
+                tipo_log: 'modificacion',
+                modulo: 'expedientes',
+                accion: 'Agregar nota confidencial',
+                descripcion: `Nota confidencial agregada para paciente ${paciente_id}`
             });
             
             res.json({
@@ -404,41 +422,62 @@ class ExpedienteController {
                 });
             }
             
-            const [resumen] = await sequelize.query(`
-                SELECT 
-                    p.id,
-                    p.nombre,
-                    p.apellido,
-                    p.fecha_nacimiento,
-                    p.genero,
-                    p.telefono,
-                    p.email,
-                    p.estado,
-                    e.motivo_consulta,
-                    e.diagnostico_presuntivo,
-                    e.riesgo_suicida,
-                    a.psicologo_id,
-                    u_psi.nombre as psicologo_nombre,
-                    u_psi.apellido as psicologo_apellido,
-                    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado = 'completada') as sesiones_completadas,
-                    (SELECT COUNT(*) FROM citas WHERE paciente_id = p.id AND estado = 'programada' AND fecha >= CURDATE()) as citas_pendientes,
-                    (SELECT MAX(fecha) FROM citas WHERE paciente_id = p.id AND estado = 'completada') as ultima_sesion
-                FROM pacientes p
-                LEFT JOIN expedientes e ON p.id = e.paciente_id
-                LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
-                LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
-                WHERE p.id = ?
-            `, {
-                replacements: [paciente_id],
-                type: QueryTypes.SELECT
+            const paciente = await Paciente.findByPk(paciente_id, {
+                attributes: ['id', 'nombre', 'apellido', 'fecha_nacimiento', 'genero', 'telefono', 'email', 'estado']
             });
-            
-            if (!resumen) {
+
+            if (!paciente) {
                 return res.status(404).json({
                     success: false,
                     message: 'Paciente no encontrado'
                 });
             }
+
+            const expediente = await Expediente.findOne({
+                where: { paciente_id },
+                attributes: ['motivo_consulta', 'diagnostico_presuntivo', 'riesgo_suicida']
+            });
+
+            const asignacion = await Asignacion.findOne({
+                where: { paciente_id, estado: 'activa' },
+                attributes: ['psicologo_id']
+            });
+
+            const psicologo = asignacion
+                ? await User.findByPk(asignacion.psicologo_id, { attributes: ['nombre', 'apellido'] })
+                : null;
+
+            const [sesiones_completadas, citas_pendientes, ultima_sesion] = await Promise.all([
+                Cita.count({ where: { paciente_id, estado: 'completada' } }),
+                Cita.count({
+                    where: {
+                        paciente_id,
+                        estado: 'programada',
+                        fecha: { [Op.gte]: new Date().toISOString().split('T')[0] }
+                    }
+                }),
+                Cita.max('fecha', { where: { paciente_id, estado: 'completada' } })
+            ]);
+
+            const resumen = {
+                id: paciente.id,
+                nombre: paciente.nombre,
+                apellido: paciente.apellido,
+                fecha_nacimiento: paciente.fecha_nacimiento,
+                genero: paciente.genero,
+                telefono: paciente.telefono,
+                email: paciente.email,
+                estado: paciente.estado,
+                motivo_consulta: expediente?.motivo_consulta || null,
+                diagnostico_presuntivo: expediente?.diagnostico_presuntivo || null,
+                riesgo_suicida: expediente?.riesgo_suicida || null,
+                psicologo_id: asignacion?.psicologo_id || null,
+                psicologo_nombre: psicologo?.nombre || null,
+                psicologo_apellido: psicologo?.apellido || null,
+                sesiones_completadas,
+                citas_pendientes,
+                ultima_sesion
+            };
             
             res.json({
                 success: true,
@@ -465,14 +504,16 @@ class ExpedienteController {
             }
             
             // Verificar si el usuario está asignado al paciente
-            const [asignacion] = await sequelize.query(`
-                SELECT 1 FROM asignaciones 
-                WHERE paciente_id = ? 
-                AND estado = 'activa'
-                AND (psicologo_id = ? OR becario_id = ?)
-            `, {
-                replacements: [pacienteId, usuarioId, usuarioId],
-                type: QueryTypes.SELECT
+            const asignacion = await Asignacion.findOne({
+                where: {
+                    paciente_id: pacienteId,
+                    estado: 'activa',
+                    [Op.or]: [
+                        { psicologo_id: usuarioId },
+                        { becario_id: usuarioId }
+                    ]
+                },
+                attributes: ['id']
             });
             
             const tieneAcceso = !!asignacion;

@@ -86,6 +86,7 @@ const Disponibilidad = sequelize.define('Disponibilidad', {
     ]
 });
 
-Disponibilidad.belongsTo(User, { foreignKey: 'usuario_id' });
+User.hasMany(Disponibilidad, { foreignKey: 'usuario_id', as: 'Disponibilidades' });
+Disponibilidad.belongsTo(User, { foreignKey: 'usuario_id', as: 'Usuario' });
 
 module.exports = Disponibilidad;

@@ -170,18 +170,18 @@ router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res
   }
 });
 
-// Obtener pacientes activos (coordinador -> todos, psicologo/becario -> solo asignados a él/ella)
-router.get('/activos', verifyToken, requireRole(['coordinador', 'psicologo', 'becario']), async (req, res) => {
+// Obtener pacientes activos (coordinador -> todos, terapeuta/coterapeuta -> solo asignados a él/ella)
+router.get('/activos', verifyToken, requireRole(['coordinador', 'terapeuta', 'coterapeuta']), async (req, res) => {
     try {
         const userId = req.user.id;
         const [userRow] = await sequelize.query('SELECT rol FROM users WHERE id = ?', { replacements: [userId], type: QueryTypes.SELECT });
         const role = userRow && userRow.rol;
-        const isAssignedRole = role === 'psicologo' || role === 'becario';
+        const isAssignedRole = role === 'terapeuta' || role === 'coterapeuta';
 
         let whereAdditional = '';
         const replacements = {};
         if (isAssignedRole) {
-            // Si es psicólogo o becario, mostrar solo pacientes con asignación activa donde sea psicólogo O becario
+            // Si es terapeuta o coterapeuta, mostrar solo pacientes con asignación activa donde sea terapeuta o coterapeuta
             whereAdditional = ' AND (a.psicologo_id = :userId OR a.becario_id = :userId)';
             replacements.userId = userId;
         }
@@ -261,7 +261,7 @@ router.get('/sin-asignar', verifyToken, requireRole(['coordinador']), async (req
   }
 });
 
-router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeuta']), async (req, res) => {
     try {
         console.log('🔍 Solicitando candidatos a alta...');
         
@@ -350,7 +350,7 @@ router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'psicolo
 });
 
 // Obtener paciente por ID con detalles
-router.get('/:id', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+router.get('/:id', verifyToken, requireRole(['coordinador', 'terapeuta']), async (req, res) => {
     try {
         const { id } = req.params;
         
@@ -404,7 +404,7 @@ router.get('/:id', verifyToken, requireRole(['coordinador', 'psicologo']), async
 });
 
 // backend/src/routes/pacienteRoutes.js - Agrega este endpoint
-router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 'terapeuta']), async (req, res) => {
     try {
         const { id } = req.params;
         const { motivo } = req.body;
@@ -453,7 +453,7 @@ router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 
     }
 });
 
-router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'psicologo']), async (req, res) => {
+router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'terapeuta']), async (req, res) => {
     try {
         const { id } = req.params;
         const { motivo } = req.body || {}; // Agregar campo para motivo

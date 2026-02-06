@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FiSearch, FiFileText, FiCalendar, FiUser, FiPhone, FiMail, FiDownload, FiCheckCircle } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import ApiService from '../../services/api';
 
 const PsicologoExpedientes = () => {
   const [expedientes, setExpedientes] = useState([]);
@@ -14,6 +15,8 @@ const PsicologoExpedientes = () => {
     evaluacion_final: '',
     recomendaciones: ''
   });
+  const [expediente, setExpediente] = useState(null);
+  const [sesionesPaciente, setSesionesPaciente] = useState([]);
 
   useEffect(() => {
     fetchExpedientes();
@@ -50,71 +53,47 @@ const PsicologoExpedientes = () => {
     }
   };
 
+  const fetchSesionesPaciente = async (expedienteId) => {
+    try {
+      const response = await ApiService.get(`/expedientes/${expedienteId}/sesiones`);
+      const sesiones = response?.data || [];
+      setSesionesPaciente(sesiones);
+
+      if (sesiones.length > 0) {
+        const ultimaSesion = sesiones[sesiones.length - 1];
+        setExpediente(prev => ({
+          ...prev,
+          totalSesiones: sesiones.length,
+          ultimaSesion: {
+            estado: ultimaSesion.estado,
+            motivoCancelacion: ultimaSesion.motivo_cancelacion || null,
+            observaciones: ultimaSesion.observaciones || null,
+            tareasAsignadas: ultimaSesion.tareas_asignadas || null
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('Error cargando sesiones del paciente:', error);
+    }
+  };
+
   const filteredExpedientes = expedientes.filter(expediente =>
     (expediente.paciente_nombre && expediente.paciente_nombre.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (expediente.diagnostico && expediente.diagnostico.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const [expedienteDetalle, setExpedienteDetalle] = useState(null);
-  const [editMode, setEditMode] = useState(false);
-  const [editFormData, setEditFormData] = useState({});
-
   const showExpedienteDetalles = async (item) => {
-    setSelectedExpediente(null);
-    setShowDetalles(true);
-    setExpedienteDetalle(null);
-    setEditMode(false);
     try {
-      const token = localStorage.getItem('token');
-      // item.id is paciente id
-      const res = await fetch(`http://localhost:3000/api/expedientes/paciente/${item.id}/completo`, {
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
-      });
-      if (!res.ok) {
-        const jsonErr = await res.json().catch(() => ({}));
-        notifications.error(jsonErr.message || 'No se pudo obtener expediente');
-        setShowDetalles(false);
-        return;
-      }
-      const json = await res.json();
-      const pacienteData = json.data.paciente || {};
-      // Separar el id del expediente para no pisar el id del paciente
-      const { id: expedienteId, ...expedienteData } = json.data.expediente || {};
-      const estadisticas = json.data.estadisticas || {};
-      const citasFuturas = Array.isArray(json.data.citas_futuras) ? json.data.citas_futuras : [];
-
-      const pacienteId = pacienteData.id || pacienteData.paciente_id || item.id;
-      const paciente_nombre = pacienteData.nombre_completo || `${pacienteData.nombre || ''} ${pacienteData.apellido || ''}`.trim();
-
-      const expediente = {
-        id: pacienteId,
-        paciente_id: pacienteId,
-        expediente_id: expedienteId,
-        ...pacienteData,
-        ...expedienteData,
-        paciente_nombre,
-        sesiones_totales: estadisticas.total_sesiones || 0,
-        ultima_evaluacion: estadisticas.ultima_sesion || expedienteData.ultima_evaluacion || null,
-        paciente: pacienteData
-      };
-
-      setSelectedExpediente(expediente);
-      setEditFormData({
-        tratamiento_actual: expediente.tratamiento_actual || '',
-        medicamentos: expediente.medicamentos ? (typeof expediente.medicamentos === 'string' ? expediente.medicamentos : JSON.stringify(expediente.medicamentos)) : '',
-        alergias: expediente.alergias || '',
-        historia_personal: expediente.historia_personal || '',
-        historia_familiar: expediente.historia_familiar || '',
-        antecedentes_medicos: expediente.antecedentes_medicos || '',
-        antecedentes_psiquiatricos: expediente.antecedentes_psiquiatricos || '',
-        redes_apoyo: expediente.redes_apoyo || ''
-      });
-
-      setExpedienteDetalle(json.data);
-    } catch (err) {
-      console.error('Error al cargar expediente:', err);
-      notifications.error('Error al cargar expediente');
-      setShowDetalles(false);
+      setLoading(true);
+      const response = await ApiService.get(`/expedientes/${item.id}`);
+      const expediente = response?.data || {};
+      setExpediente(expediente);
+      await fetchSesionesPaciente(item.id);
+      setShowDetalles(true);
+    } catch (error) {
+      console.error('Error cargando detalles del expediente:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -229,6 +208,41 @@ const PsicologoExpedientes = () => {
       console.error('Error enviando propuesta:', err);
       notifications.error('Error al enviar propuesta de alta');
     }
+  };
+
+  const renderUltimaSesion = () => {
+    if (!expediente?.ultimaSesion) return null;
+
+    const { estado, motivoCancelacion, observaciones, tareasAsignadas } = expediente.ultimaSesion;
+
+    return (
+      <div className="ultima-sesion">
+        <h4>Última Sesión</h4>
+        <p><strong>Estado:</strong> {estado}</p>
+        {estado === 'cancelada' && motivoCancelacion && (
+          <p><strong>Motivo de Cancelación:</strong> {motivoCancelacion}</p>
+        )}
+        {estado === 'completada' && (
+          <>
+            <p><strong>Observaciones:</strong> {observaciones}</p>
+            <p><strong>Tareas Asignadas:</strong> {tareasAsignadas}</p>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderDetallesExpediente = () => {
+    if (!expediente) return null;
+
+    return (
+      <div className="detalles-expediente">
+        <h3>Detalles del Expediente</h3>
+        <p><strong>Nombre del Paciente:</strong> {expediente.paciente_nombre}</p>
+        <p><strong>Total de Sesiones:</strong> {expediente.totalSesiones || 0}</p>
+        {renderUltimaSesion()}
+      </div>
+    );
   };
 
   if (loading) {

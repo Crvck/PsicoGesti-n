@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS solicitudes_ingreso (
     horas_a_liberar INT NOT NULL,
     motivo TEXT,
     estado ENUM('PENDIENTE', 'APROBADO', 'RECHAZADO') DEFAULT 'PENDIENTE',
+    disponibilidad_horaria JSON NULL COMMENT 'JSON con días y horarios disponibles del solicitante',
     fecha_solicitud TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

@@ -27,6 +27,8 @@ const CoordinadorDashboard = () => {
   const [distribucionTerapeutas, setDistribucionTerapeutas] = useState([]);
   const [coterapeutasCarga, setCoterapeutasCarga] = useState([]);
   const [alertas, setAlertas] = useState([]);
+  const [cancelacionesMes, setCancelacionesMes] = useState({ promedio: 0, motivos: [] });
+  const [showMotivosModal, setShowMotivosModal] = useState(false);
   
   // Estado para Solicitudes y Modal
   const [solicitudes, setSolicitudes] = useState([]); 
@@ -41,6 +43,7 @@ const CoordinadorDashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    fetchCancelacionesMes();
   }, []);
 
   const fetchDashboardData = async () => {
@@ -90,6 +93,51 @@ const CoordinadorDashboard = () => {
       setError(`Error al cargar datos: ${error.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCancelacionesMes = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const hoy = new Date();
+      const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+      
+      const fechaInicio = primerDia.toISOString().split('T')[0];
+      const fechaFin = ultimoDia.toISOString().split('T')[0];
+      
+      const response = await fetch('http://localhost:3000/api/reportes/estadisticas', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({
+          tipo_reporte: 'mensual',
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const stats = data.data || data;
+        
+        const canceladas = parseInt(stats.citas_canceladas) || 0;
+        const completadas = parseInt(stats.citas_completadas) || 0;
+        const total = canceladas + completadas;
+        const promedio = total > 0 ? Math.round((canceladas / total) * 100) : 0;
+        
+        setCancelacionesMes({
+          promedio,
+          canceladas,
+          completadas,
+          total,
+          motivos: stats.motivos_cancelacion || []
+        });
+      }
+    } catch (error) {
+      console.error('Error obteniendo cancelaciones:', error);
     }
   };
 
@@ -160,7 +208,15 @@ const CoordinadorDashboard = () => {
     { title: 'Pacientes Activos', value: estadisticas.pacientesActivos, icon: <FiActivity />, color: 'var(--yy)', change: 'En tratamiento' },
     { title: 'Citas Hoy', value: estadisticas.citasHoy, icon: <FiCalendar />, color: 'var(--grnd)', change: `${estadisticas.citasCompletadasHoy} completadas` },
     { title: 'Altas Este Mes', value: estadisticas.altasMesActual, icon: <FiTrendingUp />, color: 'var(--grnl)', change: 'Pacientes finalizados' },
-    { title: 'Alertas Pendientes', value: alertas.reduce((total, a) => total + (a.cantidad || 0), 0), icon: <FiAlertCircle />, color: 'var(--rl)', change: 'Requieren atención' }
+    { 
+      title: 'Cancelaciones Este Mes', 
+      value: `${cancelacionesMes.promedio}%`, 
+      icon: <FiAlertCircle />, 
+      color: 'var(--rr)', 
+      change: `${cancelacionesMes.canceladas || 0} de ${cancelacionesMes.total || 0} citas`,
+      clickable: cancelacionesMes.motivos?.length > 0,
+      onClick: () => cancelacionesMes.motivos?.length > 0 && setShowMotivosModal(true)
+    }
   ];
 
   const totalSolicitudes = solicitudes.length;
@@ -192,13 +248,36 @@ const CoordinadorDashboard = () => {
       {/* Stats Grid */}
       <div className="stats-grid">
         {statCards.map((stat, index) => (
-          <div key={index} className="stat-card">
+          <div 
+            key={index} 
+            className="stat-card"
+            style={{ 
+              cursor: stat.clickable ? 'pointer' : 'default',
+              transition: 'transform 0.2s, box-shadow 0.2s'
+            }}
+            onClick={stat.onClick}
+            onMouseEnter={(e) => {
+              if (stat.clickable) {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (stat.clickable) {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '';
+              }
+            }}
+          >
             <div className="stat-header">
               <div className="stat-icon" style={{ color: stat.color }}>{stat.icon}</div>
               <h3>{stat.title}</h3>
             </div>
             <div className="stat-value">{stat.value}</div>
-            <div className="stat-change">{stat.change}</div>
+            <div className="stat-change">
+              {stat.change}
+              {stat.clickable && <span style={{ color: 'var(--blu)', marginLeft: '5px' }}> Ver motivos</span>}
+            </div>
           </div>
         ))}
       </div>
@@ -342,19 +421,6 @@ const CoordinadorDashboard = () => {
             ) : <div className="no-data-message"><p>Sin coterapeutas</p></div>}
           </div>
         </div>
-
-        {/* ALERTAS */}
-        <div className="dashboard-section">
-          <div className="section-header"><h3>Alertas Pendientes</h3></div>
-          <div className="alertas-list">
-            {alertas.length > 0 ? alertas.map((alerta, index) => (
-                <div key={index} className="alerta-item">
-                  <div className="alerta-icon"><FiAlertCircle style={{ color: 'var(--rl)' }} /></div>
-                  <div className="alerta-content"><div className="alerta-titulo">{alerta.descripcion}</div><div className="alerta-subtitulo">{alerta.cantidad} pendientes</div></div>
-                </div>
-              )) : <div className="alerta-item alerta-item-success"><div className="alerta-content">Sin alertas</div></div>}
-          </div>
-        </div>
       </div>
 
       {/* MODAL */}
@@ -443,6 +509,82 @@ const CoordinadorDashboard = () => {
                 </div>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Motivos de Cancelación */}
+      {showMotivosModal && (
+        <div className="modal-overlay">
+          <div className="modal-container">
+            <div className="modal-header">
+              <h3>Motivos de Cancelación - Este Mes</h3>
+              <button className="btn-text" onClick={() => setShowMotivosModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', background: 'var(--blud)', borderRadius: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', color: 'var(--gray-light)' }}>Tasa de Cancelación</div>
+                    <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'var(--rr)' }}>{cancelacionesMes.promedio}%</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '14px', color: 'var(--gray-light)' }}>Citas Canceladas</div>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{cancelacionesMes.canceladas} / {cancelacionesMes.total}</div>
+                  </div>
+                </div>
+              </div>
+
+              {cancelacionesMes.motivos?.length === 0 ? (
+                <p className="text-center">No hay motivos de cancelación registrados este mes</p>
+              ) : (
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Motivo</th>
+                        <th>Cantidad</th>
+                        <th>Porcentaje</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cancelacionesMes.motivos.map((item, idx) => {
+                        const total = cancelacionesMes.motivos.reduce((sum, m) => sum + m.cantidad, 0);
+                        const porcentaje = ((item.cantidad / total) * 100).toFixed(1);
+                        return (
+                          <tr key={idx}>
+                            <td>{item.motivo}</td>
+                            <td>{item.cantidad}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ 
+                                  width: '100px', 
+                                  height: '8px', 
+                                  background: '#e0e0e0', 
+                                  borderRadius: '4px',
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{ 
+                                    width: `${porcentaje}%`, 
+                                    height: '100%', 
+                                    background: 'var(--rr)',
+                                    transition: 'width 0.3s ease'
+                                  }}></div>
+                                </div>
+                                <span>{porcentaje}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowMotivosModal(false)}>Cerrar</button>
             </div>
           </div>
         </div>

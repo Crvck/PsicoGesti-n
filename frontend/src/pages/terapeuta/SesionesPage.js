@@ -59,8 +59,12 @@ const PsicologoSesiones = () => {
   };
 
   useEffect(() => {
+    console.log('🔍 useEffect autocompletado - location.search:', location.search);
     if (!location.search) return;
-    if (lastPrefillRef.current === location.search) return;
+    if (lastPrefillRef.current === location.search) {
+      console.log('⚠️ Ya se procesó esta URL, saltando...');
+      return;
+    }
 
     const params = new URLSearchParams(location.search);
     const pacienteId = params.get('paciente_id');
@@ -69,20 +73,75 @@ const PsicologoSesiones = () => {
     const hora = params.get('hora');
     const motivo = params.get('motivo');
 
-    if (!pacienteId && !citaId) return;
+    console.log('📋 Parámetros extraídos:', { pacienteId, citaId, fecha, hora, motivo });
+
+    if (!pacienteId && !citaId) {
+      console.log('❌ No hay pacienteId ni citaId, saltando...');
+      return;
+    }
 
     lastPrefillRef.current = location.search;
 
-    setShowForm(true);
-    setFormData(prev => ({
-      ...prev,
-      paciente_id: pacienteId || prev.paciente_id,
-      cita_id: citaId || prev.cita_id,
-      fecha: fecha || prev.fecha,
-      hora_inicio: hora || prev.hora_inicio,
-      hora_fin: hora ? calcularHoraFin(hora, 50) : prev.hora_fin,
-      motivo_consulta: motivo || prev.motivo_consulta
-    }));
+    console.log('✅ Autocompletando formulario...');
+    
+    // Función async para cargar el paciente si no existe
+    const cargarPacienteYAutocompletar = async () => {
+      setShowForm(true);
+      
+      // Obtener la lista actual de pacientes
+      const pacientesActuales = pacientes;
+      
+      // Si el paciente no está en la lista, cargarlo desde el API
+      if (pacienteId && !pacientesActuales.find(p => String(p.id) === String(pacienteId))) {
+        console.log('⚠️ Paciente no encontrado en la lista, cargando desde API...');
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(`http://localhost:3000/api/pacientes/${pacienteId}`, {
+            headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+          });
+          
+          if (res.ok) {
+            const json = await res.json();
+            const paciente = json.data || json;
+            const pacienteNormalizado = {
+              id: paciente.id,
+              nombre: paciente.nombre || '',
+              apellido: paciente.apellido || '',
+              nombre_completo: paciente.nombre_completo || `${paciente.nombre || ''} ${paciente.apellido || ''}`.trim()
+            };
+            
+            // Agregar el paciente a la lista
+            setPacientes(prev => [...prev, pacienteNormalizado]);
+            console.log('✅ Paciente cargado y agregado a la lista:', pacienteNormalizado);
+          }
+        } catch (err) {
+          console.error('Error cargando paciente:', err);
+        }
+      } else {
+        console.log('✅ Paciente ya está en la lista');
+      }
+      
+      // Establecer el formData
+      setFormData(prev => ({
+        ...prev,
+        paciente_id: pacienteId || prev.paciente_id,
+        cita_id: citaId || prev.cita_id,
+        fecha: fecha || prev.fecha,
+        hora_inicio: hora || prev.hora_inicio,
+        hora_fin: hora ? calcularHoraFin(hora, 50) : prev.hora_fin,
+        motivo_consulta: motivo || prev.motivo_consulta
+      }));
+      
+      console.log('📝 FormData actualizado');
+      
+      // Cargar las citas del paciente
+      if (pacienteId) {
+        console.log('🔄 Cargando citas del paciente:', pacienteId);
+        fetchCitasPaciente(pacienteId);
+      }
+    };
+    
+    cargarPacienteYAutocompletar();
   }, [location.search]);
 
   // Ensure numbering uses chronological order (newest = Sesión 1)
@@ -381,6 +440,39 @@ const PsicologoSesiones = () => {
         return;
       }
 
+      // Obtener los datos completos de la cita para extraer terapeuta, coterapeuta y validar estado
+      let terapeutaId = null;
+      let coterapeutaId = null;
+      let estadoCita = null;
+      
+      try {
+        const resCita = await fetch(`http://localhost:3000/api/citas/cita/${citaIdNumber}`, {
+          headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
+        });
+        
+        if (resCita.ok) {
+          const jsonCita = await resCita.json();
+          const citaCompleta = jsonCita.data || jsonCita;
+          terapeutaId = citaCompleta.terapeuta_id || citaCompleta.psicologo_id || null;
+          coterapeutaId = citaCompleta.coterapeuta_id || citaCompleta.becario_id || null;
+          estadoCita = citaCompleta.estado;
+          console.log('✅ Datos de la cita obtenidos:', { terapeutaId, coterapeutaId, estadoCita });
+          
+          // Validar el estado de la cita
+          if (estadoCita !== 'confirmada' && estadoCita !== 'completada') {
+            notifications.error(`La cita debe estar en estado "confirmada" o "completada" para registrar la sesión. Estado actual: "${estadoCita}"`);
+            return;
+          }
+        } else {
+          notifications.error('No se pudo obtener la información de la cita');
+          return;
+        }
+      } catch (err) {
+        console.error('❌ Error obteniendo datos de la cita:', err);
+        notifications.error('Error al obtener los datos de la cita');
+        return;
+      }
+
       // Registrar sesión
       const sesionBody = {
         cita_id: citaIdNumber,
@@ -391,8 +483,12 @@ const PsicologoSesiones = () => {
         riesgo_suicida: 'ninguno',
         escalas_aplicadas: formData.escalas_aplicadas && formData.escalas_aplicadas.length ? formData.escalas_aplicadas : null,
         siguiente_cita: formData.proxima_sesion || null,
-        privado: false
+        privado: false,
+        terapeuta_id: terapeutaId,
+        coterapeuta_id: coterapeutaId
       };
+
+      console.log('📤 Enviando sesión con terapeuta y coterapeuta:', sesionBody);
 
       const resSesion = await fetch('http://localhost:3000/api/sesiones', {
         method: 'POST',
@@ -630,12 +726,29 @@ const PsicologoSesiones = () => {
             </div>
             
             <div className="form-actions">
-              <button type="submit" className="btn-primary">
+              <button 
+                type="submit" 
+                className="btn-primary btn-large"
+                style={{ 
+                  backgroundColor: '#28a745', 
+                  color: '#fff', 
+                  padding: '10px 20px', 
+                  borderRadius: '5px', 
+                  fontSize: '16px' 
+                }}
+              >
                 <FiSave /> Guardar Sesión
               </button>
               <button 
                 type="button" 
-                className="btn-danger"
+                className="btn-danger btn-large"
+                style={{ 
+                  backgroundColor: '#dc3545', 
+                  color: '#fff', 
+                  padding: '10px 20px', 
+                  borderRadius: '5px', 
+                  fontSize: '16px' 
+                }}
                 onClick={() => {
                   setShowForm(false);
                   resetForm();

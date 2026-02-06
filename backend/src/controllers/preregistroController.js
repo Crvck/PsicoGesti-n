@@ -9,10 +9,32 @@ exports.crearSolicitud = async (req, res) => {
   try {
     const { 
       nombre, email, telefono, esEstudiante, 
-      matricula, institucionProcedencia, horasALiberar, motivo 
+      matricula, institucionProcedencia, horasALiberar, motivo, disponibilidad
     } = req.body;
 
-    // ... (Validaciones previas de email duplicado igual que antes) ...
+    // --- VALIDACIONES ---
+    // Validar email no duplicado
+    const solicitudExistente = await Solicitud.findOne({
+      where: { email },
+      transaction: t
+    });
+
+    if (solicitudExistente && solicitudExistente.estado === 'APROBADA') {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Este email ya está registrado como usuario aprobado.'
+      });
+    }
+
+    // Validar que tenga al menos un día de disponibilidad
+    if (!disponibilidad || disponibilidad.length === 0) {
+      await t.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Debe seleccionar al menos un día de disponibilidad.'
+      });
+    }
 
     // 1. Crear la Solicitud
     const nuevaSolicitud = await Solicitud.create({
@@ -24,30 +46,28 @@ exports.crearSolicitud = async (req, res) => {
       institucion_procedencia: esEstudiante ? 'CESUN' : institucionProcedencia,
       horas_a_liberar: horasALiberar,
       motivo,
-      estado: 'PENDIENTE'
+      estado: 'PENDIENTE',
+      disponibilidad_horaria: JSON.stringify(disponibilidad) // Guardar disponibilidad como JSON en la solicitud
     }, { transaction: t });
 
-
     // 2. USAR EL SERVICIO DE NOTIFICACIÓN
-    // "Oye servicio, avísale a todos los COORDINADORES que pasó esto"
     await notificationService.notificarRol(
-        'COORDINADOR', // Rol destino
+        'COORDINADOR', 
         {
             titulo: 'Nueva Solicitud de Ingreso',
             mensaje: `${nombre} ha solicitado ingresar como practicante.`,
-            tipo: 'alerta_sistema', // Debe coincidir con tu ENUM
+            tipo: 'alerta_sistema',
             prioridad: 'media',
-            accion_url: `/dashboard/solicitudes/${nuevaSolicitud.id}`, // Link al detalle
+            accion_url: `/dashboard/solicitudes/${nuevaSolicitud.id}`,
             extra: { 
                 solicitud_id: nuevaSolicitud.id,
                 origen: esEstudiante ? 'CESUN' : 'Externo'
             }
         }, 
-        t // Pasamos la transacción para que si falla algo, no se cree nada
+        t
     );
 
-
-    await t.commit(); // Todo salió bien
+    await t.commit();
 
     res.status(201).json({
       success: true,
@@ -55,7 +75,7 @@ exports.crearSolicitud = async (req, res) => {
     });
 
   } catch (error) {
-    await t.rollback(); // Si falla, se borra la solicitud y la notificación
+    await t.rollback();
     console.error('Error en pre-registro:', error);
     res.status(500).json({
       success: false,

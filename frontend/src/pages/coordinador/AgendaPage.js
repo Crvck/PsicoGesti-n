@@ -341,8 +341,19 @@ const CoordinadorAgenda = () => {
       return;
     }
 
+    // Validar si ya existe una cita para el terapeuta en la misma fecha y hora
+    const citasExistentes = getCitasPorDiaYHora(nuevaCitaForm.fecha, nuevaCitaForm.hora);
+    const citaConflicto = citasExistentes.find(cita => 
+      Number(cita.terapeuta_id) === Number(nuevaCitaForm.terapeuta_id) && cita.estado !== 'cancelada'
+    );
+
+    if (citaConflicto) {
+      notifications.error('El terapeuta ya tiene una cita asignada en este horario. Por favor, selecciona otro horario o verifica que la cita existente esté cancelada.');
+      return;
+    }
+
     try {
-      setLoading(true);
+      setLoading(true); // Mostrar indicador de carga
       const pacienteSeleccionado = pacientes.find(p => Number(p.id) === Number(nuevaCitaForm.paciente_id));
       const body = {
         titulo: nuevaCitaForm.titulo,
@@ -401,7 +412,7 @@ const CoordinadorAgenda = () => {
         notifications.error(rawMessage || 'Error creando la cita');
       }
     } finally {
-      setLoading(false);
+      setLoading(false); // Ocultar indicador de carga
     }
   };
 

@@ -7,33 +7,41 @@ class AuthController {
     
     static async login(req, res) {
         try {
+            console.log('=== LOGIN REQUEST ===');
             const { email, password } = req.body;
+            console.log('Email:', email);
 
             // 1. Validar entrada básica
             if (!email || !password) {
+                console.log('❌ Datos incompletos');
                 return res.status(400).json({ message: 'Por favor ingrese email y contraseña' });
             }
 
             // 2. Buscar el usuario usando Sequelize
-            // En vez de SQL crudo, usamos el método findOne con una cláusula 'where'
+            console.log('🔍 Buscando usuario...');
             const user = await User.findOne({ 
                 where: { email: email } 
             });
 
             // 3. Verificar si el usuario existe
             if (!user) {
-                // 'user' será null si no se encuentra
+                console.log('❌ Usuario no encontrado');
                 return res.status(401).json({ message: 'Credenciales inválidas' });
             }
+            console.log('✅ Usuario encontrado:', user.email);
 
-            // 4. Comparar la contraseña (user.password accede al campo del objeto Sequelize)
+            // 4. Comparar la contraseña
+            console.log('🔐 Verificando contraseña...');
             const isMatch = await bcrypt.compare(password, user.password);
 
             if (!isMatch) {
+                console.log('❌ Contraseña incorrecta');
                 return res.status(401).json({ message: 'Credenciales inválidas' });
             }
+            console.log('✅ Contraseña correcta');
 
-            // 5. Generar el JWT (incluimos rol para que esté disponible en req.user)
+            // 5. Generar el JWT
+            console.log('🔑 Generando token...');
             const payload = {
                 id: user.id,
                 email: user.email,
@@ -45,24 +53,27 @@ class AuthController {
                 process.env.JWT_SECRET, 
                 { expiresIn: process.env.JWT_EXPIRES_IN }
             );
+            console.log('✅ Token generado');
 
-            // 6. Responder (user.toJSON() limpia metadatos de Sequelize si es necesario)
+            // 6. Responder
+            console.log('✅ Login exitoso para:', user.email);
             res.json({
                 message: 'Login exitoso',
                 token: token,
                 user: { 
                     id: user.id, 
                     email: user.email,
-                    nombre: user.nombre, // Añade esto
-                    apellido: user.apellido, // Añade esto
-                    rol: user.rol, // Añade esto
-                    especialidad: user.especialidad, // Añade esto (si aplica)
-                    created_at: user.created_at // Cambia createdAt por created_at
+                    nombre: user.nombre,
+                    apellido: user.apellido,
+                    rol: user.rol,
+                    especialidad: user.especialidad,
+                    created_at: user.created_at
                 }
             });
 
         } catch (error) {
-            console.error('Error en el login:', error);
+            console.error('❌ Error en el login:', error);
+            console.error('Stack trace:', error.stack);
             res.status(500).json({ message: 'Error interno del servidor' });
         }
     }

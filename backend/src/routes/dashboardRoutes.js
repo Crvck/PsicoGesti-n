@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const DashboardController = require('../controllers/DashboardController'); // Asegúrate que la mayúscula coincida con tu archivo
+const DashboardController = require('../controllers/dashboardController'); // Asegúrate que la mayúscula coincida con tu archivo
 const verifyToken = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
 

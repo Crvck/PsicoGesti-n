@@ -23,6 +23,8 @@ const CoordinadorReportes = () => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewReport, setPreviewReport] = useState(null);
+  const [motivosModalVisible, setMotivosModalVisible] = useState(false);
+  const [motivosCancelacion, setMotivosCancelacion] = useState([]);
 
   useEffect(() => {
     fetchReportes();
@@ -75,10 +77,14 @@ const CoordinadorReportes = () => {
         citasCompletadas: parseInt(data.citas_completadas) || 0,
         promedioSesiones: parseInt(data.duracion_promedio) || 0,
         tasaRetencion: parseFloat(data.tasa_completitud) || 0,
+        tasaCancelacion: parseFloat(data.tasa_cancelacion) || 0,
         totalCitas: parseInt(data.total_citas) || 0,
         citasCanceladas: parseInt(data.citas_canceladas) || 0,
         citasPendientes: parseInt(data.citas_pendientes) || 0
       });
+
+      // Guardar motivos de cancelación
+      setMotivosCancelacion(data.motivos_cancelacion || []);
     } catch (error) {
       console.error('Error obteniendo estadísticas:', error);
       // No limpiar estadísticas para mantener valores anteriores
@@ -581,15 +587,23 @@ const CoordinadorReportes = () => {
           <div className="text-small">de {estadisticas.totalCitas || 0} citas totales</div>
         </div>
         
-        <div className="card">
+        <div 
+          className="card" 
+          style={{ cursor: motivosCancelacion.length > 0 ? 'pointer' : 'default' }}
+          onClick={() => motivosCancelacion.length > 0 && setMotivosModalVisible(true)}
+          title={motivosCancelacion.length > 0 ? 'Click para ver motivos principales' : ''}
+        >
           <div className="flex-row align-center gap-10 mb-10">
-            <FiTrendingUp size={24} style={{ color: 'var(--yy)' }} />
+            <FiTrendingUp size={24} style={{ color: 'var(--rr)' }} />
             <div>
-              <h4>Tasa de Completitud</h4>
-              <div className="stat-value">{estadisticas.tasaRetencion || 0}%</div>
+              <h4>Tasa de Cancelación</h4>
+              <div className="stat-value">{estadisticas.tasaCancelacion || 0}%</div>
             </div>
           </div>
-          <div className="text-small">{estadisticas.citasCanceladas || 0} canceladas, {estadisticas.citasPendientes || 0} pendientes</div>
+          <div className="text-small">
+            {estadisticas.citasCanceladas || 0} canceladas de {estadisticas.totalCitas || 0} totales
+            {motivosCancelacion.length > 0 && <span style={{ color: 'var(--blu)', marginLeft: '5px' }}>👁️ Ver motivos</span>}
+          </div>
         </div>
       </div>
 
@@ -731,6 +745,69 @@ const CoordinadorReportes = () => {
                 <FiDownload /> Descargar
               </button>
               <button className="btn-secondary" onClick={() => setPreviewVisible(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Motivos de Cancelación */}
+      {motivosModalVisible && (
+        <div className="modal-overlay">
+          <div className="modal-container">
+            <div className="modal-header">
+              <h3>Motivos Principales de Cancelación</h3>
+              <button className="btn-text" onClick={() => setMotivosModalVisible(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {motivosCancelacion.length === 0 ? (
+                <p className="text-center">No hay motivos de cancelación registrados</p>
+              ) : (
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Motivo</th>
+                        <th>Cantidad</th>
+                        <th>Porcentaje</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {motivosCancelacion.map((item, idx) => {
+                        const total = motivosCancelacion.reduce((sum, m) => sum + m.cantidad, 0);
+                        const porcentaje = ((item.cantidad / total) * 100).toFixed(1);
+                        return (
+                          <tr key={idx}>
+                            <td>{item.motivo}</td>
+                            <td>{item.cantidad}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ 
+                                  width: '100px', 
+                                  height: '8px', 
+                                  background: '#e0e0e0', 
+                                  borderRadius: '4px',
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{ 
+                                    width: `${porcentaje}%`, 
+                                    height: '100%', 
+                                    background: 'var(--rr)',
+                                    transition: 'width 0.3s ease'
+                                  }}></div>
+                                </div>
+                                <span>{porcentaje}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setMotivosModalVisible(false)}>Cerrar</button>
             </div>
           </div>
         </div>

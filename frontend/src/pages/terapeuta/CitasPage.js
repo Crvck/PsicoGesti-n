@@ -21,7 +21,21 @@ const PsicologoCitas = () => {
   const [showCitaModal, setShowCitaModal] = useState(false);
   const [selectedCita, setSelectedCita] = useState(null);
   const [cancelMotivo, setCancelMotivo] = useState('');
+  const [motivosSeleccionados, setMotivosSeleccionados] = useState([]);
+  const [otroMotivo, setOtroMotivo] = useState('');
   const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
+
+  // Opciones predefinidas de motivos de cancelación
+  const motivosCancelacionOpciones = [
+    'Enfermedad del paciente',
+    'Problemas de transporte',
+    'Emergencia personal',
+    'Conflicto de horario',
+    'Motivos económicos',
+    'Mejoría del paciente',
+    'Desacuerdo con el tratamiento',
+    'Mudanza o cambio de ciudad'
+  ];
 
   useEffect(() => {
     fetchData();
@@ -196,10 +210,52 @@ const PsicologoCitas = () => {
     setShowCitaModal(true);
   };
 
+  const renderCitaEstado = () => {
+    if (!selectedCita) return null;
+
+    if (selectedCita.estado === 'cancelada') {
+      return (
+        <div className="form-group">
+          <span className="badge badge-danger">Cancelada</span>
+          <br />
+          <strong>Motivo de Cancelación:</strong> {selectedCita.motivo_cancelacion || 'No especificado'}
+        </div>
+      );
+    }
+
+    if (selectedCita.estado === 'programada') {
+      return (
+        <div className="form-group">
+          <span className="badge badge-warning">Programada</span>
+        </div>
+      );
+    }
+
+    if (selectedCita.estado === 'confirmada') {
+      return (
+        <div className="form-group">
+          <span className="badge badge-success">Confirmada</span>
+        </div>
+      );
+    }
+
+    if (selectedCita.estado === 'Confirmada') {
+      return (
+        <div className="form-group">
+          <strong>Estado:</strong> Confirmada y Completada
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const closeCitaModal = () => {
     setShowCitaModal(false);
     setSelectedCita(null);
     setCancelMotivo('');
+    setMotivosSeleccionados([]);
+    setOtroMotivo('');
   };
 
   const handleConfirmarCita = async (cita = selectedCita) => {
@@ -209,26 +265,40 @@ const PsicologoCitas = () => {
       const res = await fetch(`http://localhost:3000/api/citas/cita/${cita.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-        body: JSON.stringify({ estado: 'confirmada' })
+        body: JSON.stringify({ estado: 'completada' }) // Cambiamos el estado a 'completada'
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) {
-        notifications.error(json.message || 'No se pudo confirmar la cita');
+        notifications.error(json.message || 'No se pudo completar la cita');
         return;
       }
-      notifications.success('Cita confirmada');
+      notifications.success('Cita completada');
       fetchData();
       closeCitaModal();
     } catch (error) {
-      console.error('Error confirmando cita:', error);
-      notifications.error('Error al confirmar la cita');
+      console.error('Error completando cita:', error);
+      notifications.error('Error al completar la cita');
     }
   };
 
   const handleCancelarCita = async (cita = selectedCita, opciones = {}) => {
     if (!cita) return;
     const { noShow = false, motivoOverride = '' } = opciones;
-    const motivoFinal = noShow ? 'Paciente no llegó' : (motivoOverride || cancelMotivo.trim());
+    
+    // Construir motivo final desde checkboxes
+    let motivoFinal = '';
+    if (noShow) {
+      motivoFinal = 'Paciente no llegó';
+    } else if (motivoOverride) {
+      motivoFinal = motivoOverride;
+    } else {
+      const motivos = [...motivosSeleccionados];
+      if (otroMotivo.trim()) {
+        motivos.push(`Otro: ${otroMotivo.trim()}`);
+      }
+      motivoFinal = motivos.join(', ') || cancelMotivo.trim();
+    }
+    
     if (!motivoFinal) {
       notifications.warning('Indica un motivo de cancelación');
       return;
@@ -438,13 +508,30 @@ const PsicologoCitas = () => {
                   <div className="cita-time">
                     <FiClock /> {cita.hora} ({cita.duracion} min)
                   </div>
-                  <div className={`cita-status badge ${
-                    cita.estado === 'confirmada' ? 'badge-success' :
-                    cita.estado === 'completada' ? 'badge-primary' :
-                    cita.estado === 'programada' ? 'badge-warning' :
-                    'badge-danger'
-                  }`}>
-                    {cita.estado}
+                  <div 
+                    className={`cita-status badge ${
+                      cita.estado === 'confirmada' ? 'badge-success' :
+                      cita.estado === 'completada' ? 'badge-success' :
+                      cita.estado === 'programada' ? 'badge-warning' :
+                      'badge-danger'
+                    }`}
+                    style={
+                      (cita.estado === 'confirmada' || cita.estado === 'completada') 
+                        ? { backgroundColor: '#28a745', color: '#28a745' } 
+                        : cita.estado === 'cancelada'
+                        ? { backgroundColor: '#dc3545', color: '#dc3545' }
+                        : {}
+                    }
+                  >
+                    <span style={{ 
+                      color: (cita.estado === 'confirmada' || cita.estado === 'completada') 
+                        ? '#28a745' 
+                        : cita.estado === 'cancelada' 
+                        ? '#dc3545' 
+                        : 'inherit' 
+                    }}>
+                      {cita.estado}
+                    </span>
                   </div>
                 </div>
 
@@ -483,7 +570,22 @@ const PsicologoCitas = () => {
                   </div>
                 </div>
 
-                <div className="cita-card-footer"></div>
+                <div className="cita-card-footer">
+                  {(cita.estado === 'confirmada' || cita.estado === 'completada') && (
+                    <div 
+                      className="cita-status badge"
+                      onClick={() => irARegistroSesion(cita)}
+                      style={{ 
+                        backgroundColor: '#1b87cfff', 
+                        color: '#fff', 
+                        cursor: 'pointer',
+                        border: 'none'
+                      }}
+                    >
+                      Llenar Registro
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -508,7 +610,7 @@ const PsicologoCitas = () => {
         </div>
         
         <div className="card">
-          <h4>Tipos de Consulta</h4>
+          <h4>Tipos de Consulta</h4>``
           <div className="mt-10">
             <p>Presencial: {citas.filter(c => c.tipo_consulta === 'presencial').length}</p>
             <p>Virtual: {citas.filter(c => c.tipo_consulta === 'virtual').length}</p>
@@ -557,19 +659,52 @@ const PsicologoCitas = () => {
                 <strong>Estado:</strong> {selectedCita.estado}
               </div>
 
+              {renderCitaEstado()}
+
               <div className="form-group" style={{ marginTop: '10px' }}>
                 <label className="font-bold">Motivo de cancelación</label>
-                <textarea
-                  className="textarea-field"
-                  rows="2"
-                  placeholder="Motivo de la cancelación"
-                  value={cancelMotivo}
-                  onChange={(e) => setCancelMotivo(e.target.value)}
-                />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                  {motivosCancelacionOpciones.map((opcion, idx) => (
+                    <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={motivosSeleccionados.includes(opcion)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setMotivosSeleccionados([...motivosSeleccionados, opcion]);
+                          } else {
+                            setMotivosSeleccionados(motivosSeleccionados.filter(m => m !== opcion));
+                          }
+                        }}
+                      />
+                      <span style={{ fontSize: '14px' }}>{opcion}</span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginTop: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '5px' }}>
+                    <input
+                      type="checkbox"
+                      checked={otroMotivo !== ''}
+                      onChange={(e) => {
+                        if (!e.target.checked) setOtroMotivo('');
+                      }}
+                    />
+                    <span style={{ fontSize: '14px', fontWeight: 'bold' }}>Otro motivo:</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="Especificar otro motivo..."
+                    value={otroMotivo}
+                    onChange={(e) => setOtroMotivo(e.target.value)}
+                    disabled={otroMotivo === '' && !motivosSeleccionados.length}
+                  />
+                </div>
               </div>
             </div>
             <div className="modal-footer">
-              {(selectedCita?.estado === 'confirmada' || selectedCita?.estado === 'completada') && (
+              {selectedCita?.estado === 'completada' && (
                 <button className="btn-primary" onClick={() => irARegistroSesion(selectedCita)}>
                   Registrar sesión
                 </button>

@@ -351,17 +351,22 @@ class ReporteController {
                 citas_canceladas: 0,
                 citas_pendientes: 0,
                 tasa_completitud: 0,
+                tasa_cancelacion: 0,
                 duracion_promedio: 0,
                 total_sesiones: 0,
                 pacientes_con_sesiones: 0,
                 sesiones_completadas: 0,
                 becarios_activos: 0,
+                coterapeutas_activos: 0,
                 total_citas_becarios: 0,
+                total_citas_coterapeutas: 0,
                 pacientes_atendidos_becarios: 0,
+                pacientes_atendidos_coterapeutas: 0,
                 altas_totales: 0,
                 asignaciones_activas: 0,
                 citas_presenciales: 0,
-                citas_virtuales: 0
+                citas_virtuales: 0,
+                motivos_cancelacion: []
             };
 
             // Consulta simple para estadísticas
@@ -372,19 +377,57 @@ class ReporteController {
                     whereCitas.fecha = { [Op.between]: [fecha_inicio, fecha_fin] };
                 }
 
-                const [totalCitas, completadas, canceladas] = await Promise.all([
+                const [totalCitas, completadas, canceladas, presenciales, virtuales] = await Promise.all([
                     Cita.count({ where: whereCitas }),
                     Cita.count({ where: { ...whereCitas, estado: 'completada' } }),
-                    Cita.count({ where: { ...whereCitas, estado: 'cancelada' } })
+                    Cita.count({ where: { ...whereCitas, estado: 'cancelada' } }),
+                    Cita.count({ where: { ...whereCitas, tipo_consulta: 'presencial' } }),
+                    Cita.count({ where: { ...whereCitas, tipo_consulta: 'virtual' } })
                 ]);
 
                 estadisticas.total_citas = totalCitas;
                 estadisticas.citas_completadas = completadas;
                 estadisticas.citas_canceladas = canceladas;
                 estadisticas.citas_pendientes = totalCitas - completadas - canceladas;
+                estadisticas.citas_presenciales = presenciales;
+                estadisticas.citas_virtuales = virtuales;
+                
                 if (totalCitas > 0) {
                     estadisticas.tasa_completitud = Math.round((completadas / totalCitas) * 100 * 100) / 100;
+                    estadisticas.tasa_cancelacion = Math.round((canceladas / totalCitas) * 100 * 100) / 100;
                 }
+
+                // Obtener motivos de cancelación agrupados
+                const citasCanceladas = await Cita.findAll({
+                    where: { 
+                        ...whereCitas, 
+                        estado: 'cancelada',
+                        motivo_cancelacion: { [Op.ne]: null }
+                    },
+                    attributes: ['motivo_cancelacion'],
+                    raw: true
+                });
+
+                // Agrupar y contar motivos
+                const motivosMap = {};
+                citasCanceladas.forEach(cita => {
+                    const motivo = cita.motivo_cancelacion || 'Sin especificar';
+                    motivosMap[motivo] = (motivosMap[motivo] || 0) + 1;
+                });
+
+                // Convertir a array y ordenar por cantidad
+                estadisticas.motivos_cancelacion = Object.entries(motivosMap)
+                    .map(([motivo, cantidad]) => ({ motivo, cantidad }))
+                    .sort((a, b) => b.cantidad - a.cantidad)
+                    .slice(0, 10); // Top 10 motivos
+
+                // Duración promedio
+                const citasConDuracion = await Cita.findAll({
+                    where: { ...whereCitas, duracion: { [Op.ne]: null } },
+                    attributes: [[fn('AVG', col('duracion')), 'promedio']],
+                    raw: true
+                });
+                estadisticas.duracion_promedio = Math.round(citasConDuracion[0]?.promedio || 0);
 
                 estadisticas.pacientes_activos = await Paciente.count({ where: { activo: true } });
 
@@ -414,8 +457,15 @@ class ReporteController {
                     estadisticas.total_sesiones = totalSesiones;
                     estadisticas.pacientes_con_sesiones = pacientesConSesiones;
                     estadisticas.sesiones_completadas = totalSesiones;
-                } else if (tipo_reporte === 'becarios') {
-                    estadisticas.becarios_activos = await User.count({ where: { rol: 'becario', activo: true } });
+                } else if (tipo_reporte === 'becarios' || tipo_reporte === 'coterapeutas') {
+                    const rolBuscar = tipo_reporte === 'becarios' ? 'becario' : 'coterapeuta';
+                    const activos = await User.count({ where: { rol: rolBuscar, activo: true } });
+                    
+                    if (tipo_reporte === 'becarios') {
+                        estadisticas.becarios_activos = activos;
+                    } else {
+                        estadisticas.coterapeutas_activos = activos;
+                    }
                 }
 
             } catch (err) {

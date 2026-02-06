@@ -748,7 +748,7 @@ class DashboardController {
             const nombreUser = partesNombre[0];
             const apellidoUser = partesNombre.slice(1).join(' ') || '.';
 
-            await User.create({
+            const nuevoUsuario = await User.create({
                 nombre: nombreUser,
                 apellido: apellidoUser,
                 email: solicitud.email,
@@ -757,6 +757,31 @@ class DashboardController {
                 telefono: solicitud.telefono,
                 activo: true
             }, { transaction });
+
+            // Crear registros de disponibilidad si existen en la solicitud
+            if (solicitud.disponibilidad_horaria) {
+                try {
+                    const Disponibilidad = require('../models/disponibilidadModel');
+                    const disponibilidades = JSON.parse(solicitud.disponibilidad_horaria);
+                    
+                    if (Array.isArray(disponibilidades) && disponibilidades.length > 0) {
+                        for (const disp of disponibilidades) {
+                            await Disponibilidad.create({
+                                usuario_id: nuevoUsuario.id,
+                                dia_semana: disp.dia_semana,
+                                hora_inicio: disp.hora_inicio,
+                                hora_fin: disp.hora_fin,
+                                tipo_disponibilidad: 'regular',
+                                activo: true,
+                                fecha_inicio_vigencia: new Date()
+                            }, { transaction });
+                        }
+                        console.log(`--> ${disponibilidades.length} registros de disponibilidad creados.`);
+                    }
+                } catch (dispError) {
+                    console.error("--> Error al crear disponibilidades (no bloqueante):", dispError.message);
+                }
+            }
 
             await solicitud.update({ estado: 'APROBADA' }, { transaction, validate: false });
 

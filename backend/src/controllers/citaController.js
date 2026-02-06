@@ -2,6 +2,43 @@ const DatabaseService = require('../services/databaseService');
 
 class CitaController {
     
+    static async obtenerCitaPorId(req, res) {
+        try {
+            const { id } = req.params;
+            
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El parámetro id es requerido'
+                });
+            }
+            
+            console.log(`Buscando cita con id: ${id}`);
+            
+            const cita = await DatabaseService.obtenerCitaPorId(parseInt(id));
+            
+            if (!cita) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Cita no encontrada'
+                });
+            }
+            
+            res.json({
+                success: true,
+                data: cita
+            });
+            
+        } catch (error) {
+            console.error('Error en obtenerCitaPorId:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener la cita',
+                error: error.message
+            });
+        }
+    }
+    
     static async obtenerCitasPorPaciente(req, res) {
         try {
             const { paciente_id } = req.params;

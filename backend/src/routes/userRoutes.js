@@ -124,29 +124,47 @@ router.post('/', verifyToken, requireRole(['coordinador']), async (req, res) => 
 });
 
 // Actualizar usuario (solo coordinadores)
-router.put('/:id', verifyToken, requireRole(['coordinador']), async (req, res) => {
+router.put('/:id', verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
-    const { nombre, apellido, email, telefono, rol, especialidad, fundacion_id, activo, password } = req.body;
+    const { nombre, apellido, email, telefono, rol, especialidad, fundacion_id, activo, password, direccion, cedula_profesional } = req.body;
 
     const user = await User.findByPk(id);
     if (!user) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
+    // Verificar permisos: coordinador puede editar todo, usuario puede editar su propio perfil
+    const tokenUserId = req.user.id || req.user.userId;
+    const isCoordinador = req.user.role === 'coordinador';
+    const isSelfEdit = tokenUserId === parseInt(id);
+
+    if (!isCoordinador && !isSelfEdit) {
+      return res.status(403).json({ message: 'No tienes permiso para editar este usuario' });
+    }
+
     const updatedFields = {
       nombre: nombre ?? user.nombre,
       apellido: apellido ?? user.apellido,
-      email: email ?? user.email,
       telefono: telefono ?? user.telefono,
-      rol: rol ?? user.rol,
       especialidad: especialidad ?? user.especialidad,
-      fundacion_id: fundacion_id ?? user.fundacion_id,
-      activo: typeof activo === 'boolean' ? activo : user.activo
+      direccion: direccion ?? user.direccion,
+      cedula_profesional: cedula_profesional ?? user.cedula_profesional
     };
 
-    // Si envían password, hashearla
-    if (password) {
+    // Solo coordinadores pueden cambiar rol, email, fundacion y estado
+    if (isCoordinador) {
+      updatedFields.email = email ?? user.email;
+      updatedFields.rol = rol ?? user.rol;
+      updatedFields.fundacion_id = fundacion_id ?? user.fundacion_id;
+      updatedFields.activo = typeof activo === 'boolean' ? activo : user.activo;
+    } else if (email && email !== user.email) {
+      // Usuario normal puede cambiar su email
+      updatedFields.email = email;
+    }
+
+    // Si envían password, hashearla (solo coordinadores)
+    if (password && isCoordinador) {
       const salt = await bcrypt.genSalt(10);
       updatedFields.password = await bcrypt.hash(password, salt);
     }
@@ -154,16 +172,21 @@ router.put('/:id', verifyToken, requireRole(['coordinador']), async (req, res) =
     await user.update(updatedFields);
 
     res.json({
-      id: user.id,
-      nombre: user.nombre,
-      apellido: user.apellido,
-      email: user.email,
-      telefono: user.telefono,
-      rol: user.rol,
-      especialidad: user.especialidad,
-      fundacion_id: user.fundacion_id,
-      activo: user.activo,
-      fecha_registro: user.created_at
+      success: true,
+      data: {
+        id: user.id,
+        nombre: user.nombre,
+        apellido: user.apellido,
+        email: user.email,
+        telefono: user.telefono,
+        rol: user.rol,
+        especialidad: user.especialidad,
+        direccion: user.direccion,
+        cedula_profesional: user.cedula_profesional,
+        fundacion_id: user.fundacion_id,
+        activo: user.activo,
+        fecha_registro: user.created_at
+      }
     });
   } catch (error) {
     console.error('Error al actualizar usuario:', error);
@@ -205,6 +228,47 @@ router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res
   } catch (error) {
     console.error('Error al eliminar usuario:', error);
     res.status(500).json({ message: 'Error al eliminar usuario' });
+  }
+});
+
+// Cambiar contraseña (cualquier usuario autenticado)
+router.post('/change-password', verifyToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id || req.user.userId;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Contraseña actual y nueva son requeridas' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 6 caracteres' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    // Verificar contraseña actual
+    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ message: 'Contraseña actual incorrecta' });
+    }
+
+    // Hashear nueva contraseña
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await user.update({ password: hashedPassword });
+
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada correctamente'
+    });
+  } catch (error) {
+    console.error('Error al cambiar contraseña:', error);
+    res.status(500).json({ message: 'Error al cambiar contraseña' });
   }
 });
 

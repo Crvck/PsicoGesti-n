@@ -23,6 +23,20 @@ const BecarioCitas = () => {
   const [editCita, setEditCita] = useState(null);
   const [editEstado, setEditEstado] = useState('');
   const [editMotivo, setEditMotivo] = useState('');
+  const [motivosSeleccionados, setMotivosSeleccionados] = useState([]);
+  const [otroMotivo, setOtroMotivo] = useState('');
+
+  // Opciones predefinidas de motivos de cancelación
+  const motivosCancelacionOpciones = [
+    'Enfermedad del paciente',
+    'Problemas de transporte',
+    'Emergencia personal',
+    'Conflicto de horario',
+    'Motivos económicos',
+    'Mejoría del paciente',
+    'Desacuerdo con el tratamiento',
+    'Mudanza o cambio de ciudad'
+  ];
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -202,6 +216,8 @@ const BecarioCitas = () => {
     setEditCita(cita);
     setEditEstado(cita.estado || 'programada');
     setEditMotivo('');
+    setMotivosSeleccionados([]);
+    setOtroMotivo('');
     setShowEditModal(true);
   };
 
@@ -210,8 +226,18 @@ const BecarioCitas = () => {
     try {
       const token = localStorage.getItem('token');
       const payload = { estado: editEstado };
-      if (editEstado === 'cancelada' && editMotivo.trim()) {
-        payload.motivo_cancelacion = editMotivo.trim();
+      
+      if (editEstado === 'cancelada') {
+        // Construir motivo desde checkboxes
+        const motivos = [...motivosSeleccionados];
+        if (otroMotivo.trim()) {
+          motivos.push(`Otro: ${otroMotivo.trim()}`);
+        }
+        const motivoFinal = motivos.join(', ') || editMotivo.trim();
+        
+        if (motivoFinal) {
+          payload.motivo_cancelacion = motivoFinal;
+        }
       }
 
       const res = await fetch(`http://localhost:3000/api/citas/cita/${editCita.id}`, {
@@ -232,7 +258,9 @@ const BecarioCitas = () => {
       notifications.success('Cita actualizada');
       setShowEditModal(false);
       setEditCita(null);
-      setEditEstado('');
+      setEditMotivo('');
+      setMotivosSeleccionados([]);
+      setOtroMotivo('');
       setEditMotivo('');
 
       // Sincronizar otras vistas
@@ -587,14 +615,44 @@ const BecarioCitas = () => {
               </div>
               {editEstado === 'cancelada' && (
                 <div className="form-group">
-                  <label>Motivo de cancelación (opcional)</label>
-                  <input
-                    type="text"
-                    value={editMotivo}
-                    onChange={(e) => setEditMotivo(e.target.value)}
-                    className="input"
-                    placeholder="Motivo"
-                  />
+                  <label>Motivo de cancelación</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                    {motivosCancelacionOpciones.map((opcion, idx) => (
+                      <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={motivosSeleccionados.includes(opcion)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setMotivosSeleccionados([...motivosSeleccionados, opcion]);
+                            } else {
+                              setMotivosSeleccionados(motivosSeleccionados.filter(m => m !== opcion));
+                            }
+                          }}
+                        />
+                        <span style={{ fontSize: '14px' }}>{opcion}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '5px' }}>
+                      <input
+                        type="checkbox"
+                        checked={otroMotivo !== ''}
+                        onChange={(e) => {
+                          if (!e.target.checked) setOtroMotivo('');
+                        }}
+                      />
+                      <span style={{ fontSize: '14px', fontWeight: 'bold' }}>Otro motivo:</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Especificar otro motivo..."
+                      value={otroMotivo}
+                      onChange={(e) => setOtroMotivo(e.target.value)}
+                    />
+                  </div>
                 </div>
               )}
             </div>

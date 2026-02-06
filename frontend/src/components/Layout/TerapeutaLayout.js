@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiFileText,
-  FiBarChart2, FiUserCheck, FiLogOut, FiClock, FiSun, FiMoon
+  FiBarChart2, FiUserCheck, FiLogOut, FiClock, FiSun, FiMoon, FiSettings
 } from 'react-icons/fi';
 
 const TerapeutaLayout = () => {
@@ -29,6 +29,7 @@ const TerapeutaLayout = () => {
     { path: '/terapeuta/expedientes', icon: <FiFileText />, label: 'Expedientes', permiso: 'ver_expedientes_asignados' },
     { path: '/terapeuta/sesiones', icon: <FiBarChart2 />, label: 'Registro Sesiones', permiso: 'registrar_sesiones' },
     { path: '/terapeuta/supervision', icon: <FiUserCheck />, label: 'Supervisión', permiso: 'supervisar_coterapeutas' },
+    { path: '/terapeuta/configuracion', icon: <FiSettings />, label: 'Configuración' },
   ];
 
   return (

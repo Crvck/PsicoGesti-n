@@ -4,6 +4,54 @@ const { QueryTypes } = require('sequelize');
 
 class DatabaseService {
     
+    static async obtenerCitaPorId(citaId) {
+        try {
+            console.log('🔍 obtenerCitaPorId - citaId recibido:', citaId, 'tipo:', typeof citaId);
+            
+            const query = `
+                SELECT 
+                    c.id,
+                    c.paciente_id,
+                    c.fecha,
+                    TIME_FORMAT(c.hora, '%H:%i') AS hora,
+                    c.estado,
+                    c.tipo_consulta,
+                    c.duracion,
+                    c.notas,
+                    c.psicologo_id,
+                    c.becario_id,
+                    c.terapeuta_id,
+                    c.coterapeuta_id,
+                    c.total_sesiones,
+                    CONCAT(p.nombre, ' ', p.apellido) AS paciente_nombre,
+                    u_psi.nombre AS psicologo_nombre,
+                    u_bec.nombre AS becario_nombre,
+                    u_ter.nombre AS terapeuta_nombre,
+                    u_coter.nombre AS coterapeuta_nombre
+                FROM citas c
+                JOIN pacientes p ON c.paciente_id = p.id
+                LEFT JOIN users u_psi ON c.psicologo_id = u_psi.id
+                LEFT JOIN users u_bec ON c.becario_id = u_bec.id
+                LEFT JOIN users u_ter ON c.terapeuta_id = u_ter.id
+                LEFT JOIN users u_coter ON c.coterapeuta_id = u_coter.id
+                WHERE c.id = :citaId
+            `;
+            
+            const [result] = await sequelize.query(query, {
+                replacements: { citaId },
+                type: QueryTypes.SELECT
+            });
+            
+            console.log('✅ Cita encontrada:', result ? 'Sí' : 'No');
+            
+            return result || null;
+            
+        } catch (error) {
+            console.error('Error en obtenerCitaPorId:', error);
+            throw error;
+        }
+    }
+    
     static async obtenerCitasPorPaciente(pacienteId) {
         try {
             console.log('🔍 obtenerCitasPorPaciente - pacienteId recibido:', pacienteId, 'tipo:', typeof pacienteId);

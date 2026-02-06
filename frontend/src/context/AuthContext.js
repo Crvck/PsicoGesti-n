@@ -21,7 +21,16 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserData = async () => {
     try {
-      const response = await ApiService.getCurrentUser();
+      // Timeout de 5 segundos para la petición
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout al verificar rol')), 5000)
+      );
+      
+      const response = await Promise.race([
+        ApiService.getCurrentUser(),
+        timeoutPromise
+      ]);
+      
       setUser(response.user);
       
       // Guardar también en localStorage para acceso rápido
@@ -32,12 +41,16 @@ export const AuthProvider = ({ children }) => {
       // Si el error es 401 (token inválido/vencido), hacer logout
       if (error.status === 401) {
         logout();
-      }
-      
-      // Intentar recuperar usuario de localStorage como fallback
-      const storedUser = localStorage.getItem('psico_user');
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
+      } else {
+        // Para otros errores, intentar recuperar usuario de localStorage como fallback
+        const storedUser = localStorage.getItem('psico_user');
+        if (storedUser) {
+          try {
+            setUser(JSON.parse(storedUser));
+          } catch (e) {
+            console.error('Error parsing stored user:', e);
+          }
+        }
       }
     } finally {
       setLoading(false);

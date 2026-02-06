@@ -21,20 +21,17 @@ const PsicologoCitas = () => {
   const [showCitaModal, setShowCitaModal] = useState(false);
   const [selectedCita, setSelectedCita] = useState(null);
   const [cancelMotivo, setCancelMotivo] = useState('');
-  const [motivosSeleccionados, setMotivosSeleccionados] = useState([]);
   const [otroMotivo, setOtroMotivo] = useState('');
+  const [showCancelarFuturasModal, setShowCancelarFuturasModal] = useState(false);
+  const [pendingCancelCita, setPendingCancelCita] = useState(null);
+  const [pendingCancelMotivo, setPendingCancelMotivo] = useState('');
   const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
 
   // Opciones predefinidas de motivos de cancelación
   const motivosCancelacionOpciones = [
-    'Enfermedad del paciente',
-    'Problemas de transporte',
-    'Emergencia personal',
-    'Conflicto de horario',
-    'Motivos económicos',
-    'Mejoría del paciente',
-    'Desacuerdo con el tratamiento',
-    'Mudanza o cambio de ciudad'
+    'Paciente no llegó',
+    'Paciente no asistirá',
+    'Paciente ya no asistirá a las sesiones'
   ];
 
   useEffect(() => {
@@ -254,7 +251,6 @@ const PsicologoCitas = () => {
     setShowCitaModal(false);
     setSelectedCita(null);
     setCancelMotivo('');
-    setMotivosSeleccionados([]);
     setOtroMotivo('');
   };
 
@@ -281,28 +277,33 @@ const PsicologoCitas = () => {
     }
   };
 
-  const handleCancelarCita = async (cita = selectedCita, opciones = {}) => {
-    if (!cita) return;
-    const { noShow = false, motivoOverride = '' } = opciones;
-    
-    // Construir motivo final desde checkboxes
-    let motivoFinal = '';
-    if (noShow) {
-      motivoFinal = 'Paciente no llegó';
-    } else if (motivoOverride) {
-      motivoFinal = motivoOverride;
-    } else {
-      const motivos = [...motivosSeleccionados];
-      if (otroMotivo.trim()) {
-        motivos.push(`Otro: ${otroMotivo.trim()}`);
-      }
-      motivoFinal = motivos.join(', ') || cancelMotivo.trim();
+  const getMotivoFinal = () => {
+    if (cancelMotivo && cancelMotivo !== 'otro') {
+      return cancelMotivo;
     }
-    
+    if (cancelMotivo === 'otro' && otroMotivo.trim()) {
+      return `Otro: ${otroMotivo.trim()}`;
+    }
+    return cancelMotivo.trim();
+  };
+
+  const handleCancelarCita = async (cita = selectedCita) => {
+    if (!cita) return;
+
+    const motivoFinal = getMotivoFinal();
     if (!motivoFinal) {
-      notifications.warning('Indica un motivo de cancelación');
+      notifications.warning('Selecciona un motivo de cancelación');
       return;
     }
+
+    // Mostrar modal de confirmación interno si se cancelan todas las citas futuras
+    if (motivoFinal === 'Paciente ya no asistirá a las sesiones') {
+      setPendingCancelCita(cita);
+      setPendingCancelMotivo(motivoFinal);
+      setShowCancelarFuturasModal(true);
+      return;
+    }
+
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:3000/api/citas/cita/${cita.id}`, {
@@ -322,6 +323,42 @@ const PsicologoCitas = () => {
       console.error('Error cancelando cita:', error);
       notifications.error('Error al cancelar la cita');
     }
+  };
+
+  const confirmCancelarFuturas = async () => {
+    if (!pendingCancelCita || !pendingCancelMotivo) {
+      setShowCancelarFuturasModal(false);
+      return;
+    }
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/citas/cancelar-futuras/${pendingCancelCita.paciente_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ motivo_cancelacion: pendingCancelMotivo })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        notifications.error(json.message || 'No se pudieron cancelar las citas futuras');
+        return;
+      }
+      notifications.success(`Se cancelaron ${json.citasCanceladas || 'todas las'} citas futuras del paciente`);
+      fetchData();
+      closeCitaModal();
+    } catch (error) {
+      console.error('Error cancelando citas futuras:', error);
+      notifications.error('Error al cancelar las citas futuras');
+    } finally {
+      setShowCancelarFuturasModal(false);
+      setPendingCancelCita(null);
+      setPendingCancelMotivo('');
+    }
+  };
+
+  const cancelCancelarFuturas = () => {
+    setShowCancelarFuturasModal(false);
+    setPendingCancelCita(null);
+    setPendingCancelMotivo('');
   };
 
   const irARegistroSesion = (cita) => {
@@ -662,48 +699,30 @@ const PsicologoCitas = () => {
               {renderCitaEstado()}
 
               <div className="form-group" style={{ marginTop: '10px' }}>
-                <label className="font-bold">Motivo de cancelación</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                <label className="form-label" style={{ fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>Motivo de cancelación</label>
+                <select
+                  className="select-field"
+                  value={cancelMotivo}
+                  onChange={(e) => setCancelMotivo(e.target.value)}
+                  style={{ 
+                    marginTop: '8px',
+                    padding: '10px',
+                    fontSize: '14px',
+                    borderRadius: '4px',
+                    border: '1px solid #ddd',
+                    width: '100%',
+                    backgroundColor: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="">Seleccionar motivo...</option>
                   {motivosCancelacionOpciones.map((opcion, idx) => (
-                    <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={motivosSeleccionados.includes(opcion)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setMotivosSeleccionados([...motivosSeleccionados, opcion]);
-                          } else {
-                            setMotivosSeleccionados(motivosSeleccionados.filter(m => m !== opcion));
-                          }
-                        }}
-                      />
-                      <span style={{ fontSize: '14px' }}>{opcion}</span>
-                    </label>
+                    <option key={idx} value={opcion}>{opcion}</option>
                   ))}
-                </div>
-                <div style={{ marginTop: '10px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '5px' }}>
-                    <input
-                      type="checkbox"
-                      checked={otroMotivo !== ''}
-                      onChange={(e) => {
-                        if (!e.target.checked) setOtroMotivo('');
-                      }}
-                    />
-                    <span style={{ fontSize: '14px', fontWeight: 'bold' }}>Otro motivo:</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="Especificar otro motivo..."
-                    value={otroMotivo}
-                    onChange={(e) => setOtroMotivo(e.target.value)}
-                    disabled={otroMotivo === '' && !motivosSeleccionados.length}
-                  />
-                </div>
+                </select>
               </div>
             </div>
-            <div className="modal-footer">
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {selectedCita?.estado === 'completada' && (
                 <button className="btn-primary" onClick={() => irARegistroSesion(selectedCita)}>
                   Registrar sesión
@@ -711,13 +730,59 @@ const PsicologoCitas = () => {
               )}
               {selectedCita?.estado === 'programada' ? (
                 <>
-                  <button className="btn-secondary" onClick={() => handleConfirmarCita(selectedCita)}>Confirmar</button>
-                  <button className="btn-primary" onClick={() => handleCancelarCita(selectedCita)}>Cancelar cita</button>
-                  <button className="btn-secondary" onClick={() => handleCancelarCita(selectedCita, { noShow: true })}>Paciente no llegó</button>
+                  <button 
+                    className="btn-danger" 
+                    onClick={() => handleCancelarCita(selectedCita)}
+                    style={{ backgroundColor: '#dc3545', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}
+                  >
+                    Cancelar cita
+                  </button>
+                  <button 
+                    className="btn-success" 
+                    onClick={() => handleConfirmarCita(selectedCita)}
+                    style={{ backgroundColor: '#28a745', color: '#fff', border: 'none', marginLeft: 'auto', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}
+                  >
+                    Completada
+                  </button>
                 </>
               ) : (
                 <div className="text-small">Este estado ya no se puede modificar.</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCancelarFuturasModal && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-small">
+            <div className="modal-header">
+              <h3>Confirmar cancelación</h3>
+              <button className="modal-close" onClick={cancelCancelarFuturas}>×</button>
+            </div>
+            <div className="modal-content">
+              <p style={{ marginBottom: '10px' }}>
+                Esta acción cancelará <strong>TODAS</strong> las citas futuras del paciente.
+              </p>
+              <p className="text-small" style={{ color: '#c0392b' }}>
+                ¿Estás seguro de que deseas continuar?
+              </p>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                className="btn-secondary"
+                onClick={cancelCancelarFuturas}
+                style={{ padding: '10px 20px', borderRadius: '4px' }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn-danger"
+                onClick={confirmCancelarFuturas}
+                style={{ backgroundColor: '#dc3545', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '4px', marginLeft: 'auto' }}
+              >
+                Confirmar cancelación
+              </button>
             </div>
           </div>
         </div>

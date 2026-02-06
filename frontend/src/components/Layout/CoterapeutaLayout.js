@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar, FiBell,
-  FiFileText, FiLogOut, FiClock
+import {
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar,
+  FiLogOut, FiLock
 } from 'react-icons/fi';
 
 const CoterapeutaLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [notificaciones, setNotificaciones] = useState([]);
 
   // Tema oscuro por defecto
   useEffect(() => {
@@ -23,36 +22,11 @@ const CoterapeutaLayout = () => {
     navigate('/login');
   };
 
-  const fetchNotificaciones = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/notificaciones/', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setNotificaciones(data.data || []);
-      }
-    } catch (error) {
-      console.error('Error al obtener notificaciones:', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchNotificaciones();
-    const interval = setInterval(fetchNotificaciones, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
   const navItems = [
     { path: '/coterapeuta/dashboard', icon: <FiHome />, label: 'Inicio', permiso: 'ver_panel_coterapeuta' },
     { path: '/coterapeuta/citas', icon: <FiCalendar />, label: 'Mis Citas', permiso: 'gestionar_citas_asignadas' },
     { path: '/coterapeuta/pacientes', icon: <FiUsers />, label: 'Mis Pacientes', permiso: 'ver_pacientes_asignados' },
-    { path: '/coterapeuta/notificaciones', icon: <FiBell />, label: 'Notificaciones', permiso: 'ver_observaciones_propias' },
-    { path: '/coterapeuta/observaciones', icon: <FiFileText />, label: 'Observaciones y Sesiones', permiso: 'ver_observaciones_propias' },
+    { path: '/coterapeuta/configuracion', icon: <FiLock />, label: 'Configuración', permiso: 'cambiar_contrasena' }
   ];
 
   return (
@@ -75,17 +49,6 @@ const CoterapeutaLayout = () => {
         </div>
         
         <div className="flex-row align-center gap-20">
-          <div className="notificaciones-dropdown">
-            <button className="btn-header">
-              <FiBell />
-              {notificaciones.filter(n => !n.leida).length > 0 && (
-                <span className="badge-notificacion">
-                  {notificaciones.filter(n => !n.leida).length}
-                </span>
-              )}
-            </button>
-          </div>
-
           <div className="user-info">
             <span className="user-email">{user?.email}</span>
             <span className="user-rol">Coterapeuta</span>

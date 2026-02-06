@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiFilter } from 'react-icons/fi';
+import { FiSearch, FiUser, FiFileText } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
-import confirmations from '../../utils/confirmations';
 
 const BecarioPacientes = () => {
   const [pacientes, setPacientes] = useState([]);
@@ -15,16 +14,6 @@ const BecarioPacientes = () => {
   const [expediente, setExpediente] = useState(null);
   const [sesionesPaciente, setSesionesPaciente] = useState([]);
 
-  // Estados para agendar cita
-  const [showAgendarModal, setShowAgendarModal] = useState(false);
-  const [scheduleForm, setScheduleForm] = useState({
-    fecha: new Date().toISOString().slice(0,10),
-    hora: '10:00',
-    tipo_consulta: 'presencial',
-    duracion: 50,
-    notas: '',
-    color: '#1F85BA'
-  });
 
   useEffect(() => {
     fetchPacientes();
@@ -225,7 +214,6 @@ const BecarioPacientes = () => {
           <thead>
             <tr>
               <th>Paciente</th>
-              <th>Contacto</th>
               <th>Diagnóstico</th>
               <th>Sesiones</th>
               <th>Última Sesión</th>
@@ -250,10 +238,6 @@ const BecarioPacientes = () => {
                         <div className="text-small">{paciente.edad} años</div>
                       </div>
                     </div>
-                  </td>
-                  <td>
-                    <div>{paciente.email}</div>
-                    <div className="text-small">{paciente.telefono}</div>
                   </td>
                   <td>
                     <div className="diagnostico-tag">
@@ -346,12 +330,6 @@ const BecarioPacientes = () => {
                   </div>
                   <div className="detail-row">
                     <strong>Edad:</strong> {selectedPaciente.edad} años
-                  </div>
-                  <div className="detail-row">
-                    <strong>Teléfono:</strong> {selectedPaciente.telefono}
-                  </div>
-                  <div className="detail-row">
-                    <strong>Email:</strong> {selectedPaciente.email}
                   </div>
                   <div className="detail-row">
                     <strong>Psicólogo asignado:</strong> {selectedPaciente.psicologo || 'Sin asignar'}
@@ -461,117 +439,6 @@ const BecarioPacientes = () => {
         </div>
       )}
 
-      {/* Modal Agendar Cita */}
-      {showAgendarModal && selectedPaciente && (
-        <div className="modal-overlay">
-          <div className="modal-container modal-medium">
-            <div className="modal-header">
-              <h3>Agendar cita para {selectedPaciente.nombre}</h3>
-              <button className="modal-close" onClick={() => setShowAgendarModal(false)}>×</button>
-            </div>
-
-            <div className="modal-content">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Fecha</label>
-                  <input type="date" className="input-field" value={scheduleForm.fecha} onChange={(e) => setScheduleForm({...scheduleForm, fecha: e.target.value})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Hora</label>
-                  <input type="time" className="input-field" value={scheduleForm.hora} onChange={(e) => setScheduleForm({...scheduleForm, hora: e.target.value})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Tipo</label>
-                  <select className="select-field" value={scheduleForm.tipo_consulta} onChange={(e) => setScheduleForm({...scheduleForm, tipo_consulta: e.target.value})}>
-                    <option value="presencial">Presencial</option>
-                    <option value="virtual">Virtual</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Duración (min)</label>
-                  <input type="number" className="input-field" value={scheduleForm.duracion} onChange={(e) => setScheduleForm({...scheduleForm, duracion: Number(e.target.value)})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Color de cita</label>
-                  <input
-                    type="color"
-                    className="input-field"
-                    value={scheduleForm.color}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, color: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>Notas</label>
-                  <textarea rows="3" className="textarea-field" value={scheduleForm.notas} onChange={(e) => setScheduleForm({...scheduleForm, notas: e.target.value})} />
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn-primary" onClick={async () => {
-                try {
-                  notifications.info('Creando cita...');
-                  const token = localStorage.getItem('token');
-                  const body = {
-                    paciente: { nombre: selectedPaciente.nombre, apellido: selectedPaciente.apellido, email: selectedPaciente.email || null, telefono: selectedPaciente.telefono || null },
-                    fecha: scheduleForm.fecha,
-                    hora: scheduleForm.hora,
-                    tipo_consulta: scheduleForm.tipo_consulta,
-                    duracion: scheduleForm.duracion,
-                    notas: scheduleForm.notas,
-                    color: scheduleForm.color
-                  };
-
-                  console.log('🚀 Enviando request POST /api/citas/nueva con body:', body);
-
-                  const res = await fetch('http://localhost:3000/api/citas/nueva', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-                    body: JSON.stringify(body)
-                  });
-
-                  let json;
-                  try {
-                    json = await res.json();
-                  } catch (err) {
-                    console.error('Error parseando JSON de respuesta al crear cita:', err);
-                    notifications.error('Error procesando respuesta del servidor');
-                    return;
-                  }
-
-                  console.log('📥 Respuesta POST /api/citas/nueva:', res.status, json);
-
-                  if (!res.ok) {
-                    notifications.error(json.message || 'Error creando cita');
-                    return;
-                  }
-
-                  notifications.success('Cita creada exitosamente');
-                  setShowAgendarModal(false);
-
-                  // Emitir evento para que calendario y otras vistas sincronicen
-                  try { window.dispatchEvent(new CustomEvent('citaCreada', { detail: { cita: json.data } })); } catch(e) { console.warn(e); }
-
-                } catch (err) {
-                  console.error('Error creando cita:', err);
-                  notifications.error('Error creando cita');
-                }
-              }}>
-                Guardar cita
-              </button>
-
-              <button className="btn-danger" onClick={() => setShowAgendarModal(false)}>
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

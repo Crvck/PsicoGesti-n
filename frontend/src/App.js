@@ -15,8 +15,7 @@ import NotificationModal from './components/Common/NotificationModal';
 import CoterapeutaDashboard from './pages/caterapeuta/DashboardPage';
 import CoterapeutaCitas from './pages/caterapeuta/CitasPage';
 import CoterapeutaPacientes from './pages/caterapeuta/PacientesPage';
-import CoterapeutaNotificaciones from './pages/caterapeuta/NotificacionesPage';
-import CoterapeutaObservaciones from './pages/caterapeuta/ObservacionesPage';
+import CoterapeutaConfiguracion from './pages/caterapeuta/ConfiguracionPage';
 
 // Páginas para Terapeutas (antes Psicólogo)
 import TerapeutaDashboard from './pages/terapeuta/DashboardPage';
@@ -62,8 +61,7 @@ function App() {
             <Route path="coterapeuta/dashboard" element={<CoterapeutaDashboard />} />
             <Route path="coterapeuta/citas" element={<CoterapeutaCitas />} />
             <Route path="coterapeuta/pacientes" element={<CoterapeutaPacientes />} />
-            <Route path="coterapeuta/notificaciones" element={<CoterapeutaNotificaciones />} />
-            <Route path="coterapeuta/observaciones" element={<CoterapeutaObservaciones />} />
+            <Route path="coterapeuta/configuracion" element={<CoterapeutaConfiguracion />} />
 
             {/* Terapeuta */}
             <Route path="terapeuta/dashboard" element={<TerapeutaDashboard />} />

@@ -1,42 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  FiCalendar, FiClock, FiUser, FiPlus, 
-  FiChevronLeft, FiChevronRight, FiFilter,
-  FiCheckCircle, FiXCircle, FiEdit2, FiRefreshCw
+  FiClock, FiUser,
+  FiChevronLeft, FiChevronRight,
+  FiRefreshCw
 } from 'react-icons/fi';
-import { format, addDays, subDays } from 'date-fns';
+import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
-import notifications from '../../utils/notifications';
-import confirmations from '../../utils/confirmations';
 import ConfiguracionService from '../../services/configuracionService';
+import '../coordinador/coordinador.css';
 
 const BecarioCitas = () => {
   const [citas, setCitas] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('day');
-  const [showNuevaCitaModal, setShowNuevaCitaModal] = useState(false);
   const [filterEstado, setFilterEstado] = useState('');
   const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
   const [userId, setUserId] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editCita, setEditCita] = useState(null);
-  const [editEstado, setEditEstado] = useState('');
-  const [editMotivo, setEditMotivo] = useState('');
-  const [motivosSeleccionados, setMotivosSeleccionados] = useState([]);
-  const [otroMotivo, setOtroMotivo] = useState('');
-
-  // Opciones predefinidas de motivos de cancelación
-  const motivosCancelacionOpciones = [
-    'Enfermedad del paciente',
-    'Problemas de transporte',
-    'Emergencia personal',
-    'Conflicto de horario',
-    'Motivos económicos',
-    'Mejoría del paciente',
-    'Desacuerdo con el tratamiento',
-    'Mudanza o cambio de ciudad'
-  ];
+  const [showCitaModal, setShowCitaModal] = useState(false);
+  const [selectedCita, setSelectedCita] = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -60,20 +41,6 @@ const BecarioCitas = () => {
     const onCitaCreada = (e) => {
       try {
         console.log('Evento citaCreada recibido (citas):', e.detail);
-        const nueva = e?.detail?.cita;
-        if (nueva) {
-          if (userId && nueva.becario_id !== userId && nueva.becarioId !== userId) {
-            return;
-          }
-          const nuevaFecha = nueva.fecha;
-          const fechaSeleccionada = format(selectedDate, 'yyyy-MM-dd');
-          if (nuevaFecha === fechaSeleccionada) {
-            // Insertar optimísticamente la nueva cita en la lista
-            setCitas(prev => [nueva, ...prev]);
-            return;
-          }
-        }
-        // Si no coincide la fecha, recargar datos
         fetchCitas();
       } catch (err) {
         console.warn('Error manejando citaCreada:', err);
@@ -83,22 +50,6 @@ const BecarioCitas = () => {
     const onCitaActualizada = (e) => {
       try {
         console.log('Evento citaActualizada recibido (citas):', e.detail);
-        const updated = e?.detail?.cita;
-        if (updated) {
-          if (userId && updated.becario_id !== userId && updated.becarioId !== userId) {
-            // Si ya no es del becario actual, quítala si estaba
-            setCitas(prev => prev.filter(c => c.id !== updated.id));
-            return;
-          }
-          const fechaSeleccionada = format(selectedDate, 'yyyy-MM-dd');
-          if (updated.fecha === fechaSeleccionada) {
-            setCitas(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
-          } else {
-            // Si cambió de fecha, remover de lista actual
-            setCitas(prev => prev.filter(c => c.id !== updated.id));
-          }
-          return;
-        }
         fetchCitas();
       } catch (err) { console.warn('Error manejando citaActualizada:', err); }
     };
@@ -109,41 +60,65 @@ const BecarioCitas = () => {
       window.removeEventListener('citaCreada', onCitaCreada);
       window.removeEventListener('citaActualizada', onCitaActualizada);
     };
-  }, [selectedDate]);
+  }, [selectedDate, userId]);
 
   const fetchCitas = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const fecha = format(selectedDate, 'yyyy-MM-dd');
-      
-      let url = `http://localhost:3000/api/citas/citas-por-fecha?fecha=${fecha}`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      const headers = { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' };
+
+      const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
+      const fechaInicio = format(start, 'yyyy-MM-dd');
+      const fechaFin = format(end, 'yyyy-MM-dd');
+
+      const query = new URLSearchParams({
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
+        becario_id: userId || ''
       });
-      
+
+      const response = await fetch(`http://localhost:3000/api/agenda/global?${query.toString()}`, { headers });
+
       if (response.ok) {
         const data = await response.json();
-        let citasFiltradas = data.data || [];
+        const raw = Array.isArray(data) ? data : (data.data?.citas || data.data || []);
 
-        // Filtrar por becario actual
-        if (userId) {
-          citasFiltradas = citasFiltradas.filter(cita => {
-            const cid = cita.becario_id ?? cita.becarioId;
-            return cid === userId;
-          });
-        }
+        const normalized = raw.map((cita) => {
+          const fechaNormalizada = typeof cita.fecha === 'string'
+            ? cita.fecha.split('T')[0]
+            : format(new Date(cita.fecha), 'yyyy-MM-dd');
+          const horaNormalizada = typeof cita.hora === 'string'
+            ? cita.hora.slice(0, 5)
+            : cita.hora;
+          return {
+            id: cita.id,
+            paciente_id: cita.paciente_id || cita.Paciente?.id || null,
+            becario_id: cita.becario_id || cita.Becario?.id || null,
+            fecha: fechaNormalizada,
+            hora: horaNormalizada || '00:00',
+            duracion: cita.duracion || cita.duracion_minutos || 50,
+            tipo_consulta: cita.tipo_consulta,
+            estado: cita.estado,
+            notas: cita.notas,
+            color: cita.color || cita.cita_color || null,
+            paciente_nombre: cita.Paciente ? `${cita.Paciente.nombre} ${cita.Paciente.apellido}` : (cita.paciente_nombre || 'Paciente'),
+            psicologo_nombre: cita.Psicologo ? `${cita.Psicologo.nombre} ${cita.Psicologo.apellido}` : (cita.psicologo_nombre || '')
+          };
+        });
 
-        // Filtrar por estado si se especifica
-        if (filterEstado) {
-          citasFiltradas = citasFiltradas.filter(cita => cita.estado === filterEstado);
-        }
-        
+        const soloAsignadas = userId
+          ? normalized.filter(cita => String(cita.becario_id || '') === String(userId))
+          : normalized;
+
+        const citasFiltradas = filterEstado
+          ? soloAsignadas.filter(cita => cita.estado === filterEstado)
+          : soloAsignadas;
+
         setCitas(citasFiltradas);
+      } else {
+        setCitas([]);
       }
     } catch (error) {
       console.error('Error al obtener citas:', error);
@@ -152,12 +127,12 @@ const BecarioCitas = () => {
     }
   };
 
-  const goToPreviousDay = () => {
-    setSelectedDate(prev => subDays(prev, 1));
+  const goToPreviousWeek = () => {
+    setSelectedDate(prev => subDays(prev, 7));
   };
 
-  const goToNextDay = () => {
-    setSelectedDate(prev => addDays(prev, 1));
+  const goToNextWeek = () => {
+    setSelectedDate(prev => addDays(prev, 7));
   };
 
   const goToToday = () => {
@@ -189,132 +164,34 @@ const BecarioCitas = () => {
     return hours;
   };
 
-  const handleEstadoCita = async (citaId, nuevoEstado) => {
-    try {
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`http://localhost:3000/api/citas/cita/${citaId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ estado: nuevoEstado })
-      });
-      
-      if (response.ok) {
-        fetchCitas();
-        notifications.success(`Cita ${nuevoEstado === 'completada' ? 'completada' : 'cancelada'} exitosamente`);
-      }
-    } catch (error) {
-      console.error('Error al actualizar cita:', error);
-      notifications.error('Error al actualizar la cita');
-    }
+
+  const weekDays = eachDayOfInterval({
+    start: startOfWeek(selectedDate, { weekStartsOn: 1 }),
+    end: endOfWeek(selectedDate, { weekStartsOn: 1 })
+  });
+
+  const getWeekRange = () => {
+    const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
+    const end = endOfWeek(selectedDate, { weekStartsOn: 1 });
+    return `Semana del ${format(start, 'd MMM')} al ${format(end, 'd MMM, yyyy')}`;
   };
 
-  const openEditModal = (cita) => {
-    setEditCita(cita);
-    setEditEstado(cita.estado || 'programada');
-    setEditMotivo('');
-    setMotivosSeleccionados([]);
-    setOtroMotivo('');
-    setShowEditModal(true);
+  const getCitasPorDiaYHora = (day, hour) => {
+    const dayStr = format(day, 'yyyy-MM-dd');
+    return citas.filter(cita => {
+      const hora = typeof cita.hora === 'string' ? cita.hora.split(':')[0] : cita.hora;
+      return cita.fecha === dayStr && Number.parseInt(hora, 10) === hour;
+    });
   };
 
-  const saveEditCita = async () => {
-    if (!editCita) return;
-    try {
-      const token = localStorage.getItem('token');
-      const payload = { estado: editEstado };
-      
-      if (editEstado === 'cancelada') {
-        // Construir motivo desde checkboxes
-        const motivos = [...motivosSeleccionados];
-        if (otroMotivo.trim()) {
-          motivos.push(`Otro: ${otroMotivo.trim()}`);
-        }
-        const motivoFinal = motivos.join(', ') || editMotivo.trim();
-        
-        if (motivoFinal) {
-          payload.motivo_cancelacion = motivoFinal;
-        }
-      }
-
-      const res = await fetch(`http://localhost:3000/api/citas/cita/${editCita.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-        body: JSON.stringify(payload)
-      });
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.success) {
-        console.error('Error editando cita:', json);
-        notifications.error(json.message || 'No se pudo actualizar la cita');
-        return;
-      }
-
-      const updated = json.data || { ...editCita, estado: editEstado, motivo_cancelacion: payload.motivo_cancelacion };
-      setCitas(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
-      notifications.success('Cita actualizada');
-      setShowEditModal(false);
-      setEditCita(null);
-      setEditMotivo('');
-      setMotivosSeleccionados([]);
-      setOtroMotivo('');
-      setEditMotivo('');
-
-      // Sincronizar otras vistas
-      window.dispatchEvent(new CustomEvent('citaActualizada', { detail: { cita: updated } }));
-    } catch (error) {
-      console.error('Error guardando edición de cita:', error);
-      notifications.error('Error guardando edición');
-    }
+  const openCitaModal = (cita) => {
+    setSelectedCita(cita);
+    setShowCitaModal(true);
   };
 
-  const handleCancelarCita = async (cita) => {
-    try {
-      const confirmado = await confirmations.warning(`¿Estás seguro de cancelar la cita de ${cita.paciente_nombre} el ${cita.fecha} ${cita.hora}?`);
-      if (!confirmado) return;
-
-      // Pedir motivo (opcional)
-      const motivo = window.prompt('Motivo de la cancelación (opcional):', '');
-
-      const token = localStorage.getItem('token');
-      // Optimistic UI: marcar como cancelada
-      setCitas(prev => prev.map(c => c.id === cita.id ? { ...c, estado: 'cancelada', motivo_cancelacion: motivo || '' } : c));
-
-      // Petición al backend
-      const res = await fetch(`http://localhost:3000/api/citas/cita/${cita.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-        body: JSON.stringify({ estado: 'cancelada', motivo_cancelacion: motivo || '' })
-      });
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.success) {
-        // Rollback
-        setCitas(prev => prev.map(c => c.id === cita.id ? { ...c, estado: cita.estado } : c));
-        console.error('Error cancelando cita:', json);
-        notifications.error(json.message || 'No se pudo cancelar la cita');
-        return;
-      }
-
-      const updated = json.data || { ...cita, estado: 'cancelada', motivo_cancelacion: motivo || '' };
-      // Reemplazar con datos retornados
-      setCitas(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
-      notifications.success('Cita cancelada');
-
-      // Emitir evento para sincronizar otras vistas
-      window.dispatchEvent(new CustomEvent('citaActualizada', { detail: { cita: updated } }));
-
-    } catch (error) {
-      console.error('Error en handleCancelarCita:', error);
-      notifications.error('Error cancelando la cita');
-    }
-  };
-
-  const formatDateSpanish = (date) => {
-    return format(date, "EEEE d 'de' MMMM, yyyy", { locale: es });
+  const closeCitaModal = () => {
+    setShowCitaModal(false);
+    setSelectedCita(null);
   };
 
   if (loading) {
@@ -341,45 +218,33 @@ const BecarioCitas = () => {
       </div>
 
       <div className="calendar-controls">
-        <div className="view-selector">
-          <button 
-            className={`btn-text ${view === 'day' ? 'active' : ''}`}
-            onClick={() => setView('day')}
-          >
-            Día
-          </button>
-          <button 
-            className={`btn-text ${view === 'week' ? 'active' : ''}`}
-            onClick={() => setView('week')}
-          >
-            Semana
-          </button>
-        </div>
-
         <div className="date-navigation">
-          <button className="btn-text" onClick={goToPreviousDay}>
-            <FiChevronLeft /> Ayer
+          <button className="btn-header" onClick={goToPreviousWeek}>
+            <FiChevronLeft /> Semana anterior
           </button>
           
           <div className="current-date">
-            <h3>{formatDateSpanish(selectedDate)}</h3>
+            <h3>{getWeekRange()}</h3>
+            <div className="text-small">
+              Total: <span style={{ fontWeight: 'bold' }}>{citas.length}</span>
+            </div>
           </div>
           
-          <button className="btn-text" onClick={goToNextDay}>
-            Mañana <FiChevronRight />
+          <button className="btn-header" onClick={goToNextWeek}>
+            Semana siguiente <FiChevronRight />
           </button>
         </div>
 
         <div className="quick-actions">
-          <button className="btn-secondary" onClick={goToToday}>
+          <button className="btn-primary" onClick={goToToday}>
             Hoy
           </button>
           <div className="filter-select">
             <select 
               value={filterEstado} 
               onChange={(e) => setFilterEstado(e.target.value)}
-              className="form-select"
-              style={{ width: '150px' }}
+              className="select-field"
+              style={{ width: '170px' }}
             >
               <option value="">Todos los estados</option>
               <option value="programada">Programadas</option>
@@ -391,71 +256,84 @@ const BecarioCitas = () => {
         </div>
       </div>
 
-      {/* Vista de Calendario */}
-      {view === 'day' && (
-        <div className="calendar-day-view mb-20">
+      {/* Calendario Semanal (solo lectura) */}
+      <div className="calendar-week-view" style={{ minHeight: '600px' }}>
+        <div className="week-header">
+          <div className="time-header"></div>
+          {weekDays.map((day) => {
+            const dayStr = format(day, 'yyyy-MM-dd');
+            const citasCount = citas.filter(c => c.fecha === dayStr).length;
+            return (
+              <div key={day.toISOString()} className="day-header">
+                <div className="day-name">
+                  {format(day, 'EEE', { locale: es })}
+                </div>
+                <div className="day-number">
+                  {format(day, 'd')}
+                </div>
+                <div className="text-small">
+                  {citasCount} citas
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="week-body">
           <div className="time-column">
             {generateHours().map(hour => (
-              <div key={hour} className="time-slot">
-                <span className="time-label">{hour}:00</span>
-              </div>
+              <div key={hour} className="time-slot">{hour}</div>
             ))}
           </div>
 
-          <div className="events-column">
-            {generateHours().map(hour => {
-              const hourCitas = citas.filter(cita => 
-                parseInt(cita.hora.split(':')[0]) === hour
-              );
+          {weekDays.map((day) => (
+            <div key={day.toISOString()} className="day-column">
+              {generateHours().map(hour => {
+                const citasHora = getCitasPorDiaYHora(day, hour);
+                const maxVisible = 6;
+                const citasVisibles = citasHora.slice(0, maxVisible);
 
-              return (
-                <div key={hour} className="hour-slot">
-                  {hourCitas.map((cita) => (
-                    <div 
-                      key={cita.id}
-                      className={`event-item ${
-                        cita.estado === 'confirmada' ? 'event-confirmed' :
-                        cita.estado === 'completada' ? 'event-completed' :
-                        cita.estado === 'programada' ? 'event-pending' :
-                        'event-cancelled'
-                      }`}
-                    >
-                      <div className="event-header">
-                        <div className="event-time">
-                          <FiClock /> {cita.hora}
+                return (
+                  <div key={hour} className="hour-cell" style={{ height: '60px' }}>
+                    {citasVisibles.map((cita, index) => (
+                      <div
+                        key={cita.id}
+                        className="week-event"
+                        style={{
+                          backgroundColor: cita.color || '#1F85BA',
+                          opacity: 0.95,
+                          width: `${100 / citasVisibles.length}%`,
+                          left: `${index * (100 / citasVisibles.length)}%`,
+                          height: '100%',
+                          top: '0',
+                          position: 'absolute',
+                          zIndex: 10 + index
+                        }}
+                        title={`${cita.hora} - ${cita.paciente_nombre}\n${cita.tipo_consulta}\nEstado: ${cita.estado}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openCitaModal(cita);
+                        }}
+                      >
+                        <div className="week-event-time">{(cita.hora || '').slice(0, 5)}</div>
+                        <div className="week-event-patient">
+                          {cita.paciente_nombre?.length > 15
+                            ? `${cita.paciente_nombre.slice(0, 15)}...`
+                            : cita.paciente_nombre}
                         </div>
-                        <div className="event-type">{cita.tipo_consulta}</div>
                       </div>
-                      <div className="event-content">
-                        <div className="event-patient">
-                          <FiUser /> {cita.paciente_nombre}
-                        </div>
-                        {cita.notas && (
-                          <div className="event-notes">{cita.notas}</div>
-                        )}
-                      </div>
-                      <div className="event-footer">
-                        <span className={`badge ${
-                          cita.estado === 'confirmada' ? 'badge-success' :
-                          cita.estado === 'completada' ? 'badge-primary' :
-                          cita.estado === 'programada' ? 'badge-warning' :
-                          'badge-danger'
-                        }`}>
-                          {cita.estado}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
-      )}
+      </div>
 
       {/* Lista de Citas */}
       <div className="day-citas-list">
-        <h3>Citas para {formatDateSpanish(selectedDate)} ({citas.length})</h3>
+        <h3>Citas para {getWeekRange()} ({citas.length})</h3>
         
         {citas.length > 0 ? (
           <div className="citas-cards">
@@ -485,12 +363,6 @@ const BecarioCitas = () => {
                       {cita.tipo_consulta === 'presencial' ? '📋 Presencial' : '💻 Virtual'}
                     </div>
                     
-                    {cita.paciente_telefono && (
-                      <div className="cita-contacto">
-                        📞 {cita.paciente_telefono}
-                      </div>
-                    )}
-                    
                     {cita.psicologo_nombre && (
                       <div className="cita-psicologo">
                         👨‍⚕️ {cita.psicologo_nombre}
@@ -505,22 +377,7 @@ const BecarioCitas = () => {
                   </div>
                 </div>
                 
-                <div className="cita-card-footer">
-                  <button className="btn-text" onClick={() => openEditModal(cita)}>
-                    <FiEdit2 /> Editar
-                  </button>
-                  
-                  
-                  
-                  {(cita.estado === 'programada' || cita.estado === 'confirmada') && (
-                    <button 
-                      className="btn-text text-danger"
-                      onClick={() => handleCancelarCita(cita)}
-                    >
-                      <FiXCircle /> Cancelar
-                    </button>
-                  )}
-                </div>
+                <div className="cita-card-footer"></div>
               </div>
             ))}
           </div>
@@ -528,15 +385,48 @@ const BecarioCitas = () => {
           <div className="no-citas">
             <div className="no-citas-icon">📅</div>
             <div>No hay citas programadas para este día</div>
-            <button 
-              className="btn-text" 
-              onClick={() => setShowNuevaCitaModal(true)}
-            >
-              Agendar nueva cita
-            </button>
           </div>
         )}
       </div>
+
+      {showCitaModal && selectedCita && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-medium">
+            <div className="modal-header">
+              <h3>Detalle de cita</h3>
+              <button className="modal-close" onClick={closeCitaModal}>×</button>
+            </div>
+            <div className="modal-content">
+              <div className="form-group">
+                <strong>Paciente:</strong> {selectedCita.paciente_nombre}
+              </div>
+              <div className="form-group">
+                <strong>Fecha:</strong> {selectedCita.fecha ? new Date(selectedCita.fecha).toLocaleDateString() : 'Sin fecha'}
+              </div>
+              <div className="form-group">
+                <strong>Hora:</strong> {selectedCita.hora}
+              </div>
+              <div className="form-group">
+                <strong>Tipo:</strong> {selectedCita.tipo_consulta === 'presencial' ? 'Presencial' : 'Virtual'}
+              </div>
+              <div className="form-group">
+                <strong>Terapeuta:</strong> {selectedCita.psicologo_nombre || 'No asignado'}
+              </div>
+              <div className="form-group">
+                <strong>Estado:</strong> {selectedCita.estado}
+              </div>
+              {selectedCita.notas && (
+                <div className="form-group">
+                  <strong>Notas:</strong> {selectedCita.notas}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={closeCitaModal}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Estadísticas del Día */}
       <div className="grid-3 mt-20">
@@ -560,109 +450,10 @@ const BecarioCitas = () => {
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">
-            <button className="btn-primary w-100" onClick={() => setShowNuevaCitaModal(true)}>
-              Agendar Cita
-            </button>
-            <button className="btn-secondary w-100" onClick={() => setView(view === 'day' ? 'week' : 'day')}>
-              {view === 'day' ? 'Vista Semanal' : 'Vista Diaria'}
-            </button>
+            <div className="text-small">Vista semanal activa</div>
           </div>
         </div>
       </div>
-
-      {/* Modal para nueva cita (simplificado) */}
-      {showNuevaCitaModal && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3>Nueva Cita</h3>
-              <button className="modal-close" onClick={() => setShowNuevaCitaModal(false)}>×</button>
-            </div>
-            <div className="modal-content">
-              <p>Funcionalidad de nueva cita. Esta función está en desarrollo.</p>
-              <p>Por ahora, contacta al coordinador para agendar nuevas citas.</p>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowNuevaCitaModal(false)}>
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal para editar estado de cita */}
-      {showEditModal && editCita && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3>Editar Cita</h3>
-              <button className="modal-close" onClick={() => setShowEditModal(false)}>×</button>
-            </div>
-            <div className="modal-content">
-              <div className="form-group">
-                <label>Estado</label>
-                <select
-                  value={editEstado}
-                  onChange={(e) => setEditEstado(e.target.value)}
-                  className="form-select"
-                >
-                  <option value="programada">Programada</option>
-                  <option value="confirmada">Confirmada</option>
-                  <option value="completada">Completada</option>
-                  <option value="cancelada">Cancelada</option>
-                </select>
-              </div>
-              {editEstado === 'cancelada' && (
-                <div className="form-group">
-                  <label>Motivo de cancelación</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
-                    {motivosCancelacionOpciones.map((opcion, idx) => (
-                      <label key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={motivosSeleccionados.includes(opcion)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setMotivosSeleccionados([...motivosSeleccionados, opcion]);
-                            } else {
-                              setMotivosSeleccionados(motivosSeleccionados.filter(m => m !== opcion));
-                            }
-                          }}
-                        />
-                        <span style={{ fontSize: '14px' }}>{opcion}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: '10px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '5px' }}>
-                      <input
-                        type="checkbox"
-                        checked={otroMotivo !== ''}
-                        onChange={(e) => {
-                          if (!e.target.checked) setOtroMotivo('');
-                        }}
-                      />
-                      <span style={{ fontSize: '14px', fontWeight: 'bold' }}>Otro motivo:</span>
-                    </label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="Especificar otro motivo..."
-                      value={otroMotivo}
-                      onChange={(e) => setOtroMotivo(e.target.value)}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowEditModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={saveEditCita}>Guardar</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

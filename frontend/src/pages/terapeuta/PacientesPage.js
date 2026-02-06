@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiFilter } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
@@ -6,6 +7,7 @@ import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, Headi
 import { saveAs } from 'file-saver';
 
 const PsicologoPacientes = () => {
+  const navigate = useNavigate();
   const [pacientes, setPacientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,6 +19,8 @@ const PsicologoPacientes = () => {
   const [expediente, setExpediente] = useState(null);
   const [sesionesPaciente, setSesionesPaciente] = useState([]);
   const [estadisticas, setEstadisticas] = useState(null);
+  const [selectedSesion, setSelectedSesion] = useState(null);
+  const [showSesionModal, setShowSesionModal] = useState(false);
 
   const fetchExpediente = async (pacienteId) => {
     try {
@@ -43,6 +47,10 @@ const PsicologoPacientes = () => {
 
       const data = json?.data || {};
       console.log('📊 Datos del expediente completo:', data);
+      console.log('📋 Sesiones recibidas:', data.sesiones);
+      if (data.sesiones && data.sesiones.length > 0) {
+        console.log('🔍 Primera sesión de muestra:', data.sesiones[0]);
+      }
       setExpediente(data.expediente || {});
       setSesionesPaciente(data.sesiones || []);
       setEstadisticas(data.estadisticas || {});
@@ -151,7 +159,7 @@ const PsicologoPacientes = () => {
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Diagnóstico', bold: true })] })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Sesiones', bold: true })] })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Última Sesión', bold: true })] })] }),
-          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Becario', bold: true })] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Coterapeuta', bold: true })] })] }),
           new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Estado', bold: true })] })] }),
         ],
       }));
@@ -247,7 +255,7 @@ const PsicologoPacientes = () => {
               <th>Diagnóstico</th>
               <th>Sesiones</th>
               <th>Última Sesión</th>
-              <th>Becario</th>
+              <th>Coterapeuta</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -324,7 +332,7 @@ const PsicologoPacientes = () => {
           <div className="mt-10">
             <p>Total: {pacientes.length}</p>
             <p>Activos: {pacientes.filter(p => p.estado === 'activo').length}</p>
-            <p>Con becario: {pacientes.filter(p => p.becario).length}</p>
+            <p>Con coterapeuta: {pacientes.filter(p => p.becario).length}</p>
           </div>
         </div>
         
@@ -443,7 +451,7 @@ const PsicologoPacientes = () => {
                         <th>Tipo</th>
                         <th>Horario</th>
                         <th>Desarrollo</th>
-                        <th>Psicólogo</th>
+                        <th>Terapeuta</th>
                         <th>Expediente</th>
                       </tr>
                     </thead>
@@ -463,16 +471,19 @@ const PsicologoPacientes = () => {
                                 {s.desarrollo || s.conclusion || 'Sin notas'}
                               </div>
                             </td>
-                            <td>{(s.psicologo_nombre || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || 'N/A')}</td>
+                            <td>{(s.terapeuta_nombre || s.psicologo_nombre || (s.Terapeuta && `${s.Terapeuta.nombre} ${s.Terapeuta.apellido}`) || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || 'N/A')}</td>
                             <td>
-                              {s.expediente_id ? (
-                                <span className="badge badge-success" title={`Expediente #${s.expediente_id}`}>
-                                  <FiFileText style={{ marginRight: '4px' }} />
-                                  #{s.expediente_id}
-                                </span>
-                              ) : (
-                                <span className="text-small" style={{ color: 'var(--gray)' }}>Sin expediente</span>
-                              )}
+                              <button 
+                                className="btn-text"
+                                onClick={() => {
+                                  setSelectedSesion(s);
+                                  setShowSesionModal(true);
+                                }}
+                                title="Ver detalles de la sesión"
+                                style={{ fontSize: '18px' }}
+                              >
+                                <FiFileText />
+                              </button>
                             </td>
                           </tr>
                         ))
@@ -499,6 +510,101 @@ const PsicologoPacientes = () => {
         </div>
       )}
 
+      {/* Modal de Detalles de Sesión */}
+      {showSesionModal && selectedSesion && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-large">
+            <div className="modal-header">
+              <h3>Detalles de la Sesión</h3>
+              <button className="modal-close" onClick={() => setShowSesionModal(false)}>×</button>
+            </div>
+            
+            <div className="modal-content">
+              <div className="grid-2 gap-20 mb-20">
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Información de la Sesión</h4>
+                  <div className="detail-row">
+                    <strong>Fecha:</strong> {selectedSesion.fecha ? new Date(selectedSesion.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Horario:</strong> {selectedSesion.hora_inicio && selectedSesion.hora_fin ? `${selectedSesion.hora_inicio.slice(0,5)} - ${selectedSesion.hora_fin.slice(0,5)}` : (selectedSesion.hora_inicio ? selectedSesion.hora_inicio.slice(0,5) : 'N/A')}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Tipo:</strong> <span className="badge badge-info">{selectedSesion.tipo_sesion || selectedSesion.tipo_consulta || 'terapia'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <strong>Terapeuta:</strong> {selectedSesion.terapeuta_nombre || selectedSesion.psicologo_nombre || 'N/A'}
+                  </div>
+                  {(selectedSesion.coterapeuta_nombre || selectedSesion.becario_nombre) && (
+                    <div className="detail-row">
+                      <strong>Coterapeuta:</strong> {selectedSesion.coterapeuta_nombre || selectedSesion.becario_nombre}
+                    </div>
+                  )}
+                </div>
+
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Información del Paciente</h4>
+                  <div className="detail-row">
+                    <strong>Paciente:</strong> {selectedPaciente.nombre_completo}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Edad:</strong> {selectedPaciente.edad} años
+                  </div>
+                  <div className="detail-row">
+                    <strong>Diagnóstico:</strong> {selectedPaciente.diagnostico || 'Sin diagnóstico'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
+                <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Desarrollo de la Sesión</h4>
+                <div className="detail-row">
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                    {selectedSesion.desarrollo || 'Sin registro de desarrollo'}
+                  </div>
+                </div>
+              </div>
+
+              {selectedSesion.conclusion && (
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)', marginTop: '15px' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Conclusión</h4>
+                  <div className="detail-row">
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                      {selectedSesion.conclusion}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedSesion.tareas_asignadas && (
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)', marginTop: '15px' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Tareas Asignadas</h4>
+                  <div className="detail-row">
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                      {selectedSesion.tareas_asignadas}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedSesion.siguiente_cita && (
+                <div className="card" style={{ padding: '20px', background: 'var(--blub)', marginTop: '15px' }}>
+                  <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Próxima Cita</h4>
+                  <div className="detail-row">
+                    <strong>Fecha programada:</strong> {new Date(selectedSesion.siguiente_cita).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowSesionModal(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
     </div>

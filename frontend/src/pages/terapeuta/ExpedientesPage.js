@@ -17,6 +17,8 @@ const PsicologoExpedientes = () => {
   });
   const [expediente, setExpediente] = useState(null);
   const [sesionesPaciente, setSesionesPaciente] = useState([]);
+  const [selectedSesion, setSelectedSesion] = useState(null);
+  const [showSesionModal, setShowSesionModal] = useState(false);
 
   useEffect(() => {
     fetchExpedientes();
@@ -85,6 +87,7 @@ const PsicologoExpedientes = () => {
   const showExpedienteDetalles = async (item) => {
     try {
       setLoading(true);
+      setSelectedExpediente(item);
       const response = await ApiService.get(`/expedientes/${item.id}`);
       const expediente = response?.data || {};
       setExpediente(expediente);
@@ -424,15 +427,31 @@ const PsicologoExpedientes = () => {
                   </div>
                   
                   <div className="mt-20">
-                    <h4>Historial de Sesiones</h4>
-                    {expedienteDetalle && expedienteDetalle.sesiones && expedienteDetalle.sesiones.length > 0 ? (
-                      <div className="timeline mt-10">
-                        {expedienteDetalle.sesiones.map(s => (
-                          <div className="timeline-item" key={s.id}>
-                            <div className="timeline-content">
-                              <strong>{s.fecha ? new Date(s.fecha).toLocaleDateString() : ''} - Sesión</strong>
-                              <p>{s.desarrollo || s.conclusion || ''}</p>
+                    <h4>Expedientes por Sesión</h4>
+                    {sesionesPaciente.length > 0 ? (
+                      <div className="card" style={{ padding: '10px' }}>
+                        {sesionesPaciente.map((s) => (
+                          <div
+                            key={s.id}
+                            className="flex-row align-center justify-between"
+                            style={{ padding: '10px 6px', borderBottom: '1px solid #eee' }}
+                          >
+                            <div>
+                              <strong>{s.fecha ? new Date(s.fecha).toLocaleDateString() : 'Sesión'}</strong>
+                              <div className="text-small">
+                                {s.hora ? s.hora : ''} {s.tipo_consulta ? `• ${s.tipo_consulta}` : ''}
+                              </div>
+                              <div className="text-small">Estado: {s.estado || 'Sin estado'}</div>
                             </div>
+                            <button
+                              className="btn-secondary"
+                              onClick={() => {
+                                setSelectedSesion(s);
+                                setShowSesionModal(true);
+                              }}
+                            >
+                              <FiFileText /> Ver expediente
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -622,6 +641,64 @@ const PsicologoExpedientes = () => {
               >
                 <FiCheckCircle /> Enviar Propuesta
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSesionModal && selectedSesion && (
+        <div className="modal-overlay">
+          <div className="modal-container modal-medium">
+            <div className="modal-header">
+              <h3>Expediente de Sesión</h3>
+              <button className="modal-close" onClick={() => setShowSesionModal(false)}>×</button>
+            </div>
+            <div className="modal-content">
+              <div className="detail-row">
+                <strong>Fecha:</strong> {selectedSesion.fecha ? new Date(selectedSesion.fecha).toLocaleDateString() : 'Sin fecha'}
+              </div>
+              <div className="detail-row">
+                <strong>Hora:</strong> {selectedSesion.hora || 'Sin hora'}
+              </div>
+              <div className="detail-row">
+                <strong>Tipo:</strong> {selectedSesion.tipo_consulta || 'No especificado'}
+              </div>
+              <div className="detail-row">
+                <strong>Terapeuta:</strong> {selectedSesion.terapeuta_nombre || selectedSesion.psicologo_nombre || 'No especificado'}
+              </div>
+              <div className="detail-row">
+                <strong>Coterapeuta:</strong> {selectedSesion.coterapeuta_nombre || selectedSesion.becario_nombre || 'No asignado'}
+              </div>
+              <div className="detail-row">
+                <strong>Desarrollo:</strong>
+                <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
+                  {selectedSesion.desarrollo || 'Sin registro'}
+                </div>
+              </div>
+              {selectedSesion.conclusion && (
+                <div className="detail-row">
+                  <strong>Conclusión:</strong>
+                  <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
+                    {selectedSesion.conclusion}
+                  </div>
+                </div>
+              )}
+              {selectedSesion.tareas_asignadas && (
+                <div className="detail-row">
+                  <strong>Tareas asignadas:</strong>
+                  <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
+                    {selectedSesion.tareas_asignadas}
+                  </div>
+                </div>
+              )}
+              {selectedSesion.siguiente_cita && (
+                <div className="detail-row">
+                  <strong>Próxima cita:</strong> {selectedSesion.siguiente_cita}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowSesionModal(false)}>Cerrar</button>
             </div>
           </div>
         </div>

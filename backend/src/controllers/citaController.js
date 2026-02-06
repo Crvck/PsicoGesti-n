@@ -287,6 +287,47 @@ class CitaController {
             });
         }
     }
+
+    static async cancelarCitasFuturasPaciente(req, res) {
+        try {
+            const { paciente_id } = req.params;
+            const { motivo_cancelacion } = req.body;
+            const usuarioId = req.user.id;
+
+            if (!paciente_id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El parámetro paciente_id es requerido'
+                });
+            }
+
+            if (!motivo_cancelacion) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El motivo_cancelacion es requerido'
+                });
+            }
+
+            const citasCanceladas = await DatabaseService.cancelarCitasFuturasPaciente(
+                parseInt(paciente_id),
+                motivo_cancelacion,
+                usuarioId
+            );
+
+            return res.json({
+                success: true,
+                message: 'Citas futuras canceladas exitosamente',
+                citasCanceladas
+            });
+        } catch (error) {
+            console.error('Error en cancelarCitasFuturasPaciente:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error al cancelar citas futuras',
+                error: error.message
+            });
+        }
+    }
     
     static async actualizarCita(req, res) {
         try {

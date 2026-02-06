@@ -15,6 +15,7 @@ router.get('/estadisticas', CitaController.obtenerEstadisticas);
 
 // Rutas de modificación
 router.post('/alta-paciente', CitaController.darAltaPaciente);
+router.put('/cancelar-futuras/:paciente_id', CitaController.cancelarCitasFuturasPaciente);
 router.put('/cita/:id', CitaController.actualizarCita);
 router.post('/nueva', CitaController.crearNuevaCita);
 

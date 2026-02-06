@@ -520,6 +520,51 @@ class DatabaseService {
             throw error;
         }
     }
+
+    static async cancelarCitasFuturasPaciente(pacienteId, motivoCancelacion, usuarioId) {
+        const transaction = await sequelize.transaction();
+
+        try {
+            const [result, metadata] = await sequelize.query(`
+                UPDATE citas 
+                SET estado = 'cancelada',
+                    motivo_cancelacion = :motivoCancelacion,
+                    updated_at = NOW()
+                WHERE paciente_id = :pacienteId 
+                AND fecha >= CURDATE()
+                AND estado IN ('programada', 'confirmada')
+            `, {
+                replacements: { pacienteId, motivoCancelacion },
+                transaction
+            });
+
+            const affectedRows = metadata?.affectedRows ?? result?.affectedRows ?? 0;
+
+            await sequelize.query(`
+                INSERT INTO logs_sistema (
+                    usuario_id, tipo_log, modulo, accion, descripcion, datos_despues, created_at
+                ) VALUES (
+                    :usuarioId, 'modificacion', 'citas', 'cancelar_citas_futuras', :descripcion, JSON_OBJECT('paciente_id', :pacienteId, 'citas_canceladas', :citasCanceladas), NOW()
+                )
+            `, {
+                replacements: {
+                    usuarioId,
+                    pacienteId,
+                    citasCanceladas: affectedRows,
+                    descripcion: `Cancelación de citas futuras por motivo: ${motivoCancelacion}`
+                },
+                transaction
+            });
+
+            await transaction.commit();
+
+            return affectedRows;
+        } catch (error) {
+            await transaction.rollback();
+            console.error('Error en cancelarCitasFuturasPaciente:', error);
+            throw error;
+        }
+    }
     
     /**
      * Reemplaza: tr_after_update_cita

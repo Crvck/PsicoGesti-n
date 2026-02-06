@@ -13,34 +13,10 @@ const PsicologoPacientes = () => {
   const [showDetalles, setShowDetalles] = useState(false);
   const [filterEstado, setFilterEstado] = useState('');
 
-  // Estados para agendar cita
-  const [showAgendarModal, setShowAgendarModal] = useState(false);
-  const [tipoCitaAgendar, setTipoCitaAgendar] = useState('psicologo'); // 'psicologo' o 'becario'
-  const [becarios, setBecarios] = useState([]);
-  const [scheduleForm, setScheduleForm] = useState({
-    fecha: new Date().toISOString().slice(0,10),
-    hora: '10:00',
-    tipo_consulta: 'presencial',
-    duracion: 50,
-    becario_id: null,
-    notas: '',
-    color: '#1F85BA'
-  });
-
-  // Estados para expediente y sesiones reales
+  // Estados para expediente y sesiones reales (solo lectura)
   const [expediente, setExpediente] = useState(null);
   const [sesionesPaciente, setSesionesPaciente] = useState([]);
-  const [showRegistrarSesionModal, setShowRegistrarSesionModal] = useState(false);
-  const [registroSesionForm, setRegistroSesionForm] = useState({
-    fecha: new Date().toISOString().slice(0,10),
-    hora_inicio: '10:00',
-    hora_fin: '10:50',
-    desarrollo: '',
-    conclusion: '',
-    tareas_asignadas: '',
-    siguiente_cita: '',
-    privado: false
-  });
+  const [estadisticas, setEstadisticas] = useState(null);
 
   const fetchExpediente = async (pacienteId) => {
     try {
@@ -61,60 +37,27 @@ const PsicologoPacientes = () => {
         notifications.error((json && (json.message || json.error)) || 'Error al obtener expediente');
         setExpediente(null);
         setSesionesPaciente([]);
+        setEstadisticas(null);
         return;
       }
 
       const data = json?.data || {};
+      console.log('📊 Datos del expediente completo:', data);
       setExpediente(data.expediente || {});
       setSesionesPaciente(data.sesiones || []);
+      setEstadisticas(data.estadisticas || {});
     } catch (err) {
       console.error('Error al obtener expediente completo:', err);
       notifications.error('Error al obtener expediente');
       setExpediente(null);
       setSesionesPaciente([]);
+      setEstadisticas(null);
     }
   };
 
   useEffect(() => {
     fetchPacientes();
-    fetchBecarios();
-
-    // Escuchar creación de citas para refrescar si es necesario
-    const onCitaCreada = (e) => {
-      try {
-        console.log('Evento citaCreada recibido (psicologo):', e.detail);
-        fetchPacientes();
-      } catch(e) { console.warn(e); }
-    };
-
-    const onCitaActualizada = (e) => {
-      try {
-        console.log('Evento citaActualizada recibido (psicologo):', e.detail);
-        fetchPacientes();
-      } catch (e) { console.warn(e); }
-    };
-
-    window.addEventListener('citaCreada', onCitaCreada);
-    window.addEventListener('citaActualizada', onCitaActualizada);
-    return () => {
-      window.removeEventListener('citaCreada', onCitaCreada);
-      window.removeEventListener('citaActualizada', onCitaActualizada);
-    };
   }, []);
-
-  const fetchBecarios = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/users/becarios', {
-        headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
-      });
-      const data = await res.json();
-      const normalized = (data || []).map(b => ({ ...b, nombre_completo: b.nombre + (b.apellido ? ` ${b.apellido}` : '') }));
-      setBecarios(normalized);
-    } catch (err) {
-      console.warn('No se pudieron obtener becarios:', err);
-    }
-  };
 
   const fetchPacientes = async () => {
     try {
@@ -365,43 +308,6 @@ const PsicologoPacientes = () => {
                       >
                         <FiFileText />
                       </button>
-                      <button 
-                        className="btn-text btn-success"
-                        title="Agendar cita con psicólogo"
-                        onClick={() => {
-                          setSelectedPaciente(paciente);
-                          setTipoCitaAgendar('psicologo');
-                          setScheduleForm(prev => ({ 
-                            ...prev, 
-                            fecha: new Date().toISOString().slice(0,10), 
-                            hora: '10:00', 
-                            notas: '', 
-                            becario_id: null 
-                          }));
-                          setShowAgendarModal(true);
-                        }}
-                      >
-                        <FiCalendar />
-                      </button>
-                      {/* Opción para agendar cita solo para becario - comentar si no se necesita */}
-                      <button 
-                        className="btn-text btn-info"
-                        title="Agendar cita para becario"
-                        onClick={() => {
-                          setSelectedPaciente(paciente);
-                          setTipoCitaAgendar('becario');
-                          setScheduleForm(prev => ({ 
-                            ...prev, 
-                            fecha: new Date().toISOString().slice(0,10), 
-                            hora: '10:00', 
-                            notas: '',
-                            becario_id: paciente.becario_id || null
-                          }));
-                          setShowAgendarModal(true);
-                        }}
-                      >
-                        <FiUser />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -464,20 +370,22 @@ const PsicologoPacientes = () => {
               {/* Estadísticas rápidas (expandido) */}
               <div className="grid-3 gap-20 mb-25">
                 <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Sesiones Totales</div>
-                  <div className="stat-value" style={{ fontSize: '36px', lineHeight: '1' }}>{selectedPaciente.sesiones_completadas || 0}</div>
-                </div>
-                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Última Sesión</div>
-                  <div className="font-bold" style={{ fontSize: '16px' }}>
-                    {selectedPaciente.ultima_sesion ? new Date(selectedPaciente.ultima_sesion).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin registro'}
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Sesiones Completadas</div>
+                  <div className="stat-value" style={{ fontSize: '36px', lineHeight: '1', color: '#27ae60' }}>
+                    {estadisticas?.sesiones_completadas || 0}
                   </div>
                 </div>
                 <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Estado</div>
-                  <span className={`badge badge-${getEstadoLabel(selectedPaciente.estado).color}`} style={{ fontSize: '16px', padding: '6px 10px' }}>
-                    {getEstadoLabel(selectedPaciente.estado).text}
-                  </span>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Sesiones Canceladas</div>
+                  <div className="stat-value" style={{ fontSize: '36px', lineHeight: '1', color: '#e74c3c' }}>
+                    {estadisticas?.sesiones_canceladas || 0}
+                  </div>
+                </div>
+                <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Total de Sesiones</div>
+                  <div className="stat-value" style={{ fontSize: '36px', lineHeight: '1', color: '#3498db' }}>
+                    {estadisticas?.total_sesiones || 0}
+                  </div>
                 </div>
               </div>
 
@@ -490,6 +398,9 @@ const PsicologoPacientes = () => {
                   </div>
                   <div className="detail-row">
                     <strong>Edad:</strong> {selectedPaciente.edad} años
+                  </div>
+                  <div className="detail-row">
+                    <strong>Fecha de ingreso:</strong> {expediente?.fecha_ingreso ? new Date(expediente.fecha_ingreso).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'No registrada'}
                   </div>
                   <div className="detail-row">
                     <strong>Email:</strong> {selectedPaciente.email || 'No registrado'}
@@ -511,7 +422,10 @@ const PsicologoPacientes = () => {
                     <strong>Diagnóstico:</strong> {selectedPaciente.diagnostico || 'Sin diagnóstico'}
                   </div>
                   <div className="detail-row">
-                    <strong>Becario asignado:</strong> {selectedPaciente.becario || 'No asignado'}
+                    <strong>Terapeuta:</strong> {expediente?.terapeuta_nombre || expediente?.psicologo_nombre || 'No asignado'}
+                  </div>
+                  <div className="detail-row">
+                    <strong>Coterapeuta:</strong> {expediente?.coterapeuta_nombre || selectedPaciente.becario || 'No asignado'}
                   </div>
                 </div>
               </div>
@@ -530,6 +444,7 @@ const PsicologoPacientes = () => {
                         <th>Horario</th>
                         <th>Desarrollo</th>
                         <th>Psicólogo</th>
+                        <th>Expediente</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -549,11 +464,21 @@ const PsicologoPacientes = () => {
                               </div>
                             </td>
                             <td>{(s.psicologo_nombre || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || 'N/A')}</td>
+                            <td>
+                              {s.expediente_id ? (
+                                <span className="badge badge-success" title={`Expediente #${s.expediente_id}`}>
+                                  <FiFileText style={{ marginRight: '4px' }} />
+                                  #{s.expediente_id}
+                                </span>
+                              ) : (
+                                <span className="text-small" style={{ color: 'var(--gray)' }}>Sin expediente</span>
+                              )}
+                            </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: 'var(--gray)' }}>
+                          <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: 'var(--gray)' }}>
                             <div>📋</div>
                             <div style={{ marginTop: '10px' }}>No hay sesiones registradas para este paciente</div>
                           </td>
@@ -566,37 +491,6 @@ const PsicologoPacientes = () => {
             </div>
             
             <div className="modal-footer">
-              <button className="btn-primary" onClick={() => {
-                setShowDetalles(false);
-                setSelectedPaciente(selectedPaciente);
-                setTipoCitaAgendar('psicologo');
-                setScheduleForm(prev => ({ 
-                  ...prev, 
-                  fecha: new Date().toISOString().slice(0,10), 
-                  hora: '10:00', 
-                  notas: '', 
-                  becario_id: null 
-                }));
-                setShowAgendarModal(true);
-              }}>
-                <FiCalendar /> Agendar Cita (Psicólogo)
-              </button>
-              {/* Opción para agendar cita solo para becario - comentar si no se necesita */}
-              <button className="btn-info" onClick={() => {
-                setShowDetalles(false);
-                setSelectedPaciente(selectedPaciente);
-                setTipoCitaAgendar('becario');
-                setScheduleForm(prev => ({ 
-                  ...prev, 
-                  fecha: new Date().toISOString().slice(0,10), 
-                  hora: '10:00', 
-                  notas: '',
-                  becario_id: selectedPaciente.becario_id || null
-                }));
-                setShowAgendarModal(true);
-              }}>
-                <FiUser /> Agendar Cita (Becario)
-              </button>
               <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
                 Cerrar
               </button>
@@ -605,349 +499,7 @@ const PsicologoPacientes = () => {
         </div>
       )}
 
-      {/* Modal Agendar Cita */}
-      {showAgendarModal && selectedPaciente && (
-        <div className="modal-overlay">
-          <div className="modal-container modal-medium">
-            <div className="modal-header">
-              <h3>
-                {tipoCitaAgendar === 'psicologo' 
-                  ? `Agendar cita (Psicólogo) para ${selectedPaciente.nombre_completo}`
-                  : `Agendar cita (Becario) para ${selectedPaciente.nombre_completo}`
-                }
-              </h3>
-              <button className="modal-close" onClick={() => setShowAgendarModal(false)}>×</button>
-            </div>
 
-            <div className="modal-content">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Fecha</label>
-                  <input type="date" className="input-field" value={scheduleForm.fecha} onChange={(e) => setScheduleForm({...scheduleForm, fecha: e.target.value})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Hora</label>
-                  <input type="time" className="input-field" value={scheduleForm.hora} onChange={(e) => setScheduleForm({...scheduleForm, hora: e.target.value})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Tipo</label>
-                  <select className="select-field" value={scheduleForm.tipo_consulta} onChange={(e) => setScheduleForm({...scheduleForm, tipo_consulta: e.target.value})}>
-                    <option value="presencial">Presencial</option>
-                    <option value="virtual">Virtual</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Duración (min)</label>
-                  <input type="number" className="input-field" value={scheduleForm.duracion} onChange={(e) => setScheduleForm({...scheduleForm, duracion: Number(e.target.value)})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Color de cita</label>
-                  <input
-                    type="color"
-                    className="input-field"
-                    value={scheduleForm.color}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, color: e.target.value })}
-                  />
-                </div>
-
-                {/* Mostrar selector de becario solo si es cita de psicólogo (opcional) o si es cita de becario (obligatorio) */}
-                {tipoCitaAgendar === 'becario' && (
-                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                    <label>Becario *</label>
-                    <select 
-                      className="select-field" 
-                      value={scheduleForm.becario_id || ''} 
-                      onChange={(e) => setScheduleForm({...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null})}
-                      required
-                    >
-                      <option value="">Seleccionar becario</option>
-                      {becarios.map(b => (
-                        <option key={b.id} value={b.id}>{b.nombre_completo}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {tipoCitaAgendar === 'psicologo' && (
-                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                    <label>Becario observador (opcional)</label>
-                    <select 
-                      className="select-field" 
-                      value={scheduleForm.becario_id || ''} 
-                      onChange={(e) => setScheduleForm({...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null})}
-                    >
-                      <option value="">Sin becario</option>
-                      {becarios.map(b => (
-                        <option key={b.id} value={b.id}>{b.nombre_completo}</option>
-                      ))}
-                    </select>
-                    <small className="text-small" style={{ marginTop: '5px', display: 'block', color: 'var(--gray)' }}>
-                      El becario podrá observar la sesión pero el psicólogo será el responsable
-                    </small>
-                  </div>
-                )}
-
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>Notas</label>
-                  <textarea rows="3" className="textarea-field" value={scheduleForm.notas} onChange={(e) => setScheduleForm({...scheduleForm, notas: e.target.value})} />
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn-primary" onClick={async () => {
-                try {
-                  // Validación: si es cita de becario, debe seleccionar un becario
-                  if (tipoCitaAgendar === 'becario' && !scheduleForm.becario_id) {
-                    notifications.error('Debe seleccionar un becario para este tipo de cita');
-                    return;
-                  }
-
-                  notifications.info('Creando cita...');
-                  const token = localStorage.getItem('token');
-                  const body = {
-                    paciente: { nombre: selectedPaciente.nombre, apellido: selectedPaciente.apellido, email: selectedPaciente.email || null, telefono: selectedPaciente.telefono || null },
-                    fecha: scheduleForm.fecha,
-                    hora: scheduleForm.hora,
-                    tipo_consulta: scheduleForm.tipo_consulta,
-                    duracion: scheduleForm.duracion,
-                    notas: scheduleForm.notas,
-                    becario_id: scheduleForm.becario_id || null,
-                    color: scheduleForm.color,
-                    // Indicar si la cita es para el becario o para el psicólogo
-                    tipo_asignacion: tipoCitaAgendar // 'psicologo' o 'becario'
-                  };
-
-                  // Debug: registrar body que vamos a enviar
-                  console.log('🚀 Enviando request POST /api/citas/nueva con body:', body);
-
-                  const res = await fetch('http://localhost:3000/api/citas/nueva', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-                    body: JSON.stringify(body)
-                  });
-
-                  let json;
-                  try {
-                    json = await res.json();
-                  } catch (err) {
-                    console.error('Error parseando JSON de respuesta al crear cita:', err);
-                    notifications.error('Error procesando respuesta del servidor');
-                    return;
-                  }
-
-                  // Debug: ver respuesta del servidor
-                  console.log('📥 Respuesta POST /api/citas/nueva:', res.status, json);
-
-                  if (!res.ok) {
-                    notifications.error(json.message || 'Error creando cita');
-                    return;
-                  }
-
-                  notifications.success(`Cita para ${tipoCitaAgendar === 'psicologo' ? 'psicólogo' : 'becario'} creada exitosamente`);
-                  setShowAgendarModal(false);
-
-                  // Emitir evento para que calendario y otras vistas sincronicen
-                  try { window.dispatchEvent(new CustomEvent('citaCreada', { detail: { cita: json.data } })); } catch(e) { console.warn(e); }
-
-                } catch (err) {
-                  console.error('Error creando cita:', err);
-                  notifications.error('Error creando cita');
-                }
-              }}>
-                Guardar cita
-              </button>
-
-              <button className="btn-danger" onClick={() => setShowAgendarModal(false)}>
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Registrar Sesión - afuera del modal detalles */}
-      {showRegistrarSesionModal && selectedPaciente && (
-        <div className="modal-overlay">
-          <div className="modal-container modal-medium">
-            <div className="modal-header">
-              <h3>Registrar sesión para {selectedPaciente.nombre_completo}</h3>
-              <button className="modal-close" onClick={() => setShowRegistrarSesionModal(false)}>×</button>
-            </div>
-
-            <div className="modal-content">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Fecha</label>
-                  <input type="date" className="input-field" value={registroSesionForm.fecha} onChange={(e) => setRegistroSesionForm({...registroSesionForm, fecha: e.target.value})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Hora inicio</label>
-                  <input type="time" className="input-field" value={registroSesionForm.hora_inicio} onChange={(e) => setRegistroSesionForm({...registroSesionForm, hora_inicio: e.target.value})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Hora fin</label>
-                  <input type="time" className="input-field" value={registroSesionForm.hora_fin} onChange={(e) => setRegistroSesionForm({...registroSesionForm, hora_fin: e.target.value})} />
-                </div>
-
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>Desarrollo</label>
-                  <textarea rows="4" className="textarea-field" value={registroSesionForm.desarrollo} onChange={(e) => setRegistroSesionForm({...registroSesionForm, desarrollo: e.target.value})} />
-                </div>
-
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>Conclusión</label>
-                  <textarea rows="3" className="textarea-field" value={registroSesionForm.conclusion} onChange={(e) => setRegistroSesionForm({...registroSesionForm, conclusion: e.target.value})} />
-                </div>
-
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                  <label>Tareas asignadas</label>
-                  <textarea rows="3" className="textarea-field" value={registroSesionForm.tareas_asignadas} onChange={(e) => setRegistroSesionForm({...registroSesionForm, tareas_asignadas: e.target.value})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Próxima sesión</label>
-                  <input type="date" className="input-field" value={registroSesionForm.siguiente_cita || ''} onChange={(e) => setRegistroSesionForm({...registroSesionForm, siguiente_cita: e.target.value})} />
-                </div>
-
-                <div className="form-group">
-                  <label>Privado</label>
-                  <div>
-                    <input type="checkbox" checked={registroSesionForm.privado} onChange={(e) => setRegistroSesionForm({...registroSesionForm, privado: e.target.checked})} /> Privado
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn-primary" onClick={async () => {
-                try {
-                  notifications.info('Registrando sesión...');
-                  const token = localStorage.getItem('token');
-
-                  // 1) Crear una cita temporal (si no existe) y marcarla completada
-                  const citaBody = {
-                    paciente: { nombre: selectedPaciente.nombre, apellido: selectedPaciente.apellido, email: selectedPaciente.email || null, telefono: selectedPaciente.telefono || null },
-                    fecha: registroSesionForm.fecha,
-                    hora: registroSesionForm.hora_inicio,
-                    tipo_consulta: 'presencial',
-                    duracion: 50,
-                    notas: 'Sesión registrada desde expediente'
-                  };
-
-                  const resCita = await fetch('http://localhost:3000/api/citas/nueva', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-                    body: JSON.stringify(citaBody)
-                  });
-
-                  let jsonCita = null;
-                  try { jsonCita = await resCita.json(); } catch(e) { console.warn('No JSON in create-cita response', e); }
-                  if (!resCita.ok) {
-                    console.error('Error creando cita temporal:', resCita.status, jsonCita);
-                    notifications.error((jsonCita && (jsonCita.message || jsonCita.error)) || 'Error creando cita temporal');
-                    return;
-                  }
-
-                  if (!jsonCita || !jsonCita.success) {
-                    console.error('Create-cita response missing success flag:', jsonCita);
-                    notifications.error(jsonCita && (jsonCita.message || 'Error creando cita temporal') || 'Error creando cita temporal');
-                    return;
-                  }
-
-                  const citaCreada = jsonCita.data;
-
-                  // Marcar cita como completada
-                  const resPut = await fetch(`http://localhost:3000/api/citas/cita/${citaCreada.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-                    body: JSON.stringify({ estado: 'completada' })
-                  });
-
-                  let jsonPut = null;
-                  try { jsonPut = await resPut.json(); } catch(e) { console.warn('No JSON in put-cita response', e); }
-                  console.log('PUT /api/citas/cita/:id ->', resPut.status, jsonPut);
-                  if (!resPut.ok) {
-                    console.error('Error marcando cita como completada:', resPut.status, jsonPut);
-                    notifications.error((jsonPut && (jsonPut.message || jsonPut.error)) || 'Error marcando cita como completada');
-                    return;
-                  }
-
-                  if (!jsonPut || !jsonPut.success) {
-                    console.error('Put-cita response missing success flag:', jsonPut);
-                    notifications.error(jsonPut && (jsonPut.message || 'Error marcando cita como completada') || 'Error marcando cita como completada');
-                    return;
-                  }
-
-                  // 2) Registrar sesión usando la cita creada
-                  const sesionBody = {
-                    cita_id: citaCreada.id,
-                    desarrollo: registroSesionForm.desarrollo,
-                    conclusion: registroSesionForm.conclusion,
-                    tareas_asignadas: registroSesionForm.tareas_asignadas,
-                    emocion_predominante: registroSesionForm.emocion_predominante || '',
-                    // Enviar valores compatibles con el enum del backend
-                    riesgo_suicida: 'ninguno',
-                    // Enviar null si no hay escalas
-                    escalas_aplicadas: registroSesionForm.escalas_aplicadas && registroSesionForm.escalas_aplicadas.length ? registroSesionForm.escalas_aplicadas : null,
-                    siguiente_cita: registroSesionForm.siguiente_cita || null,
-                    privado: registroSesionForm.privado || false
-                  };
-
-                  console.log('🚀 Enviando POST /api/sesiones con body:', sesionBody);
-
-                  const resSesion = await fetch('http://localhost:3000/api/sesiones', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
-                    body: JSON.stringify(sesionBody)
-                  });
-
-                  let jsonSesion = null;
-                  try { jsonSesion = await resSesion.json(); } catch(e) { console.warn('No JSON in sesiones response', e); }
-                  console.log('POST /api/sesiones ->', resSesion.status, jsonSesion);
-
-                  if (!resSesion.ok) {
-                    console.error('Error registrando sesión:', resSesion.status, jsonSesion);
-                    notifications.error((jsonSesion && (jsonSesion.message || jsonSesion.error)) || 'Error registrando sesión');
-                    return;
-                  }
-
-                  if (!jsonSesion || !jsonSesion.success) {
-                    console.error('Sesion response missing success flag:', jsonSesion);
-                    notifications.error(jsonSesion && (jsonSesion.message || 'Error registrando sesión') || 'Error registrando sesión');
-                    return;
-                  }
-
-                  notifications.success('Sesión registrada exitosamente');
-                  setShowRegistrarSesionModal(false);
-
-                  // Refrescar expediente y sesiones
-                  fetchExpediente(selectedPaciente.id);
-
-                  // Emitir evento para sincronizar con la vista de Sesiones
-                  try { window.dispatchEvent(new CustomEvent('sesionRegistrada', { detail: { sesion: jsonSesion.data } })); } catch(e) { console.warn(e); }
-
-                } catch (err) {
-                  console.error('Error registrando sesión:', err);
-                  notifications.error('Error registrando sesión');
-                }
-              }}>
-                Guardar sesión
-              </button>
-
-              <button className="btn-danger" onClick={() => setShowRegistrarSesionModal(false)}>
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

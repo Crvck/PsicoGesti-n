@@ -43,8 +43,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- CONFIGURACIÓN DE CORS ---
+const allowedOrigins = ['http://localhost:3001', 'http://localhost:3002'];
+
 app.use(cors({
-  origin: 'http://localhost:3002', // Asegúrate que este sea el puerto de tu Frontend
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,
 }));
@@ -93,7 +100,7 @@ sequelize.sync({ force: false, alter: false })
         app.listen(PORT, () => {
           console.log(`Backend running on http://localhost:${PORT}`);
           console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
-          console.log(`CORS permitido para: http://localhost:3002`);
+          console.log(`CORS permitido para: ${allowedOrigins.join(', ')}`);
           console.log(`Endpoints disponibles:`);
           console.log(`  POST /api/dashboard/aprobar-solicitud (Verificado)`);
           console.log(`  POST /api/dashboard/denegar-solicitud (Verificado)`);

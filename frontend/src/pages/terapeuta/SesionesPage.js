@@ -446,11 +446,19 @@ const PsicologoSesiones = () => {
       let estadoCita = null;
       
       try {
+        console.log(`🔍 Obteniendo datos de la cita ID: ${citaIdNumber}`);
         const resCita = await fetch(`http://localhost:3000/api/citas/cita/${citaIdNumber}`, {
           headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
         });
         
-        if (resCita.ok) {
+        if (!resCita.ok) {
+          const errorText = await resCita.text();
+          console.error(`❌ Error HTTP ${resCita.status} al obtener cita:`, errorText);
+          
+          // Continuar sin los datos del terapeuta/coterapeuta si no se puede obtener la cita
+          console.warn('⚠️ Continuando sin datos de terapeuta/coterapeuta');
+          // No hacer return aquí, permitir que continúe la creación
+        } else {
           const jsonCita = await resCita.json();
           const citaCompleta = jsonCita.data || jsonCita;
           terapeutaId = citaCompleta.terapeuta_id || citaCompleta.psicologo_id || null;
@@ -458,19 +466,20 @@ const PsicologoSesiones = () => {
           estadoCita = citaCompleta.estado;
           console.log('✅ Datos de la cita obtenidos:', { terapeutaId, coterapeutaId, estadoCita });
           
-          // Validar el estado de la cita
-          if (estadoCita !== 'confirmada' && estadoCita !== 'completada') {
+          // Validar el estado de la cita solo si se obtuvo correctamente
+          if (estadoCita && estadoCita !== 'confirmada' && estadoCita !== 'completada') {
             notifications.error(`La cita debe estar en estado "confirmada" o "completada" para registrar la sesión. Estado actual: "${estadoCita}"`);
             return;
           }
-        } else {
-          notifications.error('No se pudo obtener la información de la cita');
-          return;
         }
       } catch (err) {
         console.error('❌ Error obteniendo datos de la cita:', err);
-        notifications.error('Error al obtener los datos de la cita');
-        return;
+        if (err.message === 'Failed to fetch') {
+          notifications.warning('No se puede verificar el estado de la cita. Continuando con el registro...');
+        } else {
+          notifications.warning(`Error al obtener los datos de la cita: ${err.message}. Continuando...`);
+        }
+        // No hacer return, permitir que continúe el registro
       }
 
       // Registrar sesión

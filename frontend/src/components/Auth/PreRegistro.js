@@ -207,26 +207,6 @@ const PreRegistro = () => {
             {/* PASO 1: DATOS PERSONALES */}
             {paso === 1 && (
               <div>
-                <div className="switch-container">
-                  <div 
-                    className={`switch-bg ${tipoRegistro === 'externo' ? 'slide-right' : ''}`} 
-                  ></div>
-                  <button 
-                    type="button" 
-                    className={`switch-btn ${tipoRegistro === 'interno' ? 'active' : ''}`}
-                    onClick={() => handleSwitch('interno')}
-                  >
-                    Estudiante CESUN
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`switch-btn ${tipoRegistro === 'externo' ? 'active' : ''}`}
-                    onClick={() => handleSwitch('externo')}
-                  >
-                    Foráneo / Fundación
-                  </button>
-                </div>
-
                 <div className="form-grid-2">
                   <div className="form-group">
                     <label className="form-label">Nombre Completo</label>

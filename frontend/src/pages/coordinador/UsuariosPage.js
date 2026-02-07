@@ -15,10 +15,6 @@ const CoordinadorUsuarios = () => {
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('nuevo');
   const [showRecordatorioModal, setShowRecordatorioModal] = useState(false);
-  const [showEstadisticasModal, setShowEstadisticasModal] = useState(false);
-  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState(null);
-  const [estadisticasUsuario, setEstadisticasUsuario] = useState(null);
-  const [loadingEstadisticas, setLoadingEstadisticas] = useState(false);
   const [recordatorioConfig, setRecordatorioConfig] = useState({
     recordatorio_citas_activo: true,
     recordatorio_citas_frecuencia_dias: 7,
@@ -35,7 +31,8 @@ const CoordinadorUsuarios = () => {
     especialidad: '',
     fundacion_id: '',
     activo: true,
-    password: 'P@ssw0rd123' // contraseña temporal por defecto
+    password: 'P@ssw0rd123', // contraseña temporal por defecto
+    cambiarPassword: false // checkbox para cambiar contraseña en edición
   });
 
   useEffect(() => {
@@ -61,7 +58,6 @@ const CoordinadorUsuarios = () => {
       }
 
       const data = await res.json();
-      console.log('Usuarios recibidos:', data);
       setUsuarios(data);
     } catch (error) {
       console.error('Error al obtener usuarios:', error);
@@ -99,39 +95,6 @@ const CoordinadorUsuarios = () => {
     } finally {
       setRecordatorioLoading(false);
     }
-  };
-
-  const fetchEstadisticasUsuario = async (userId) => {
-    try {
-      setLoadingEstadisticas(true);
-      const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/users/${userId}/estadisticas`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        }
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        notifications.error(err.message || 'Error al obtener estadísticas');
-        return;
-      }
-
-      const data = await res.json();
-      setEstadisticasUsuario(data.data);
-      setShowEstadisticasModal(true);
-    } catch (error) {
-      console.error('Error al obtener estadísticas:', error);
-      notifications.error('Error al obtener estadísticas');
-    } finally {
-      setLoadingEstadisticas(false);
-    }
-  };
-
-  const handleClickUsuario = (usuario) => {
-    setUsuarioSeleccionado(usuario);
-    fetchEstadisticasUsuario(usuario.id);
   };
 
   const handleGuardarRecordatorioConfig = async () => {
@@ -255,10 +218,16 @@ const CoordinadorUsuarios = () => {
         notifications.error('Error creando usuario');
       }
     } else {
-      // Editar usuario: enviar al backend (sin password a menos que se quiera cambiar)
+      // Editar usuario: enviar al backend
       try {
         const token = localStorage.getItem('token');
-        const { password, ...dataToSend } = formData; // Excluir password al editar
+        // En modo edición, solo incluir password si cambiarPassword es true
+        const dataToSend = { ...formData };
+        if (!dataToSend.cambiarPassword) {
+          delete dataToSend.password;
+        }
+        delete dataToSend.cambiarPassword; // no enviar el campo checkbox al backend
+        
         const res = await fetch(`http://localhost:3000/api/users/${formData.id}`, {
           method: 'PUT',
           headers: {
@@ -321,9 +290,12 @@ const CoordinadorUsuarios = () => {
   };
 
   const editarUsuario = (usuario) => {
-    // NO incluir password al editar - solo se debe cambiar explícitamente
-    const { password, ...usuarioSinPassword } = usuario;
-    setFormData(usuarioSinPassword);
+    // Mapear fecha si es string
+    const mapped = {
+      ...usuario,
+      password: 'P@ssw0rd123'
+    };
+    setFormData(mapped);
     setModalType('editar');
     setShowModal(true);
   };
@@ -368,7 +340,8 @@ const CoordinadorUsuarios = () => {
       especialidad: '',
       fundacion_id: '',
       activo: true,
-      password: 'P@ssw0rd123'
+      password: 'P@ssw0rd123',
+      cambiarPassword: false
     });
   };
 
@@ -532,8 +505,6 @@ const CoordinadorUsuarios = () => {
               <th>Rol</th>
               <th>Especialidad</th>
               <th>Fecha Registro</th>
-              <th>Horas Liberadas</th>
-              <th>Horas Objetivo</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
@@ -543,12 +514,7 @@ const CoordinadorUsuarios = () => {
               const rolInfo = getRolLabel(usuario.rol);
               
               return (
-                <tr 
-                  key={usuario.id}
-                  onClick={() => handleClickUsuario(usuario)}
-                  style={{ cursor: 'pointer' }}
-                  className="hoverable-row"
-                >
+                <tr key={usuario.id}>
                   <td>
                     <div className="flex-row align-center gap-10">
                       <div className="avatar">
@@ -574,23 +540,13 @@ const CoordinadorUsuarios = () => {
                     {new Date(usuario.fecha_registro).toLocaleDateString()}
                   </td>
                   <td>
-                    <div className="font-bold" style={{ color: 'var(--grnb)' }}>
-                      {usuario.horas_liberadas !== undefined ? `${usuario.horas_liberadas}h` : '-'}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="font-bold" style={{ color: 'var(--blu)' }}>
-                      {usuario.horas_objetivo !== undefined ? `${usuario.horas_objetivo}h` : '-'}
-                    </div>
-                  </td>
-                  <td>
                     {usuario.activo ? (
                       <span className="badge badge-success">Activo</span>
                     ) : (
                       <span className="badge badge-danger">Inactivo</span>
                     )}
                   </td>
-                  <td onClick={(e) => e.stopPropagation()}>
+                  <td>
                     <div className="flex-row gap-5">
                       <button 
                         className="btn-text"
@@ -759,15 +715,43 @@ const CoordinadorUsuarios = () => {
                 
                 {formData.rol === 'terapeuta' && (
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                    <label>Contraseña Temporal</label>
-                    <input
-                      type="text"
-                      name="password"
-                      value={formData.password}
-                      className="input-field"
-                      readOnly
-                    />
-                    <p className="text-small mt-5">El usuario deberá cambiar la contraseña en su primer inicio</p>
+                    {modalType === 'nuevo' ? (
+                      <>
+                        <label>Contraseña Temporal</label>
+                        <input
+                          type="text"
+                          name="password"
+                          value={formData.password}
+                          className="input-field"
+                          readOnly
+                        />
+                        <p className="text-small mt-5">El usuario deberá cambiar la contraseña en su primer inicio</p>
+                      </>
+                    ) : (
+                      <>
+                        <label className="flex-row align-center gap-10">
+                          <input
+                            type="checkbox"
+                            name="cambiarPassword"
+                            checked={formData.cambiarPassword}
+                            onChange={handleInputChange}
+                          />
+                          <span>Cambiar contraseña</span>
+                        </label>
+                        {formData.cambiarPassword && (
+                          <div style={{ marginTop: '10px' }}>
+                            <input
+                              type="password"
+                              name="password"
+                              placeholder="Nueva contraseña"
+                              value={formData.password}
+                              onChange={handleInputChange}
+                              className="input-field"
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
                 
@@ -890,251 +874,6 @@ const CoordinadorUsuarios = () => {
                 type="button"
                 className="btn-danger"
                 onClick={() => setShowRecordatorioModal(false)}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Estadísticas de Usuario */}
-      {showEstadisticasModal && estadisticasUsuario && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: '1000px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header">
-              <h3>Estadísticas de {estadisticasUsuario.usuario.nombre} {estadisticasUsuario.usuario.apellido}</h3>
-              <button className="modal-close" onClick={() => setShowEstadisticasModal(false)}>×</button>
-            </div>
-
-            <div className="modal-content">
-              {/* Información del Usuario */}
-              <div style={{ marginBottom: '20px', padding: '15px', background: 'var(--blud)', borderRadius: '8px' }}>
-                <div className="flex-row justify-between align-center">
-                  <div>
-                    <div className="font-bold" style={{ fontSize: '18px' }}>
-                      {estadisticasUsuario.usuario.nombre} {estadisticasUsuario.usuario.apellido}
-                    </div>
-                    <div className="text-small">{estadisticasUsuario.usuario.email}</div>
-                  </div>
-                  <div>
-                    <span className={`badge badge-${getRolLabel(estadisticasUsuario.usuario.rol).color}`}>
-                      {getRolLabel(estadisticasUsuario.usuario.rol).text}
-                    </span>
-                  </div>
-                </div>
-                {estadisticasUsuario.usuario.especialidad && (
-                  <div className="text-small mt-5">
-                    <strong>Especialidad:</strong> {estadisticasUsuario.usuario.especialidad}
-                  </div>
-                )}
-              </div>
-
-              {/* Estadísticas Generales */}
-              <div className="grid-4 mb-20">
-                <div className="card">
-                  <h4>Total Citas</h4>
-                  <div className="stat-value">{estadisticasUsuario.estadisticas.total_citas}</div>
-                </div>
-                <div className="card">
-                  <h4>Completadas</h4>
-                  <div className="stat-value" style={{ color: 'var(--grnb)' }}>
-                    {estadisticasUsuario.estadisticas.citas_completadas}
-                  </div>
-                  <div className="text-small">{estadisticasUsuario.estadisticas.tasa_completitud}%</div>
-                </div>
-                <div className="card">
-                  <h4>Canceladas</h4>
-                  <div className="stat-value" style={{ color: 'var(--rr)' }}>
-                    {estadisticasUsuario.estadisticas.citas_canceladas}
-                  </div>
-                  <div className="text-small">{estadisticasUsuario.estadisticas.tasa_cancelacion}%</div>
-                </div>
-                <div className="card">
-                  <h4>Horas Liberadas</h4>
-                  <div className="stat-value" style={{ color: 'var(--blu)' }}>
-                    {estadisticasUsuario.estadisticas.horas_liberadas}h
-                  </div>
-                  <div className="text-small">
-                    de {estadisticasUsuario.estadisticas.horas_objetivo}h objetivo
-                  </div>
-                </div>
-              </div>
-
-              {/* Motivos de Cancelación */}
-              {estadisticasUsuario.motivos_cancelacion.length > 0 && (
-                <div className="mb-20">
-                  <h4 className="mb-10">Motivos de Cancelación</h4>
-                  <div className="table-container">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Motivo</th>
-                          <th>Cantidad</th>
-                          <th>Porcentaje</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {estadisticasUsuario.motivos_cancelacion.map((item, idx) => {
-                          const total = estadisticasUsuario.motivos_cancelacion.reduce((sum, m) => sum + m.cantidad, 0);
-                          const porcentaje = ((item.cantidad / total) * 100).toFixed(1);
-                          return (
-                            <tr key={idx}>
-                              <td>{item.motivo}</td>
-                              <td>{item.cantidad}</td>
-                              <td>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <div style={{ 
-                                    width: '100px', 
-                                    height: '8px', 
-                                    background: '#e0e0e0', 
-                                    borderRadius: '4px',
-                                    overflow: 'hidden'
-                                  }}>
-                                    <div style={{ 
-                                      width: `${porcentaje}%`, 
-                                      height: '100%', 
-                                      background: 'var(--rr)',
-                                      transition: 'width 0.3s ease'
-                                    }}></div>
-                                  </div>
-                                  <span>{porcentaje}%</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Pacientes Asignados */}
-              <div className="mb-20">
-                <h4 className="mb-10">
-                  Pacientes Asignados Actualmente ({estadisticasUsuario.pacientes_asignados.length})
-                </h4>
-                {estadisticasUsuario.pacientes_asignados.length > 0 ? (
-                  <div className="table-container" style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Nombre</th>
-                          <th>Género</th>
-                          <th>Edad</th>
-                          <th>Fecha Asignación</th>
-                          <th>Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {estadisticasUsuario.pacientes_asignados.map((p) => (
-                          <tr key={p.paciente_id}>
-                            <td>{p.nombre} {p.apellido}</td>
-                            <td>{p.genero}</td>
-                            <td>{p.edad} años</td>
-                            <td>{new Date(p.fecha_asignacion).toLocaleDateString()}</td>
-                            <td>
-                              <span className={`badge badge-${p.activo ? 'success' : 'danger'}`}>
-                                {p.activo ? 'Activo' : 'Inactivo'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-center">No tiene pacientes asignados actualmente</p>
-                )}
-              </div>
-
-              {/* Historial de Pacientes */}
-              <div className="mb-20">
-                <h4 className="mb-10">
-                  Historial de Pacientes ({estadisticasUsuario.historial_pacientes.length})
-                </h4>
-                {estadisticasUsuario.historial_pacientes.length > 0 ? (
-                  <div className="table-container" style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Nombre</th>
-                          <th>Género</th>
-                          <th>Edad</th>
-                          <th>Fecha Asignación</th>
-                          <th>Fecha Fin</th>
-                          <th>Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {estadisticasUsuario.historial_pacientes.map((p) => (
-                          <tr key={p.asignacion_id}>
-                            <td>{p.nombre} {p.apellido}</td>
-                            <td>{p.genero}</td>
-                            <td>{p.edad} años</td>
-                            <td>{new Date(p.fecha_asignacion).toLocaleDateString()}</td>
-                            <td>{p.fecha_fin ? new Date(p.fecha_fin).toLocaleDateString() : '-'}</td>
-                            <td>
-                              <span className={`badge badge-${p.estado === 'activa' ? 'success' : 'secondary'}`}>
-                                {p.estado}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-center">No tiene historial de pacientes</p>
-                )}
-              </div>
-
-              {/* Sesiones Completadas */}
-              <div className="mb-20">
-                <h4 className="mb-10">
-                  Últimas Sesiones Completadas ({estadisticasUsuario.sesiones_completadas.length})
-                </h4>
-                {estadisticasUsuario.sesiones_completadas.length > 0 ? (
-                  <div className="table-container" style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Fecha</th>
-                          <th>Hora</th>
-                          <th>Paciente</th>
-                          <th>Tipo</th>
-                          <th>Duración</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {estadisticasUsuario.sesiones_completadas.map((s) => (
-                          <tr key={s.cita_id}>
-                            <td>{new Date(s.fecha).toLocaleDateString()}</td>
-                            <td>{s.hora}</td>
-                            <td>{s.paciente_nombre}</td>
-                            <td>
-                              <span className={`badge badge-${s.tipo_consulta === 'presencial' ? 'primary' : 'info'}`}>
-                                {s.tipo_consulta}
-                              </span>
-                            </td>
-                            <td>{s.duracion} min</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-center">No tiene sesiones completadas</p>
-                )}
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowEstadisticasModal(false)}
               >
                 Cerrar
               </button>

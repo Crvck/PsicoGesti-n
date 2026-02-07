@@ -312,7 +312,8 @@ class DatabaseService {
                         total_sesiones,
                         numero_sesion,
                         serie_id,
-                        created_at
+                        created_at,
+                        updated_at
                     ) VALUES (
                         :paciente_id,
                         :psicologo_id,
@@ -327,6 +328,7 @@ class DatabaseService {
                         :total_sesiones,
                         :numero_sesion,
                         :serie_id,
+                        NOW(),
                         NOW()
                     )
                 `, {

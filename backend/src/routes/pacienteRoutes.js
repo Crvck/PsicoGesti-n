@@ -273,28 +273,23 @@ router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeu
                 TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
                 e.motivo_consulta,
                 DATE(p.created_at) as fecha_ingreso,
-                COUNT(DISTINCT c.id) as sesiones_completadas,
+                COUNT(DISTINCT c.id) as sesiones_totales,
+                SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as sesiones_completadas,
                 CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
-                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre,
-                CASE 
-                    WHEN COUNT(DISTINCT c.id) >= 15 THEN 85
-                    WHEN COUNT(DISTINCT c.id) >= 10 THEN 70
-                    WHEN COUNT(DISTINCT c.id) >= 5 THEN 50
-                    ELSE 30
-                END as progreso_estimado
+                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre
             FROM pacientes p
             LEFT JOIN expedientes e ON p.id = e.paciente_id
             LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
             LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
             LEFT JOIN users u_bec ON a.becario_id = u_bec.id
-            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado = 'completada'
+            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado != 'cancelada'
             WHERE p.activo = true
             -- EXCLUIR pacientes marcados como no aprobados en los últimos 30 días
             AND (p.ultimo_no_aprobado IS NULL OR p.ultimo_no_aprobado < DATE_SUB(CURDATE(), INTERVAL 30 DAY))
             GROUP BY p.id, e.motivo_consulta, u_psi.nombre, u_psi.apellido, u_bec.nombre, u_bec.apellido
-            HAVING COUNT(DISTINCT c.id) >= 3
-            ORDER BY COUNT(DISTINCT c.id) DESC
-            LIMIT 10
+            HAVING COUNT(DISTINCT c.id) > 0
+               AND SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) = COUNT(DISTINCT c.id)
+            ORDER BY COUNT(DISTINCT c.id) DESC, paciente_nombre ASC
         `;
         
         console.log('📊 Ejecutando query de candidatos a alta...');

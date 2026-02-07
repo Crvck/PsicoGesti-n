@@ -223,6 +223,14 @@ class AltaController {
                         [
                             literal("(SELECT COUNT(DISTINCT c.id) FROM citas c WHERE c.paciente_id = Alta.paciente_id AND c.estado = 'completada')"),
                             'total_sesiones'
+                        ],
+                        [
+                            literal("(SELECT CONCAT(u.nombre, ' ', u.apellido) FROM asignaciones a JOIN users u ON a.psicologo_id = u.id WHERE a.paciente_id = Alta.paciente_id ORDER BY a.updated_at DESC LIMIT 1)"),
+                            'terapeuta_nombre'
+                        ],
+                        [
+                            literal("(SELECT CONCAT(u.nombre, ' ', u.apellido) FROM asignaciones a JOIN users u ON a.becario_id = u.id WHERE a.paciente_id = Alta.paciente_id ORDER BY a.updated_at DESC LIMIT 1)"),
+                            'coterapeuta_nombre'
                         ]
                     ]
                 },
@@ -347,12 +355,26 @@ class AltaController {
                     [fn('MAX', col('fecha_alta')), 'ultima_alta']
                 ]
             });
+
+            const [promedioRows] = await sequelize.query(`
+                SELECT AVG(total_citas) AS promedio_citas_mensuales
+                FROM (
+                    SELECT COUNT(*) AS total_citas
+                    FROM citas
+                    WHERE estado IN ('programada', 'confirmada', 'completada')
+                    GROUP BY YEAR(fecha), MONTH(fecha)
+                ) AS mensual
+            `);
+
+            const promedioCitasMensuales = Number(promedioRows?.[0]?.promedio_citas_mensuales || 0);
+            const totalesData = totales ? totales.get({ plain: true }) : {};
+            totalesData.promedio_citas_mensuales = promedioCitasMensuales;
             
             res.json({
                 success: true,
                 data: {
                     estadisticas,
-                    totales
+                    totales: totalesData
                 }
             });
             

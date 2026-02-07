@@ -143,8 +143,14 @@ const CoordinadorDashboard = () => {
 
   // --- MANEJO DEL MODAL ---
   const handleAbrirModal = (solicitud) => {
-    setSelectedSolicitud(solicitud);
-    const rolSugerido = solicitud.rol === 'Practicante' ? 'coterapeuta' : '';
+    const solicitudNormalizada = {
+      ...solicitud,
+      motivo: solicitud.motivo || solicitud.comentario || solicitud.motivo_solicitud || solicitud.descripcion || '',
+      disponibilidad: solicitud.disponibilidad || solicitud.disponibilidad_horaria || null,
+      institucion: solicitud.institucion || solicitud.institucion_procedencia || (solicitud.matricula ? 'CESUN' : '')
+    };
+    setSelectedSolicitud(solicitudNormalizada);
+    const rolSugerido = solicitudNormalizada.rol === 'Practicante' ? 'coterapeuta' : '';
     setRolAsignar(rolSugerido); 
     setShowModal(true);
   };
@@ -225,6 +231,36 @@ const CoordinadorDashboard = () => {
     const start = (solicitudesPage - 1) * solicitudesPerPage;
     return solicitudes.slice(start, start + solicitudesPerPage);
   }, [solicitudes, solicitudesPage, solicitudesPerPage]);
+
+  const parseDisponibilidad = (rawDisponibilidad) => {
+    if (!rawDisponibilidad) return [];
+    if (Array.isArray(rawDisponibilidad)) return rawDisponibilidad;
+    try {
+      const parsed = JSON.parse(rawDisponibilidad);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.error('Error parseando disponibilidad:', error);
+      return [];
+    }
+  };
+
+  const renderDisponibilidad = (rawDisponibilidad) => {
+    const disponibilidadLista = parseDisponibilidad(rawDisponibilidad);
+    if (!disponibilidadLista.length) return 'Sin información';
+    return disponibilidadLista
+      .map((item) => {
+        const dia = item.dia_semana || item.dia || 'Día';
+        const inicio = item.hora_inicio || item.horaInicio || '00:00';
+        const fin = item.hora_fin || item.horaFin || '00:00';
+        return `${dia}: ${inicio} - ${fin}`;
+      })
+      .join(' • ');
+  };
+
+  const obtenerMotivoSolicitud = (solicitud) => {
+    if (!solicitud) return 'No especificado';
+    return solicitud.motivo || solicitud.comentario || solicitud.motivo_solicitud || solicitud.descripcion || 'No especificado';
+  };
 
   useEffect(() => {
     setSolicitudesPage(prev => Math.min(prev, totalSolicitudesPages));
@@ -470,7 +506,7 @@ const CoordinadorDashboard = () => {
                    <FiMapPin className="stat-icon" style={{ fontSize: '16px' }} />
                    <div className="stat-content">
                     <div className="stat-label">Institución</div>
-                    <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.institucion || 'N/A'}</div>
+                    <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.institucion || (selectedSolicitud.matricula ? 'CESUN' : 'N/A')}</div>
                    </div>
                 </div>
               </div>
@@ -478,7 +514,14 @@ const CoordinadorDashboard = () => {
               <div className="form-group">
                 <label className="stat-label"><FiBriefcase style={{ marginRight: '5px' }}/> Motivo de solicitud</label>
                 <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', fontSize: '13px', color: 'var(--white)' }}>
-                  {selectedSolicitud.motivo || 'No especificado'}
+                  {obtenerMotivoSolicitud(selectedSolicitud)}
+                </div>
+              </div>
+
+              <div className="form-group mt-15">
+                <label className="stat-label"><FiClock style={{ marginRight: '5px' }}/> Disponibilidad</label>
+                <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', fontSize: '13px', color: 'var(--white)' }}>
+                  {renderDisponibilidad(selectedSolicitud.disponibilidad || selectedSolicitud.disponibilidad_horaria)}
                 </div>
               </div>
 

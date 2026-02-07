@@ -4,7 +4,7 @@ import {
   FiSearch, FiCalendar, FiUser, FiFileText, FiDownload,
   FiUsers, FiActivity, FiBarChart2, FiClock,
   FiAlertTriangle, FiUserCheck, FiUserX, FiArchive,
-  FiRotateCw, FiPause, FiAlertCircle, FiStar
+  FiRotateCw, FiPause, FiAlertCircle
 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
@@ -18,6 +18,7 @@ const CoordinadorAltas = () => {
   const [loading, setLoading] = useState(true);
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
+  const [busquedaPaciente, setBusquedaPaciente] = useState('');
   
   // Estados para el modal de dar de alta
   const [showModalAlta, setShowModalAlta] = useState(false);
@@ -94,12 +95,13 @@ const CoordinadorAltas = () => {
           motivo_consulta: paciente.motivo_consulta || 'Sin información',
           fecha_ingreso: paciente.fecha_ingreso,
           sesiones_completadas: paciente.sesiones_completadas || 0,
-          progreso: Math.min(100, paciente.progreso_estimado || 0),
+          sesiones_totales: paciente.sesiones_totales || 0,
+          progreso: paciente.sesiones_totales
+            ? Math.round((paciente.sesiones_completadas / paciente.sesiones_totales) * 100)
+            : 0,
           terapeuta: paciente.terapeuta_nombre || paciente.psicologo_nombre || 'Sin asignar',
           coterapeuta: paciente.coterapeuta_nombre || paciente.becario_nombre || 'No asignado',
-          recomendacion: paciente.sesiones_completadas >= 10 
-            ? 'Posible alta en 1-2 sesiones más' 
-            : 'Evaluar en próxima revisión'
+          recomendacion: 'Listo para alta'
         })));
       }
     } catch (error) {
@@ -347,15 +349,37 @@ const CoordinadorAltas = () => {
     }
   };
 
-  const calcularSatisfaccion = (paciente) => {
-    if (paciente.tipo_alta === 'terapeutica') {
-      return Math.min(5, Math.floor((paciente.sesiones_totales || 0) / 4) + 3);
-    } else if (paciente.tipo_alta === 'abandono') {
-      return 1;
-    } else {
-      return 3;
+
+  const verDetallesAlta = async (alta) => {
+    try {
+      console.log(`📋 Solicitando detalles del alta ID: ${alta.id}`);
+      const response = await ApiService.get(`/altas/${alta.id}`);
+      console.log('📊 Respuesta de detalles:', response);
+      
+      if (response.success) {
+        setSelectedAltaDetalles(response.data);
+        setShowModalDetalles(true);
+      } else {
+        notifications.error('No se pudieron cargar los detalles del alta');
+      }
+    } catch (error) {
+      console.error('❌ Error al cargar detalles:', error);
+      notifications.error('Error al cargar detalles: ' + error.message);
     }
   };
+
+  const altasOrdenadas = [...altas].sort((a, b) => {
+    const fechaA = new Date(a.fecha_alta);
+    const fechaB = new Date(b.fecha_alta);
+    return fechaB - fechaA;
+  });
+
+  const altasFiltradas = busquedaPaciente.trim()
+    ? altasOrdenadas.filter((alta) => {
+        const nombreCompleto = `${alta.paciente_nombre || ''} ${alta.paciente_apellido || ''}`.toLowerCase();
+        return nombreCompleto.includes(busquedaPaciente.trim().toLowerCase());
+      })
+    : altasOrdenadas.slice(0, 10);
 
   if (loading && altas.length === 0) {
     return (
@@ -384,7 +408,7 @@ const CoordinadorAltas = () => {
             </div>
             <div className="stat-content">
               <div className="stat-value">{estadisticas.totales?.total_altas || 0}</div>
-              <div className="stat-label">Total de Altas</div>
+              <div className="stat-label">Pacientes en Altas</div>
             </div>
           </div>
         </div>
@@ -410,9 +434,9 @@ const CoordinadorAltas = () => {
             </div>
             <div className="stat-content">
               <div className="stat-value">
-                {estadisticas.totales?.promedio_sesiones_global || 0}
+                {Number(estadisticas.totales?.promedio_citas_mensuales || 0).toFixed(1)}
               </div>
-              <div className="stat-label">Sesiones Promedio</div>
+              <div className="stat-label">Citas Promedio/Mes</div>
             </div>
           </div>
         </div>
@@ -514,7 +538,7 @@ const CoordinadorAltas = () => {
                 
                 <div className="mb-15">
                   <div className="card-progress-label">
-                    <span>{paciente.sesiones_completadas} sesiones</span>
+                    <span>{paciente.sesiones_completadas}/{paciente.sesiones_totales} sesiones</span>
                     <span>{paciente.progreso}%</span>
                   </div>
                   <div className="progress-container">
@@ -572,8 +596,21 @@ const CoordinadorAltas = () => {
       {/* Historial de Altas */}
       <div className="dashboard-section">
         <div className="section-header">
-          <h3>Historial de Altas ({altas.length})</h3>
+          <h3>
+            Historial de Altas ({altasFiltradas.length} de {altas.length})
+          </h3>
           <div className="flex-row gap-10">
+            <div className="search-container">
+              <FiSearch className="search-icon" />
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Buscar por nombre del paciente"
+                value={busquedaPaciente}
+                onChange={(e) => setBusquedaPaciente(e.target.value)}
+                style={{ width: '260px' }}
+              />
+            </div>
             <select 
               value={filtroEstado} 
               onChange={(e) => setFiltroEstado(e.target.value)}
@@ -586,8 +623,6 @@ const CoordinadorAltas = () => {
               <option value="traslado">Traslados</option>
               <option value="graduacion">Graduaciones</option>
               <option value="no_continua">No Continúa</option>
-              <option value="no_aprobado">No Aprobado</option>
-              <option value="otro">Otro</option>
             </select>
             
             <select 
@@ -628,6 +663,11 @@ const CoordinadorAltas = () => {
           </div>
         ) : (
           <div className="table-container">
+            {!busquedaPaciente && altas.length > 10 && (
+              <div className="alert-message info mb-15">
+                Mostrando las últimas 10 altas. Usa el buscador para ver más.
+              </div>
+            )}
             <table className="data-table">
               <thead>
                 <tr>
@@ -636,14 +676,12 @@ const CoordinadorAltas = () => {
                   <th>Fecha Alta</th>
                   <th>Sesiones</th>
                   <th>Profesional</th>
-                  <th>Acciones</th>
+                  <th>Coterapeuta</th>
                 </tr>
               </thead>
               <tbody>
-                {altas.map((alta) => {
+                {altasFiltradas.map((alta) => {
                   const tipoInfo = getTipoAltaLabel(alta.tipo_alta);
-                  const satisfaccion = calcularSatisfaccion(alta);
-                  
                   return (
                     <tr key={alta.id}>
                       <td>
@@ -658,6 +696,12 @@ const CoordinadorAltas = () => {
                             <div className="text-small">
                               {alta.motivo_detallado?.substring(0, 30) || 'Sin motivo específico'}...
                             </div>
+                            <button 
+                              className="btn-text mt-5"
+                              onClick={() => verDetallesAlta(alta)}
+                            >
+                              <FiFileText /> Ver
+                            </button>
                           </div>
                         </div>
                       </td>
@@ -679,43 +723,13 @@ const CoordinadorAltas = () => {
                         <div className="text-small">sesiones</div>
                       </td>
                       <td>
-                        <div>
-                          <div className="text-small">Satisfacción:</div>
-                          <div className="flex-row align-center gap-5">
-                            {[...Array(satisfaccion)].map((_, i) => (
-                              <FiStar key={i} className="star-filled" />
-                            ))}
-                            {[...Array(5 - satisfaccion)].map((_, i) => (
-                              <FiStar key={i + satisfaccion} className="star-empty" />
-                            ))}
-                            <span className="ml-5">({satisfaccion}/5)</span>
-                          </div>
+                        <div className="font-bold">
+                          {alta.terapeuta_nombre || 'No asignado'}
                         </div>
                       </td>
                       <td>
-                        <div className="flex-row gap-5">
-                          <button 
-                            className="btn-text"
-                            onClick={async () => {
-                              try {
-                                console.log(`📋 Solicitando detalles del alta ID: ${alta.id}`);
-                                const response = await ApiService.get(`/altas/${alta.id}`);
-                                console.log('📊 Respuesta de detalles:', response);
-                                
-                                if (response.success) {
-                                  setSelectedAltaDetalles(response.data);
-                                  setShowModalDetalles(true);
-                                } else {
-                                  notifications.error('No se pudieron cargar los detalles del alta');
-                                }
-                              } catch (error) {
-                                console.error('❌ Error al cargar detalles:', error);
-                                notifications.error('Error al cargar detalles: ' + error.message);
-                              }
-                            }}
-                          >
-                            <FiFileText /> Ver
-                          </button>
+                        <div className="font-bold">
+                          {alta.coterapeuta_nombre || 'No asignado'}
                         </div>
                       </td>
                     </tr>
@@ -766,7 +780,6 @@ const CoordinadorAltas = () => {
                       <option value="traslado">Traslado</option>
                       <option value="graduacion">Graduación</option>
                       <option value="no_continua">No Continúa</option>
-                      <option value="otro">Otro</option>
                     </select>
                   </div>
                   
@@ -1023,7 +1036,6 @@ const CoordinadorAltas = () => {
                         <option value="traslado">Traslado</option>
                         <option value="graduacion">Graduación</option>
                         <option value="no_continua">No Continúa</option>
-                        <option value="otro">Otro</option>
                       </select>
                     </div>
                     

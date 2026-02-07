@@ -702,7 +702,11 @@ class DashboardController {
         
         try {
             await Solicitud.update(
-                { estado: 'RECHAZADO' },
+                { 
+                    estado: 'RECHAZADO',
+                    fecha_resolucion: new Date(),
+                    aprobado_por: req.user.id
+                },
                 { where: { id: solicitudId }, validate: false }
             );
 
@@ -783,7 +787,11 @@ class DashboardController {
                 }
             }
 
-            await solicitud.update({ estado: 'APROBADA' }, { transaction, validate: false });
+            await solicitud.update({ 
+                estado: 'APROBADA',
+                fecha_resolucion: new Date(),
+                aprobado_por: req.user.id
+            }, { transaction, validate: false });
 
             await transaction.commit();
             console.log("--> Transacción completada y usuario creado.");

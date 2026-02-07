@@ -144,7 +144,12 @@ class DashboardService {
       telefono: sol.telefono || '',
       rol: sol.rol_solicitado || sol.rol || 'No especificado',
       fecha: sol.fecha_solicitud || sol.fecha || new Date().toISOString(),
-      estado: sol.estado || 'PENDIENTE'
+      estado: sol.estado || 'PENDIENTE',
+      matricula: sol.matricula || '',
+      institucion: sol.institucion_procedencia || sol.institucion || '',
+      motivo: sol.motivo || sol.comentario || sol.motivo_solicitud || '',
+      disponibilidad: sol.disponibilidad_horaria || sol.disponibilidad || null,
+      horasALiberar: sol.horas_a_liberar || sol.horasALiberar || ''
     }));
     const solicitudesFinales = solicitudesTransformadas;
     console.log('Solicitudes finales:', solicitudesFinales);

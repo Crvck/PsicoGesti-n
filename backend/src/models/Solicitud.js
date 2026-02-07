@@ -11,6 +11,8 @@ const Solicitud = sequelize.define('Solicitud', {
   horas_a_liberar: { type: DataTypes.INTEGER, allowNull: false },
   motivo: { type: DataTypes.TEXT },
   estado: { type: DataTypes.ENUM('PENDIENTE', 'APROBADO', 'RECHAZADO'), defaultValue: 'PENDIENTE' },
+  fecha_resolucion: { type: DataTypes.DATE, allowNull: true },
+  aprobado_por: { type: DataTypes.INTEGER, allowNull: true },
   disponibilidad_horaria: { type: DataTypes.JSON, allowNull: true, comment: 'JSON con los días y horarios disponibles del solicitante' }
 }, {
   tableName: 'solicitudes_ingreso',

@@ -80,6 +80,11 @@ const CoordinadorAgenda = () => {
   const [disponibilidadCurrentPage, setDisponibilidadCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
+  // Nuevo sistema de filtros tipo chips
+  const [terapeutasSeleccionados, setTerapeutasSeleccionados] = useState([]); // Array de {id, nombre}
+  const [searchTerapeutaInput, setSearchTerapeutaInput] = useState('');
+  const [showTerapeutasDropdown, setShowTerapeutasDropdown] = useState(false);
+
   // Colores fijos para terapeutas y citas
   const coloresTerapeutas = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
   const coloresCitas = ['#1F85BA', '#29ce9b', '#ffa631', '#fa3144', '#7c4dff', '#00bcd4', '#8bc34a', '#ff7043'];
@@ -365,8 +370,12 @@ const CoordinadorAgenda = () => {
   };
 
   const filteredCitas = citas.filter(cita => {
-    // Convertir a número para comparación correcta
-    const matchesTerapeuta = !filterTerapeuta || Number(cita.terapeuta_id) === Number(filterTerapeuta);
+    // Si hay terapeutas seleccionados, filtrar por ellos (OR logic - mostrar si es cualquiera de ellos)
+    let matchesTerapeuta = true;
+    if (terapeutasSeleccionados.length > 0) {
+      matchesTerapeuta = terapeutasSeleccionados.some(t => Number(cita.terapeuta_id) === Number(t.id));
+    }
+    
     const matchesEstado = !filterEstado || cita.estado === filterEstado;
     const matchesTipoConsulta = !filtrosAvanzados.tipo_consulta || cita.tipo_consulta === filtrosAvanzados.tipo_consulta;
     let matchesFechas = true;
@@ -396,7 +405,7 @@ const CoordinadorAgenda = () => {
   };
   
   const activeFiltersCount = [
-    filterTerapeuta ? 1 : 0,
+    terapeutasSeleccionados.length > 0 ? terapeutasSeleccionados.length : 0,
     filterEstado ? 1 : 0,
     filtrosAvanzados.tipo_consulta ? 1 : 0,
     (filtrosAvanzados.fecha_inicio || filtrosAvanzados.fecha_fin) ? 1 : 0,
@@ -579,6 +588,8 @@ const CoordinadorAgenda = () => {
     setFilterTerapeuta('');
     setFilterEstado('');
     setSearchPaciente('');
+    setTerapeutasSeleccionados([]);
+    setSearchTerapeutaInput('');
     setFiltrosAvanzados({
       fecha_inicio: '',
       fecha_fin: '',
@@ -586,6 +597,32 @@ const CoordinadorAgenda = () => {
       tipo_consulta: ''
     });
   };
+
+  // Función para agregar un terapeuta al filtro
+  const agregarTerapeutaAlFiltro = (terapeuta) => {
+    // Evitar duplicados
+    if (!terapeutasSeleccionados.some(t => t.id === terapeuta.id)) {
+      setTerapeutasSeleccionados(prev => [...prev, terapeuta]);
+    }
+    setSearchTerapeutaInput('');
+    setShowTerapeutasDropdown(false);
+  };
+
+  // Función para eliminar un terapeuta del filtro
+  const eliminarTerapeutaDelFiltro = (terapeutaId) => {
+    setTerapeutasSeleccionados(prev => prev.filter(t => t.id !== terapeutaId));
+  };
+
+  // Filtrar terapeutas disponibles para la búsqueda
+  const terapeutasFiltrados = terapeutas.filter(t => {
+    // No mostrar terapeutas ya seleccionados
+    const yaSeleccionado = terapeutasSeleccionados.some(sel => sel.id === t.id);
+    if (yaSeleccionado) return false;
+    
+    // Filtrar por búsqueda
+    if (searchTerapeutaInput.trim() === '') return true;
+    return t.nombre.toLowerCase().includes(searchTerapeutaInput.toLowerCase());
+  });
 
   const exportarAgenda = async () => {
       try {
@@ -1018,26 +1055,94 @@ const CoordinadorAgenda = () => {
         )}
         
         <div className="grid-3 gap-20 mt-15">
-          <div className="form-group">
+          {/* Nuevo filtro de terapeutas con chips */}
+          <div className="form-group" style={{ position: 'relative' }}>
             <label className="form-label">
-              <FiUser /> Terapeuta
+              <FiUser /> Terapeutas
             </label>
-            <select 
-              value={filterTerapeuta} 
-              onChange={(e) => setFilterTerapeuta(e.target.value)}
-              className="select-field"
-            >
-              <option value="">Todos los terapeutas ({terapeutas.length})</option>
-              {terapeutas && terapeutas.length > 0 ? (
-                terapeutas.map(terapeuta => (
-                  <option key={terapeuta.id} value={terapeuta.id}>
-                    {terapeuta.nombre}
-                  </option>
-                ))
-              ) : (
-                <option disabled>Cargando terapeutas...</option>
-              )}
-            </select>
+            
+            {/* Chips de terapeutas seleccionados */}
+            {terapeutasSeleccionados.length > 0 && (
+              <div className="flex-row flex-wrap gap-8 mb-10">
+                {terapeutasSeleccionados.map(terapeuta => (
+                  <div
+                    key={terapeuta.id}
+                    className="badge badge-primary"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      paddingRight: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>{terapeuta.nombre}</span>
+                    <button
+                      onClick={() => eliminarTerapeutaDelFiltro(terapeuta.id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        padding: '0 4px',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Input de búsqueda */}
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Buscar terapeuta..."
+              value={searchTerapeutaInput}
+              onChange={(e) => {
+                setSearchTerapeutaInput(e.target.value);
+                setShowTerapeutasDropdown(true);
+              }}
+              onFocus={() => setShowTerapeutasDropdown(true)}
+              onBlur={() => setTimeout(() => setShowTerapeutasDropdown(false), 150)}
+            />
+            
+            {/* Dropdown con resultados de búsqueda */}
+            {showTerapeutasDropdown && searchTerapeutaInput.trim() !== '' && (
+              <div
+                className="autocomplete-panel"
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  zIndex: 1000,
+                  maxHeight: '200px',
+                  overflowY: 'auto'
+                }}
+              >
+                {terapeutasFiltrados.length > 0 ? (
+                  terapeutasFiltrados.map(terapeuta => (
+                    <div
+                      key={terapeuta.id}
+                      className="autocomplete-option"
+                      onClick={() => agregarTerapeutaAlFiltro(terapeuta)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div className="autocomplete-title">{terapeuta.nombre}</div>
+                      {terapeuta.email && (
+                        <div className="text-small autocomplete-subtitle">{terapeuta.email}</div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-small autocomplete-empty">No se encontraron terapeutas</div>
+                )}
+              </div>
+            )}
           </div>
           
           <div className="form-group">

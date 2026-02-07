@@ -6,6 +6,11 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/userModel');
 const { Op } = require('sequelize');
 const EmailService = require('../services/emailService');
+const Cita = require('../models/citaModel');
+const Paciente = require('../models/pacienteModel');
+const Asignacion = require('../models/asignacionModel');
+const Solicitud = require('../models/Solicitud');
+const { sequelize } = require('../models/userModel');
 
 // Obtener todos los coterapeutas
 router.get('/becarios', verifyToken, async (req, res) => {
@@ -46,21 +51,59 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
       order: [['apellido', 'ASC'], ['nombre', 'ASC']]
     });
 
-    // Mapear created_at a fecha_registro para compatibilidad con frontend
-    const mapped = users.map(u => ({
-      id: u.id,
-      nombre: u.nombre,
-      apellido: u.apellido,
-      email: u.email,
-      telefono: u.telefono,
-      rol: u.rol,
-      especialidad: u.especialidad,
-      fundacion_id: u.fundacion_id,
-      activo: u.activo,
-      fecha_registro: u.created_at
+    // Calcular horas para cada usuario
+    const usersConHoras = await Promise.all(users.map(async (u) => {
+      // Obtener citas completadas del usuario
+      const citasCompletadas = await Cita.findAll({
+        where: {
+          [Op.or]: [
+            { psicologo_id: u.id },
+            { becario_id: u.id }
+          ],
+          estado: 'completada'
+        },
+        attributes: ['duracion'],
+        raw: true
+      });
+
+      // Calcular horas liberadas (suma de duraciones en minutos, convertir a horas, redondear)
+      const minutosLiberados = citasCompletadas
+        .filter(c => c.duracion)
+        .reduce((sum, c) => sum + c.duracion, 0);
+      const horasLiberadas = Math.round(minutosLiberados / 60);
+
+      // Obtener horas objetivo de la solicitud
+      let horasObjetivo = 0;
+      const solicitud = await Solicitud.findOne({
+        where: {
+          email: u.email,
+          estado: 'APROBADA'
+        },
+        attributes: ['horas_a_liberar'],
+        order: [['fecha_resolucion', 'DESC']]
+      });
+
+      if (solicitud && solicitud.horas_a_liberar) {
+        horasObjetivo = solicitud.horas_a_liberar;
+      }
+
+      return {
+        id: u.id,
+        nombre: u.nombre,
+        apellido: u.apellido,
+        email: u.email,
+        telefono: u.telefono,
+        rol: u.rol,
+        especialidad: u.especialidad,
+        fundacion_id: u.fundacion_id,
+        activo: u.activo,
+        fecha_registro: u.created_at,
+        horas_liberadas: horasLiberadas,
+        horas_objetivo: horasObjetivo
+      };
     }));
 
-    res.json(mapped);
+    res.json(usersConHoras);
   } catch (error) {
     console.error('Error al listar usuarios:', error);
     res.status(500).json({ message: 'Error al obtener usuarios' });
@@ -164,12 +207,29 @@ router.put('/:id', verifyToken, async (req, res) => {
     }
 
     // Si envían password, hashearla (solo coordinadores)
+    let passwordCambiada = false;
     if (password && isCoordinador) {
       const salt = await bcrypt.genSalt(10);
       updatedFields.password = await bcrypt.hash(password, salt);
+      passwordCambiada = true;
     }
 
     await user.update(updatedFields);
+
+    // Enviar correo si se cambió la contraseña
+    if (passwordCambiada) {
+      try {
+        await EmailService.enviarCambioContrasena({
+          nombre: user.nombre,
+          apellido: user.apellido,
+          email: user.email,
+          passwordNueva: password
+        });
+      } catch (error) {
+        console.error('Error al enviar correo de cambio de contraseña:', error);
+        // No bloquear la respuesta si hay error en email
+      }
+    }
 
     res.json({
       success: true,
@@ -269,6 +329,202 @@ router.post('/change-password', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error al cambiar contraseña:', error);
     res.status(500).json({ message: 'Error al cambiar contraseña' });
+  }
+});
+
+// Obtener estadísticas detalladas de un usuario
+router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    
+    // Verificar que el usuario existe
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    // 1. Estadísticas de citas (como terapeuta y coterapeuta)
+    const citasComoPsicologo = await Cita.findAll({
+      where: { psicologo_id: userId },
+      attributes: ['estado', 'motivo_cancelacion', 'duracion'],
+      raw: true
+    });
+
+    const citasComoBecario = await Cita.findAll({
+      where: { becario_id: userId },
+      attributes: ['estado', 'motivo_cancelacion', 'duracion'],
+      raw: true
+    });
+
+    const todasCitas = [...citasComoPsicologo, ...citasComoBecario];
+    
+    const totalCitas = todasCitas.length;
+    const citasCompletadas = todasCitas.filter(c => c.estado === 'completada').length;
+    const citasCanceladas = todasCitas.filter(c => c.estado === 'cancelada').length;
+    
+    const tasaCompletitud = totalCitas > 0 
+      ? Math.round((citasCompletadas / totalCitas) * 10000) / 100 
+      : 0;
+    
+    const tasaCancelacion = totalCitas > 0 
+      ? Math.round((citasCanceladas / totalCitas) * 10000) / 100 
+      : 0;
+
+    // Calcular horas liberadas (sumar duración de citas completadas, convertir de minutos a horas)
+    const minutosLiberados = todasCitas
+      .filter(c => c.estado === 'completada' && c.duracion)
+      .reduce((sum, c) => sum + c.duracion, 0);
+    const horasLiberadas = Math.round(minutosLiberados / 60); // Redondear a entero
+    
+    // 2. Motivos de cancelación
+    const citasCanceladasConMotivo = todasCitas.filter(
+      c => c.estado === 'cancelada' && c.motivo_cancelacion
+    );
+
+    const motivosMap = {};
+    citasCanceladasConMotivo.forEach(c => {
+      const motivo = c.motivo_cancelacion || 'Sin especificar';
+      motivosMap[motivo] = (motivosMap[motivo] || 0) + 1;
+    });
+
+    const motivosCancelacion = Object.entries(motivosMap)
+      .map(([motivo, cantidad]) => ({ motivo, cantidad }))
+      .sort((a, b) => b.cantidad - a.cantidad);
+
+    // 3. Pacientes asignados actualmente
+    const asignacionesActivas = await Asignacion.findAll({
+      where: {
+        [Op.or]: [
+          { psicologo_id: userId },
+          { becario_id: userId }
+        ],
+        estado: 'activa'
+      },
+      include: [{
+        model: Paciente,
+        attributes: ['id', 'nombre', 'apellido', 'genero', 'fecha_nacimiento', 'activo']
+      }],
+      attributes: ['id', 'fecha_inicio', 'estado']
+    });
+
+    const pacientesAsignados = asignacionesActivas.map(a => {
+      const edad = a.Paciente.fecha_nacimiento 
+        ? Math.floor((new Date() - new Date(a.Paciente.fecha_nacimiento)) / (365.25 * 24 * 60 * 60 * 1000))
+        : null;
+      return {
+        paciente_id: a.Paciente.id,
+        nombre: a.Paciente.nombre,
+        apellido: a.Paciente.apellido,
+        genero: a.Paciente.genero,
+        edad: edad,
+        fecha_asignacion: a.fecha_inicio,
+        activo: a.Paciente.activo
+      };
+    });
+
+    // 4. Historial de pacientes (todas las asignaciones, incluyendo finalizadas)
+    const todasAsignaciones = await Asignacion.findAll({
+      where: {
+        [Op.or]: [
+          { psicologo_id: userId },
+          { becario_id: userId }
+        ]
+      },
+      include: [{
+        model: Paciente,
+        attributes: ['id', 'nombre', 'apellido', 'genero', 'fecha_nacimiento']
+      }],
+      attributes: ['id', 'fecha_inicio', 'fecha_fin', 'estado'],
+      order: [['fecha_inicio', 'DESC']]
+    });
+
+    const historialPacientes = todasAsignaciones.map(a => {
+      const edad = a.Paciente.fecha_nacimiento 
+        ? Math.floor((new Date() - new Date(a.Paciente.fecha_nacimiento)) / (365.25 * 24 * 60 * 60 * 1000))
+        : null;
+      return {
+        asignacion_id: a.id,
+        paciente_id: a.Paciente.id,
+        nombre: a.Paciente.nombre,
+        apellido: a.Paciente.apellido,
+        genero: a.Paciente.genero,
+        edad: edad,
+        fecha_asignacion: a.fecha_inicio,
+        fecha_fin: a.fecha_fin,
+        estado: a.estado
+      };
+    });
+
+    // 5. Citas con pacientes (historial de sesiones)
+    const citasConPacientes = await Cita.findAll({
+      where: {
+        [Op.or]: [
+          { psicologo_id: userId },
+          { becario_id: userId }
+        ],
+        estado: 'completada'
+      },
+      include: [{
+        model: Paciente,
+        attributes: ['id', 'nombre', 'apellido']
+      }],
+      attributes: ['id', 'fecha', 'hora', 'tipo_consulta', 'duracion', 'estado'],
+      order: [['fecha', 'DESC']],
+      limit: 50 // últimas 50 sesiones
+    });
+
+    const sesionesCompletadas = citasConPacientes.map(c => ({
+      cita_id: c.id,
+      paciente_id: c.Paciente.id,
+      paciente_nombre: `${c.Paciente.nombre} ${c.Paciente.apellido}`,
+      fecha: c.fecha,
+      hora: c.hora,
+      tipo_consulta: c.tipo_consulta,
+      duracion: c.duracion
+    }));
+
+    // 6. Obtener horas objetivo del preregistro (solicitud aprobada)
+    let horasObjetivo = 0;
+    const solicitud = await Solicitud.findOne({
+      where: {
+        email: user.email,
+        estado: 'APROBADA'
+      },
+      attributes: ['horas_a_liberar'],
+      order: [['fecha_resolucion', 'DESC']]
+    });
+
+    if (solicitud && solicitud.horas_a_liberar) {
+      horasObjetivo = solicitud.horas_a_liberar;
+    }
+
+    res.json({
+      usuario: {
+        id: user.id,
+        nombre: user.nombre,
+        apellido: user.apellido,
+        email: user.email,
+        rol: user.rol,
+        especialidad: user.especialidad
+      },
+      estadisticas: {
+        total_citas: totalCitas,
+        citas_completadas: citasCompletadas,
+        citas_canceladas: citasCanceladas,
+        tasa_completitud: tasaCompletitud,
+        tasa_cancelacion: tasaCancelacion,
+        horas_liberadas: horasLiberadas,
+        horas_objetivo: horasObjetivo
+      },
+      motivos_cancelacion: motivosCancelacion,
+      pacientes_asignados: pacientesAsignados,
+      historial_pacientes: historialPacientes,
+      sesiones_completadas: sesionesCompletadas
+    });
+
+  } catch (error) {
+    console.error('Error al obtener estadísticas de usuario:', error);
+    res.status(500).json({ message: 'Error al obtener estadísticas', error: error.message });
   }
 });
 

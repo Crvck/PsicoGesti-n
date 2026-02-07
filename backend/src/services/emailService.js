@@ -428,6 +428,72 @@ class EmailService {
         
         return tipos[extension] || 'application/octet-stream';
     }
+
+    static async enviarCambioContrasena(datosUsuario) {
+        const { nombre, apellido, email, passwordNueva } = datosUsuario;
+        
+        const nombreCompleto = `${nombre} ${apellido}`;
+        
+        const asunto = `Cambio de Contraseña - Sistema de Gestión Psicológica`;
+        
+        const contenido = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background-color: #4a6fa5; color: white; padding: 20px; text-align: center; }
+                    .content { padding: 20px; background-color: #f9f9f9; }
+                    .footer { padding: 10px; text-align: center; font-size: 12px; color: #666; }
+                    .credentials { margin: 20px 0; padding: 15px; background-color: #fff; border-left: 4px solid #4a6fa5; border-radius: 4px; }
+                    .password { background-color: #e8f4fd; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 16px; font-weight: bold; color: #2c5aa0; }
+                    .success { background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 4px; margin: 15px 0; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Cambio de Contraseña Confirmado</h1>
+                    </div>
+                    <div class="content">
+                        <p>Estimado/a <strong>${nombreCompleto}</strong>,</p>
+                        
+                        <div class="success">
+                            <strong>✓ Su contraseña ha sido actualizada exitosamente</strong>
+                        </div>
+                        
+                        <p>Su contraseña en el Sistema de Gestión Psicológica ha sido modificada por el equipo de coordinación. A continuación le proporcionamos su nueva contraseña:</p>
+                        
+                        <div class="credentials">
+                            <h3>Sus nuevas credenciales de acceso:</h3>
+                            <p><strong>Correo electrónico:</strong> ${email}</p>
+                            <p><strong>Contraseña:</strong></p>
+                            <div class="password">${passwordNueva}</div>
+                        </div>
+                        
+                        <p><strong>Próximos pasos:</strong></p>
+                        <ol>
+                            <li>Visite: <a href="http://localhost:3001">http://localhost:3001</a></li>
+                            <li>Inicie sesión con su correo electrónico y la nueva contraseña</li>
+                            <li>Le recomendamos cambiar la contraseña nuevamente por su propia seguridad</li>
+                        </ol>
+                        
+                        <p>Si usted no solicitó este cambio de contraseña o tiene dudas al respecto, comuníquese inmediatamente con el equipo de coordinación.</p>
+                        
+                        <p>Agradecemos su confianza en nuestro sistema.</p>
+                    </div>
+                    <div class="footer">
+                        <p>Este es un mensaje automático del Sistema de Gestión Psicológica.</p>
+                        <p>Por favor, no responda a este correo.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        return await this.enviarEmail(email, asunto, contenido);
+    }
 }
 
 // Inicializar al cargar el módulo

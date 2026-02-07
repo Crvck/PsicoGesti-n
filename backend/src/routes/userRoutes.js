@@ -345,20 +345,25 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
       },
       include: [{
         model: Paciente,
-        attributes: ['id', 'nombre', 'apellido', 'genero', 'edad', 'activo']
+        attributes: ['id', 'nombre', 'apellido', 'genero', 'fecha_nacimiento', 'activo']
       }],
       attributes: ['id', 'fecha_inicio', 'estado']
     });
 
-    const pacientesAsignados = asignacionesActivas.map(a => ({
-      paciente_id: a.Paciente.id,
-      nombre: a.Paciente.nombre,
-      apellido: a.Paciente.apellido,
-      genero: a.Paciente.genero,
-      edad: a.Paciente.edad,
-      fecha_asignacion: a.fecha_inicio,
-      activo: a.Paciente.activo
-    }));
+    const pacientesAsignados = asignacionesActivas.map(a => {
+      const edad = a.Paciente.fecha_nacimiento 
+        ? Math.floor((new Date() - new Date(a.Paciente.fecha_nacimiento)) / (365.25 * 24 * 60 * 60 * 1000))
+        : null;
+      return {
+        paciente_id: a.Paciente.id,
+        nombre: a.Paciente.nombre,
+        apellido: a.Paciente.apellido,
+        genero: a.Paciente.genero,
+        edad: edad,
+        fecha_asignacion: a.fecha_inicio,
+        activo: a.Paciente.activo
+      };
+    });
 
     // 4. Historial de pacientes (todas las asignaciones, incluyendo finalizadas)
     const todasAsignaciones = await Asignacion.findAll({
@@ -370,23 +375,28 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
       },
       include: [{
         model: Paciente,
-        attributes: ['id', 'nombre', 'apellido', 'genero', 'edad']
+        attributes: ['id', 'nombre', 'apellido', 'genero', 'fecha_nacimiento']
       }],
       attributes: ['id', 'fecha_inicio', 'fecha_fin', 'estado'],
       order: [['fecha_inicio', 'DESC']]
     });
 
-    const historialPacientes = todasAsignaciones.map(a => ({
-      asignacion_id: a.id,
-      paciente_id: a.Paciente.id,
-      nombre: a.Paciente.nombre,
-      apellido: a.Paciente.apellido,
-      genero: a.Paciente.genero,
-      edad: a.Paciente.edad,
-      fecha_asignacion: a.fecha_inicio,
-      fecha_fin: a.fecha_fin,
-      estado: a.estado
-    }));
+    const historialPacientes = todasAsignaciones.map(a => {
+      const edad = a.Paciente.fecha_nacimiento 
+        ? Math.floor((new Date() - new Date(a.Paciente.fecha_nacimiento)) / (365.25 * 24 * 60 * 60 * 1000))
+        : null;
+      return {
+        asignacion_id: a.id,
+        paciente_id: a.Paciente.id,
+        nombre: a.Paciente.nombre,
+        apellido: a.Paciente.apellido,
+        genero: a.Paciente.genero,
+        edad: edad,
+        fecha_asignacion: a.fecha_inicio,
+        fecha_fin: a.fecha_fin,
+        estado: a.estado
+      };
+    });
 
     // 5. Citas con pacientes (historial de sesiones)
     const citasConPacientes = await Cita.findAll({

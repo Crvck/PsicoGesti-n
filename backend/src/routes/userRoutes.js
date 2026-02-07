@@ -90,7 +90,12 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
       const solicitud = await Solicitud.findOne({
         where: {
           email: u.email,
-          estado: 'APROBADO'
+          [Op.or]: [
+            { estado: 'APROBADO' },
+            { estado: 'aprobado' },
+            { estado: 'aprobados' },
+            { estado: 'APROBADOS' }
+          ]
         },
         attributes: ['horas_a_liberar', 'email', 'estado'],
         order: [['fecha_resolucion', 'DESC']]
@@ -489,7 +494,12 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
     const solicitud = await Solicitud.findOne({
       where: {
         email: user.email,
-        estado: 'APROBADO'
+        [Op.or]: [
+          { estado: 'APROBADO' },
+          { estado: 'aprobado' },
+          { estado: 'aprobados' },
+          { estado: 'APROBADOS' }
+        ]
       },
       attributes: ['horas_a_liberar', 'email', 'estado'],
       order: [['fecha_resolucion', 'DESC']]

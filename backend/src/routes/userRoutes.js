@@ -27,6 +27,19 @@ router.get('/becarios', verifyToken, async (req, res) => {
   }
 });
 
+// DEBUG: Ver todas las solicitudes (temporal)
+router.get('/debug/solicitudes', verifyToken, async (req, res) => {
+  try {
+    const solicitudes = await Solicitud.findAll({
+      attributes: ['id', 'email', 'estado', 'horas_a_liberar', 'nombre_completo'],
+      order: [['id', 'DESC']]
+    });
+    res.json(solicitudes);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener solicitudes' });
+  }
+});
+
 // Obtener todos los usuarios (coordinadores pueden acceder)
 router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
   try {
@@ -79,12 +92,15 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
           email: u.email,
           estado: 'APROBADO'
         },
-        attributes: ['horas_a_liberar'],
+        attributes: ['horas_a_liberar', 'email', 'estado'],
         order: [['fecha_resolucion', 'DESC']]
       });
 
-      if (solicitud && solicitud.horas_a_liberar) {
-        horasObjetivo = solicitud.horas_a_liberar;
+      if (solicitud) {
+        console.log(`Solicitud encontrada para ${u.email}:`, solicitud.horas_a_liberar);
+        horasObjetivo = solicitud.horas_a_liberar || 0;
+      } else {
+        console.log(`No se encontró solicitud aprobada para ${u.email}`);
       }
 
       console.log(`Usuario ${u.nombre} ${u.apellido}: horas_liberadas=${horasLiberadas}, horas_objetivo=${horasObjetivo}`);
@@ -475,12 +491,15 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
         email: user.email,
         estado: 'APROBADO'
       },
-      attributes: ['horas_a_liberar'],
+      attributes: ['horas_a_liberar', 'email', 'estado'],
       order: [['fecha_resolucion', 'DESC']]
     });
 
-    if (solicitud && solicitud.horas_a_liberar) {
-      horasObjetivo = solicitud.horas_a_liberar;
+    if (solicitud) {
+      console.log(`Solicitud encontrada para ${user.email}:`, solicitud.horas_a_liberar);
+      horasObjetivo = solicitud.horas_a_liberar || 0;
+    } else {
+      console.log(`No se encontró solicitud aprobada para ${user.email}`);
     }
 
     // Respuesta

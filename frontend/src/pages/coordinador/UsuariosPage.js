@@ -505,6 +505,8 @@ const CoordinadorUsuarios = () => {
               <th>Contacto</th>
               <th>Rol</th>
               <th>Especialidad</th>
+              <th>Horas Liberadas</th>
+              <th>Horas Objetivo</th>
               <th>Fecha Registro</th>
               <th>Estado</th>
               <th>Acciones</th>
@@ -537,6 +539,16 @@ const CoordinadorUsuarios = () => {
                     </span>
                   </td>
                   <td>{usuario.especialidad}</td>
+                  <td>
+                    <div className="font-bold" style={{ color: 'var(--grnd)' }}>
+                      {usuario.horas_liberadas !== undefined ? `${usuario.horas_liberadas}h` : '-'}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="font-bold" style={{ color: 'var(--blu)' }}>
+                      {usuario.horas_objetivo !== undefined ? `${usuario.horas_objetivo}h` : '-'}
+                    </div>
+                  </td>
                   <td>
                     {new Date(usuario.fecha_registro).toLocaleDateString()}
                   </td>

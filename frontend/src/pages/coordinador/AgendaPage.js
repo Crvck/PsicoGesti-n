@@ -73,6 +73,12 @@ const CoordinadorAgenda = () => {
     tipo_consulta: ''
   });
   const [busquedaTerapeuta, setBusquedaTerapeuta] = useState('');
+  
+  // Filtros para el modal de disponibilidad
+  const [disponibilidadSearchTerm, setDisponibilidadSearchTerm] = useState('');
+  const [disponibilidadFilterRol, setDisponibilidadFilterRol] = useState(''); // '' = todos, 'terapeuta', 'coterapeuta'
+  const [disponibilidadCurrentPage, setDisponibilidadCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   // Colores fijos para terapeutas y citas
   const coloresTerapeutas = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
@@ -200,6 +206,36 @@ const CoordinadorAgenda = () => {
       // No mostrar error al usuario, solo continuar
     }
   };
+
+  // Función para filtrar y paginar la disponibilidad
+  const getDisponibilidadFiltrada = () => {
+    if (!disponibilidad || disponibilidad.length === 0) return { items: [], total: 0, totalPages: 0 };
+
+    let filtered = disponibilidad.filter(p => p.tiene_disponibilidad_semana);
+
+    // Filtrar por búsqueda de nombre
+    if (disponibilidadSearchTerm.trim() !== '') {
+      filtered = filtered.filter(p => 
+        p.profesional.toLowerCase().includes(disponibilidadSearchTerm.toLowerCase()) ||
+        (p.email && p.email.toLowerCase().includes(disponibilidadSearchTerm.toLowerCase()))
+      );
+    }
+
+    // Filtrar por rol
+    if (disponibilidadFilterRol !== '') {
+      filtered = filtered.filter(p => p.rol === disponibilidadFilterRol);
+    }
+
+    // Paginar
+    const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+    const startIndex = (disponibilidadCurrentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const items = filtered.slice(startIndex, endIndex);
+
+    return { items, total: filtered.length, totalPages, allFiltered: filtered };
+  };
+
+  const { items: disponibilidadPaginada, total: totalDisponibilidad, totalPages: totalPagesDisponibilidad } = getDisponibilidadFiltrada();
 
   const fetchTerapeutas = async () => {
     try {
@@ -344,6 +380,20 @@ const CoordinadorAgenda = () => {
     const matchesPaciente = !filtrosAvanzados.paciente_id || Number(cita.paciente_id) === Number(filtrosAvanzados.paciente_id);
     return matchesTerapeuta && matchesEstado && matchesTipoConsulta && matchesFechas && matchesPaciente;
   });
+
+  const abrirModalConFechaHora = (fecha, hora) => {
+    console.log('Abriendo modal con fecha:', fecha, 'hora:', hora);
+    setNuevaCitaForm(prev => ({
+      ...prev,
+      fecha: fecha,
+      hora: hora
+    }));
+    // Limpiar los campos de búsqueda
+    setPacienteCitaQuery('');
+    setTerapeutaCitaQuery('');
+    setCoterapeutaCitaQuery('');
+    setShowAsignarCitaModal(true);
+  };
   
   const activeFiltersCount = [
     filterTerapeuta ? 1 : 0,
@@ -1141,6 +1191,13 @@ const CoordinadorAgenda = () => {
                       style={{
                         height: '60px'
                       }}
+                      onClick={() => {
+                        // Abrir modal solo si hace clic en un área vacía (sin cita)
+                        if (citasHora.length === 0) {
+                          abrirModalConFechaHora(dayStr, hour);
+                        }
+                      }}
+                      title={citasHora.length === 0 ? 'Haz clic para agregar cita' : ''}
                     >
                       {citasVisibles.map((cita, index) => (
                         <div 
@@ -1751,6 +1808,49 @@ const CoordinadorAgenda = () => {
                   </div>
                 </div>
               )}
+
+              {/* Filtros y búsqueda */}
+              <div className="form-grid mb-15" style={{ gridTemplateColumns: '1fr 1fr auto', gap: '10px' }}>
+                <div className="form-group">
+                  <label style={{ fontSize: '12px' }}>Buscar por nombre o email</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="Escribir nombre..."
+                    value={disponibilidadSearchTerm}
+                    onChange={(e) => {
+                      setDisponibilidadSearchTerm(e.target.value);
+                      setDisponibilidadCurrentPage(1);
+                    }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '12px' }}>Filtrar por rol</label>
+                  <select
+                    className="input-field"
+                    value={disponibilidadFilterRol}
+                    onChange={(e) => {
+                      setDisponibilidadFilterRol(e.target.value);
+                      setDisponibilidadCurrentPage(1);
+                    }}
+                  >
+                    <option value="">Todos</option>
+                    <option value="terapeuta">Terapeutas</option>
+                    <option value="coterapeuta">Coterapeutas</option>
+                  </select>
+                </div>
+                <button
+                  className="btn-text"
+                  onClick={() => {
+                    setDisponibilidadSearchTerm('');
+                    setDisponibilidadFilterRol('');
+                    setDisponibilidadCurrentPage(1);
+                  }}
+                  style={{ alignSelf: 'flex-end' }}
+                >
+                  Limpiar filtros
+                </button>
+              </div>
               
               <div className="scrollable" style={{ maxHeight: '60vh' }}>
                 {disponibilidad && disponibilidad.length > 0 ? (
@@ -1767,7 +1867,7 @@ const CoordinadorAgenda = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {disponibilidad.filter(p => p.tiene_disponibilidad_semana).map(profesional => {
+                        {disponibilidadPaginada.map(profesional => {
                           const porcentaje = profesional.porcentaje_ocupacion || 
                             Math.round((profesional.citas_programadas / profesional.max_citas_dia) * 100);
                           
@@ -1852,12 +1952,47 @@ const CoordinadorAgenda = () => {
                   </div>
                 )}
               </div>
+
+              {/* Información de paginación */}
+              {totalDisponibilidad > 0 && (
+                <div className="mt-15 flex-row justify-between align-center">
+                  <div className="text-small">
+                    Mostrando <strong>{disponibilidadPaginada.length > 0 ? (disponibilidadCurrentPage - 1) * ITEMS_PER_PAGE + 1 : 0}</strong> a <strong>{Math.min(disponibilidadCurrentPage * ITEMS_PER_PAGE, totalDisponibilidad)}</strong> de <strong>{totalDisponibilidad}</strong> resultados
+                  </div>
+                  <div className="flex-row gap-5 align-center">
+                    <button
+                      className="btn-text"
+                      onClick={() => setDisponibilidadCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={disponibilidadCurrentPage === 1}
+                      style={{ opacity: disponibilidadCurrentPage === 1 ? 0.5 : 1 }}
+                    >
+                      ← Anterior
+                    </button>
+                    <div className="text-small">
+                      Página <strong>{disponibilidadCurrentPage}</strong> de <strong>{totalPagesDisponibilidad}</strong>
+                    </div>
+                    <button
+                      className="btn-text"
+                      onClick={() => setDisponibilidadCurrentPage(prev => Math.min(totalPagesDisponibilidad, prev + 1))}
+                      disabled={disponibilidadCurrentPage === totalPagesDisponibilidad}
+                      style={{ opacity: disponibilidadCurrentPage === totalPagesDisponibilidad ? 0.5 : 1 }}
+                    >
+                      Siguiente →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div className="modal-footer">
               <button 
                 className="btn-secondary" 
-                onClick={() => setShowModalDisponibilidad(false)}
+                onClick={() => {
+                  setShowModalDisponibilidad(false);
+                  setDisponibilidadSearchTerm('');
+                  setDisponibilidadFilterRol('');
+                  setDisponibilidadCurrentPage(1);
+                }}
               >Cerrar
               </button>
 

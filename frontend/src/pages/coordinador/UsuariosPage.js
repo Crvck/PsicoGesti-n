@@ -714,18 +714,60 @@ const CoordinadorUsuarios = () => {
                   />
                 </div>
                 
-                {formData.rol === 'terapeuta' && (
+                {formData.rol === 'terapeuta' && modalType === 'nuevo' && (
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                    {modalType === 'nuevo' ? (
-                      <>
-                        <label>Contraseña Temporal</label>
+                    <label>Contraseña Temporal</label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <input
+                        type={showPassword ? 'text' : 'text'}
+                        name="password"
+                        value={formData.password}
+                        className="input-field"
+                        readOnly
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: '#666'
+                        }}
+                        title={showPassword ? 'Ocultar' : 'Mostrar'}
+                      >
+                        {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                      </button>
+                    </div>
+                    <p className="text-small mt-5">El usuario deberá cambiar la contraseña en su primer inicio</p>
+                  </div>
+                )}
+                
+                {modalType === 'editar' && (
+                  <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <label className="flex-row align-center gap-10">
+                      <input
+                        type="checkbox"
+                        name="cambiarPassword"
+                        checked={formData.cambiarPassword}
+                        onChange={handleInputChange}
+                      />
+                      <span>Cambiar contraseña</span>
+                    </label>
+                    {formData.cambiarPassword && (
+                      <div style={{ marginTop: '10px' }}>
                         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '5px' }}>
                           <input
-                            type={showPassword ? 'text' : 'text'}
+                            type={showPassword ? 'text' : 'password'}
                             name="password"
+                            placeholder="Nueva contraseña"
                             value={formData.password}
+                            onChange={handleInputChange}
                             className="input-field"
-                            readOnly
                             style={{ flex: 1 }}
                           />
                           <button
@@ -745,51 +787,7 @@ const CoordinadorUsuarios = () => {
                             {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
                           </button>
                         </div>
-                        <p className="text-small mt-5">El usuario deberá cambiar la contraseña en su primer inicio</p>
-                      </>
-                    ) : (
-                      <>
-                        <label className="flex-row align-center gap-10">
-                          <input
-                            type="checkbox"
-                            name="cambiarPassword"
-                            checked={formData.cambiarPassword}
-                            onChange={handleInputChange}
-                          />
-                          <span>Cambiar contraseña</span>
-                        </label>
-                        {formData.cambiarPassword && (
-                          <div style={{ marginTop: '10px' }}>
-                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <input
-                                type={showPassword ? 'text' : 'password'}
-                                name="password"
-                                placeholder="Nueva contraseña"
-                                value={formData.password}
-                                onChange={handleInputChange}
-                                className="input-field"
-                                style={{ flex: 1 }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  padding: '8px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  color: '#666'
-                                }}
-                                title={showPassword ? 'Ocultar' : 'Mostrar'}
-                              >
-                                {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </>
+                      </div>
                     )}
                   </div>
                 )}

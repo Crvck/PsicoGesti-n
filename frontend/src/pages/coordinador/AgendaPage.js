@@ -600,20 +600,6 @@ const CoordinadorAgenda = () => {
     }));
   };
 
-  const resetFiltros = () => {
-    setFilterTerapeuta('');
-    setFilterEstado('');
-    setSearchPaciente('');
-    setTerapeutasSeleccionados([]);
-    setSearchTerapeutaInput('');
-    setFiltrosAvanzados({
-      fecha_inicio: '',
-      fecha_fin: '',
-      paciente_id: '',
-      tipo_consulta: ''
-    });
-  };
-
   // Función para agregar un terapeuta al filtro
   const agregarTerapeutaAlFiltro = (terapeuta) => {
     // Evitar duplicados

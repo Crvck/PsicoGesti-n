@@ -1150,6 +1150,12 @@ const CoordinadorAgenda = () => {
               }}
               onFocus={() => setShowTerapeutasDropdown(true)}
               onBlur={() => setTimeout(() => setShowTerapeutasDropdown(false), 150)}
+              style={{
+                fontSize: '12px',
+                padding: '6px 8px',
+                height: 'auto',
+                minHeight: '32px'
+              }}
             />
             
             {/* Dropdown con resultados de búsqueda */}

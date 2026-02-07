@@ -61,6 +61,7 @@ const CoordinadorUsuarios = () => {
       }
 
       const data = await res.json();
+      console.log('Usuarios recibidos:', data);
       setUsuarios(data);
     } catch (error) {
       console.error('Error al obtener usuarios:', error);

@@ -87,6 +87,8 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
         horasObjetivo = solicitud.horas_a_liberar;
       }
 
+      console.log(`Usuario ${u.nombre} ${u.apellido}: horas_liberadas=${horasLiberadas}, horas_objetivo=${horasObjetivo}`);
+
       return {
         id: u.id,
         nombre: u.nombre,

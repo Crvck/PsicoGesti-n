@@ -206,24 +206,35 @@ const CoordinadorAgenda = () => {
       });
       
       console.log('✅ Terapeutas asignados:', terapeutas);
+      console.log('📋 Terapeuta principal:', terapeutaPrincipal);
+      console.log('📋 Coterapeuta principal:', coterapeutaPrincipal);
+      
       setTerapeutasAsignadosPaciente(terapeutas);
+      
+      // Preparar actualización del formulario
+      let formUpdates = {};
       
       // Auto-rellenar los campos del formulario
       if (terapeutaPrincipal) {
+        console.log('✅ Auto-rellenando terapeuta:', terapeutaPrincipal.nombre);
         setTerapeutaPrincipalSeleccionado(terapeutaPrincipal);
         setTerapeutaCitaQuery(terapeutaPrincipal.nombre);
-        setNuevaCitaForm(prev => ({ 
-          ...prev, 
-          terapeuta_id: terapeutaPrincipal.id 
-        }));
+        formUpdates.terapeuta_id = terapeutaPrincipal.id;
       }
       
       if (coterapeutaPrincipal) {
+        console.log('✅ Auto-rellenando coterapeuta:', coterapeutaPrincipal.nombre);
         setCoterapeutaCitaQuery(coterapeutaPrincipal.nombre);
-        setNuevaCitaForm(prev => ({ 
-          ...prev, 
-          coterapeuta_id: coterapeutaPrincipal.id 
-        }));
+        formUpdates.coterapeuta_id = coterapeutaPrincipal.id;
+      }
+      
+      // Actualizar el formulario una sola vez con todos los cambios
+      if (Object.keys(formUpdates).length > 0) {
+        setNuevaCitaForm(prev => {
+          const updated = { ...prev, ...formUpdates };
+          console.log('📝 Formulario actualizado:', updated);
+          return updated;
+        });
       }
       
     } catch (error) {
@@ -1281,13 +1292,18 @@ const CoordinadorAgenda = () => {
                         <div
                           key={p.id}
                           className="autocomplete-option"
-                          onClick={() => {
+                          onClick={async () => {
                             const nombre = p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim();
-                            setNuevaCitaForm({ ...nuevaCitaForm, paciente_id: p.id });
                             setPacienteCitaQuery(nombre);
                             setShowPacienteCitaList(false);
-                            // Cargar terapeutas asignados al paciente
-                            fetchTerapeutasAsignados(p.id);
+                            
+                            console.log('🔹 Paciente seleccionado:', p.id, nombre);
+                            
+                            // Primero establecer el paciente_id
+                            setNuevaCitaForm(prev => ({ ...prev, paciente_id: p.id }));
+                            
+                            // Luego cargar y auto-rellenar terapeutas
+                            await fetchTerapeutasAsignados(p.id);
                           }}
                         >
                           <div className="autocomplete-title">{p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim()}</div>

@@ -602,6 +602,148 @@ class AgendaController {
         }
     }
 
+    static async obtenerDisponibilidadPorDias(req, res) {
+        try {
+            const { dia_filtro, dias_filtro } = req.query;
+            let diasFiltro = [];
+
+            if (dias_filtro) {
+                diasFiltro = String(dias_filtro)
+                    .split(',')
+                    .map(dia => dia.trim().toLowerCase())
+                    .filter(Boolean);
+            } else if (dia_filtro) {
+                diasFiltro = [String(dia_filtro).trim().toLowerCase()];
+            }
+
+            const whereDisponibilidad = { activo: true };
+
+            if (diasFiltro.length > 0) {
+                whereDisponibilidad.dia_semana = { [Op.in]: diasFiltro };
+            }
+
+            const disponibilidades = await Disponibilidad.findAll({
+                where: whereDisponibilidad,
+                include: [
+                    {
+                        model: User,
+                        as: 'Usuario',
+                        where: { activo: true },
+                        required: true
+                    }
+                ],
+                order: [['dia_semana', 'ASC'], ['hora_inicio', 'ASC']]
+            });
+
+            const disponibilidadPorDia = {};
+
+            disponibilidades.forEach((disponibilidad) => {
+                const dia = disponibilidad.dia_semana;
+                if (!disponibilidadPorDia[dia]) disponibilidadPorDia[dia] = [];
+
+                const usuario = disponibilidad.Usuario;
+                disponibilidadPorDia[dia].push({
+                    id: usuario.id,
+                    profesional: `${usuario.nombre} ${usuario.apellido}`,
+                    rol: usuario.rol,
+                    especialidad: usuario.especialidad || (usuario.rol === 'coterapeuta' ? 'Coterapeuta' : 'Terapia General'),
+                    email: usuario.email,
+                    telefono: usuario.telefono,
+                    hora_inicio: disponibilidad.hora_inicio ? String(disponibilidad.hora_inicio).substring(0, 5) : null,
+                    hora_fin: disponibilidad.hora_fin ? String(disponibilidad.hora_fin).substring(0, 5) : null,
+                    max_citas_dia: disponibilidad.max_citas_dia,
+                    intervalo_citas: disponibilidad.intervalo_citas,
+                    tipo_disponibilidad: disponibilidad.tipo_disponibilidad
+                });
+            });
+
+            res.json({
+                success: true,
+                data: {
+                    dias: diasFiltro.length > 0 ? diasFiltro : Object.keys(disponibilidadPorDia),
+                    disponibilidad_por_dia: disponibilidadPorDia
+                }
+            });
+        } catch (error) {
+            console.error('Error en obtenerDisponibilidadPorDias:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener disponibilidad por días'
+            });
+        }
+    }
+
+    static async obtenerDisponibilidadPorDias(req, res) {
+        try {
+            const { dia_filtro, dias_filtro } = req.query;
+            let diasFiltro = [];
+
+            if (dias_filtro) {
+                diasFiltro = String(dias_filtro)
+                    .split(',')
+                    .map(dia => dia.trim().toLowerCase())
+                    .filter(Boolean);
+            } else if (dia_filtro) {
+                diasFiltro = [String(dia_filtro).trim().toLowerCase()];
+            }
+
+            const whereDisponibilidad = { activo: true };
+
+            if (diasFiltro.length > 0) {
+                whereDisponibilidad.dia_semana = { [Op.in]: diasFiltro };
+            }
+
+            const disponibilidades = await Disponibilidad.findAll({
+                where: whereDisponibilidad,
+                include: [
+                    {
+                        model: User,
+                        as: 'Usuario',
+                        where: { activo: true },
+                        required: true
+                    }
+                ],
+                order: [['dia_semana', 'ASC'], ['hora_inicio', 'ASC']]
+            });
+
+            const disponibilidadPorDia = {};
+
+            disponibilidades.forEach((disponibilidad) => {
+                const dia = disponibilidad.dia_semana;
+                if (!disponibilidadPorDia[dia]) disponibilidadPorDia[dia] = [];
+
+                const usuario = disponibilidad.Usuario;
+                disponibilidadPorDia[dia].push({
+                    id: usuario.id,
+                    profesional: `${usuario.nombre} ${usuario.apellido}`,
+                    rol: usuario.rol,
+                    especialidad: usuario.especialidad || (usuario.rol === 'coterapeuta' ? 'Coterapeuta' : 'Terapia General'),
+                    email: usuario.email,
+                    telefono: usuario.telefono,
+                    hora_inicio: disponibilidad.hora_inicio ? String(disponibilidad.hora_inicio).substring(0, 5) : null,
+                    hora_fin: disponibilidad.hora_fin ? String(disponibilidad.hora_fin).substring(0, 5) : null,
+                    max_citas_dia: disponibilidad.max_citas_dia,
+                    intervalo_citas: disponibilidad.intervalo_citas,
+                    tipo_disponibilidad: disponibilidad.tipo_disponibilidad
+                });
+            });
+
+            res.json({
+                success: true,
+                data: {
+                    dias: diasFiltro.length > 0 ? diasFiltro : Object.keys(disponibilidadPorDia),
+                    disponibilidad_por_dia: disponibilidadPorDia
+                }
+            });
+        } catch (error) {
+            console.error('Error en obtenerDisponibilidadPorDias:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Error al obtener disponibilidad por días'
+            });
+        }
+    }
+
     // Método auxiliar para obtener día de la semana
     static obtenerDiaSemana(fecha) {
         try {

@@ -101,6 +101,148 @@
   background-blend-mode: overlay;
 }
 
+.filter-pills-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  color: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.filter-pill-remove {
+  background: transparent;
+  border: none;
+  color: var(--rr);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+}
+
+.disponibilidad-semanal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.dia-disponibilidad-card {
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dia-disponibilidad-header {
+  font-weight: 700;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.usuario-disponibilidad-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.usuario-detalles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-pills-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  color: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.filter-pill-remove {
+  background: transparent;
+  border: none;
+  color: var(--rr);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+}
+
+.disponibilidad-semanal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.dia-disponibilidad-card {
+  background: var(--blud);
+  border: 1px solid var(--blub);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dia-disponibilidad-header {
+  font-weight: 700;
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.usuario-disponibilidad-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.usuario-detalles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* Cards especiales para reportes */
 .card-progress {
   margin-top: 15px;

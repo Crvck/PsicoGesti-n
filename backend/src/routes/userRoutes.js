@@ -10,6 +10,7 @@ const Cita = require('../models/citaModel');
 const Paciente = require('../models/pacienteModel');
 const Asignacion = require('../models/asignacionModel');
 const Solicitud = require('../models/Solicitud');
+const Disponibilidad = require('../models/disponibilidadModel');
 const { sequelize } = require('../models/userModel');
 
 // Obtener todos los coterapeutas
@@ -179,7 +180,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     // Verificar permisos: coordinador puede editar todo, usuario puede editar su propio perfil
     const tokenUserId = req.user.id || req.user.userId;
-    const isCoordinador = req.user.role === 'coordinador';
+    const isCoordinador = req.user.rol === 'coordinador' || req.user.role === 'coordinador';
     const isSelfEdit = tokenUserId === parseInt(id);
 
     if (!isCoordinador && !isSelfEdit) {
@@ -557,6 +558,36 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
       horasObjetivo = solicitud.horas_a_liberar;
     }
 
+    // 7. Obtener disponibilidad del usuario
+    const disponibilidades = await Disponibilidad.findAll({
+      where: {
+        usuario_id: userId,
+        activo: true
+      },
+      attributes: ['id', 'dia_semana', 'hora_inicio', 'hora_fin', 'tipo_disponibilidad', 'max_citas_dia', 'intervalo_citas'],
+      order: [
+        [sequelize.literal(`CASE dia_semana
+          WHEN 'lunes' THEN 1
+          WHEN 'martes' THEN 2
+          WHEN 'miercoles' THEN 3
+          WHEN 'jueves' THEN 4
+          WHEN 'viernes' THEN 5
+          WHEN 'sabado' THEN 6
+          WHEN 'domingo' THEN 7
+        END`)],
+        ['hora_inicio', 'ASC']
+      ]
+    });
+
+    const disponibilidadFormateada = disponibilidades.map(d => ({
+      dia: d.dia_semana,
+      hora_inicio: d.hora_inicio,
+      hora_fin: d.hora_fin,
+      tipo: d.tipo_disponibilidad,
+      max_citas: d.max_citas_dia,
+      duracion_cita: d.intervalo_citas
+    }));
+
     res.json({
       usuario: {
         id: user.id,
@@ -581,7 +612,8 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
       motivos_cancelacion: motivosCancelacion,
       pacientes_asignados: pacientesAsignados,
       historial_pacientes: historialPacientes,
-      sesiones_completadas: sesionesCompletadas
+      sesiones_completadas: sesionesCompletadas,
+      disponibilidad: disponibilidadFormateada
     });
 
   } catch (error) {

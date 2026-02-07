@@ -1,106 +1,4 @@
-// frontend/src/pages/coordinador/AgendaPage.js
-import React, { useState, useEffect } from 'react';
-import { 
-  FiCalendar, FiClock, FiUsers, FiFilter, 
-  FiChevronLeft, FiChevronRight, FiRefreshCw,
-  FiUser, FiEye, FiEyeOff, FiMail,
-  FiPhone, FiVideo, FiMapPin, FiEdit2,
-  FiDownload, FiBarChart2, FiCheckCircle, FiXCircle, FiAlertCircle,
-  FiSearch, FiUserCheck, FiSettings, FiArchive
-} from 'react-icons/fi';
-import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { es } from 'date-fns/locale';
-import ApiService from '../../services/api';
-import ConfiguracionService from '../../services/configuracionService';
-import './coordinador.css';
-import notifications from '../../utils/notifications';
-import confirmations from '../../utils/confirmations';
-
-const CoordinadorAgenda = () => {
-  const [citas, setCitas] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [view, setView] = useState('week');
-  const [loading, setLoading] = useState(true);
-  const [filterTerapeuta, setFilterTerapeuta] = useState('');
-  const [filterEstado, setFilterEstado] = useState('');
-  const [terapeutas, setTerapeutas] = useState([]);
-  const [showDetalles, setShowDetalles] = useState(false);
-  const [selectedCita, setSelectedCita] = useState(null);
-  const [mostrarTodas, setMostrarTodas] = useState(true);
-  const [estadisticas, setEstadisticas] = useState(null);
-  const [disponibilidad, setDisponibilidad] = useState([]);
-  const [disponibilidadLoading, setDisponibilidadLoading] = useState(false);
-  const [showModalDisponibilidad, setShowModalDisponibilidad] = useState(false);
-  const [pacientes, setPacientes] = useState([]);
-  const [searchPaciente, setSearchPaciente] = useState('');
-  const [filteredPacientes, setFilteredPacientes] = useState([]);
-  const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
-  const [coterapeutas, setCoterapeutas] = useState([]);
-  const [showAsignarCitaModal, setShowAsignarCitaModal] = useState(false);
-  const [pacienteCitaQuery, setPacienteCitaQuery] = useState('');
-  const [terapeutaCitaQuery, setTerapeutaCitaQuery] = useState('');
-  const [coterapeutaCitaQuery, setCoterapeutaCitaQuery] = useState('');
-  const [showPacienteCitaList, setShowPacienteCitaList] = useState(false);
-  const [showTerapeutaCitaList, setShowTerapeutaCitaList] = useState(false);
-  const [showCoterapeutaCitaList, setShowCoterapeutaCitaList] = useState(false);
-  const [nuevaCitaForm, setNuevaCitaForm] = useState({
-    titulo: '',
-    paciente_id: '',
-    terapeuta_id: '',
-    coterapeuta_id: '',
-    fecha: format(new Date(), 'yyyy-MM-dd'),
-    hora: '09:00',
-    tipo_consulta: 'presencial',
-    duracion: 50,
-    total_sesiones: 1,
-    notas: '',
-    color: '#1F85BA'
-  });
-  const [citaColorOverrides, setCitaColorOverrides] = useState(() => {
-    try {
-      const stored = localStorage.getItem('agendaCitaColors');
-      return stored ? JSON.parse(stored) : {};
-    } catch (e) {
-      console.warn('No se pudo leer agendaCitaColors:', e);
-      return {};
-    }
-  });
-  
-  const [filtrosAvanzados, setFiltrosAvanzados] = useState({
-    fecha_inicio: '',
-    fecha_fin: '',
-    paciente_id: '',
-    tipo_consulta: ''
-  });
-  const [busquedaTerapeuta, setBusquedaTerapeuta] = useState('');
-  
-  // Filtros para el modal de disponibilidad
-  const [disponibilidadSearchTerm, setDisponibilidadSearchTerm] = useState('');
-  const [disponibilidadFilterRol, setDisponibilidadFilterRol] = useState(''); // '' = todos, 'terapeuta', 'coterapeuta'
-  const [disponibilidadCurrentPage, setDisponibilidadCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 10;
-
-  // Nuevo sistema de filtros tipo chips
-  const [terapeutasSeleccionados, setTerapeutasSeleccionados] = useState([]); // Array de {id, nombre}
-  const [searchTerapeutaInput, setSearchTerapeutaInput] = useState('');
-  const [showTerapeutasDropdown, setShowTerapeutasDropdown] = useState(false);
-  
-  // Filtros de Estado como chips
-  const [estadosSeleccionados, setEstadosSeleccionados] = useState([]); // Array de valores de estado
-  
-  // Filtros de Tipo de Consulta como chips
-  const [tiposConsultaSeleccionados, setTiposConsultaSeleccionados] = useState([]); // Array de valores de tipo
-
-  // Colores fijos para terapeutas y citas
-  const coloresTerapeutas = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
-  const coloresCitas = ['#1F85BA', '#29ce9b', '#ffa631', '#fa3144', '#7c4dff', '#00bcd4', '#8bc34a', '#ff7043'];
-
-  useEffect(() => {
-    fetchTerapeutas();
-    fetchPacientes();
-    fetchCoterapeutas();
-    fetchConfigCitas();
-  }, []);
+      {/* Sección Terapeutas y Coterapeutas eliminada */}
 
   useEffect(() => {
     try {
@@ -113,6 +11,12 @@ const CoordinadorAgenda = () => {
   useEffect(() => {
     fetchAgenda();
   }, [selectedDate, view, filterTerapeuta, filterEstado, filtrosAvanzados]);
+
+  useEffect(() => {
+    if (diasFiltroDisponibilidad.length > 0) {
+      fetchDisponibilidadSemanal(diasFiltroDisponibilidad);
+    }
+  }, [diasFiltroDisponibilidad]);
 
   // Escuchar cuando se crea una cita desde otras vistas para refrescar la agenda
   useEffect(() => {
@@ -805,6 +709,44 @@ const CoordinadorAgenda = () => {
     }
   };
 
+  const fetchDisponibilidadSemanal = async (diasFiltro = null) => {
+    try {
+      setDisponibilidadSemanalLoading(true);
+      const dias = Array.isArray(diasFiltro)
+        ? diasFiltro
+        : (diasFiltro ? [diasFiltro] : diasFiltroDisponibilidad);
+      const params = new URLSearchParams();
+
+      if (dias && dias.length > 0) {
+        params.append('dias_filtro', dias.join(','));
+      }
+
+      const url = `/agenda/disponibilidad-por-dias${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await ApiService.get(url);
+      const data = response?.data || response || {};
+      const disponibilidadPorDia = data.disponibilidad_por_dia || data.data?.disponibilidad_por_dia || {};
+      setDisponibilidadSemanal(disponibilidadPorDia);
+    } catch (error) {
+      console.error('Error cargando disponibilidad semanal:', error);
+      setDisponibilidadSemanal({});
+    } finally {
+      setDisponibilidadSemanalLoading(false);
+    }
+  };
+
+  const agregarDiaFiltro = (dia) => {
+    if (!dia) return;
+    setDiasFiltraDisponibilidad((prev) => (prev.includes(dia) ? prev : [...prev, dia]));
+  };
+
+  const eliminarDiaFiltro = (dia) => {
+    const hoy = obtenerDiaSemanaKey(new Date());
+    setDiasFiltraDisponibilidad((prev) => {
+      const next = prev.filter(d => d !== dia);
+      return next.length > 0 ? next : [hoy];
+    });
+  };
+
   // Llama a fetchDisponibilidad en useEffect
   useEffect(() => {
     const loadData = async () => {
@@ -933,87 +875,80 @@ const CoordinadorAgenda = () => {
                 <FiUserCheck size={24} />
               </div>
               <div>
-                <h4>Disponibilidad Hoy</h4>
-                <p className="text-small">{format(new Date(), 'dd/MM/yyyy')}</p>
+                <h4>Disponibilidad Semanal</h4>
+                <p className="text-small">Filtra por días de atención</p>
               </div>
             </div>
 
             <div className="flex-row justify-between align-center mb-10">
-              <span className="text-small" style={{ color: 'var(--gray)' }}>Vista rápida de cupos</span>
-              <button className="btn-text" onClick={() => {
-                setNuevaCitaForm(prev => ({ ...prev, fecha: format(selectedDate, 'yyyy-MM-dd') }));
-                setShowAsignarCitaModal(true);
-              }}>
-                <FiEdit2 /> Asignar cita
-              </button>
+              <span className="text-small" style={{ color: 'var(--gray)' }}>Selecciona uno o más días</span>
+              <select
+                className="input-field"
+                value=""
+                onChange={(e) => agregarDiaFiltro(e.target.value)}
+              >
+                <option value="">+ Agregar día</option>
+                {['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].map((dia) => (
+                  <option key={dia} value={dia} disabled={diasFiltroDisponibilidad.includes(dia)}>
+                    {dia.charAt(0).toUpperCase() + dia.slice(1)}
+                  </option>
+                ))}
+              </select>
             </div>
-            
-            <div className="flex-col gap-10 mt-10">
-              {disponibilidadLoading ? (
-                <div className="text-center p-10">
-                  <div className="loading-spinner"></div>
-                  <div className="text-small mt-10">Cargando disponibilidad...</div>
-                </div>
-              ) : disponibilidad && disponibilidad.length > 0 ? (
-                <>
-                  {disponibilidad.filter(p => p.tiene_disponibilidad_semana).slice(0, 3).map(profesional => {
-                    const porcentaje = profesional.porcentaje_ocupacion || 
-                      Math.round((profesional.citas_programadas / profesional.max_citas_dia) * 100);
-                    
-                    return (
-                      <div key={profesional.id} className="flex-col gap-5">
-                        <div className="flex-row justify-between align-center">
-                          <span className="text-small font-bold">
-                            {profesional.profesional.split(' ')[1] || profesional.profesional}
-                          </span>
-                          <span className={`badge ${
-                            profesional.estado === 'disponible' ? 'badge-success' :
-                            profesional.estado === 'limitado' ? 'badge-warning' :
-                            'badge-danger'
-                          }`}>
-                            {profesional.citas_programadas}/{profesional.max_citas_dia}
-                          </span>
-                        </div>
-                        <div className="progress-container">
-                          <div 
-                            className="progress-bar" 
-                            style={{ 
-                              width: `${porcentaje}%`,
-                              background: porcentaje > 80 ? 'var(--rr)' : 
-                                        porcentaje > 60 ? 'var(--yy)' : 'var(--grnb)'
-                            }}
-                          ></div>
-                        </div>
-                        {profesional.cupos_disponibles > 0 && (
-                          <div className="text-small text-success flex-row align-center gap-5">
-                            <FiCheckCircle size={12} />
-                            {profesional.cupos_disponibles} cupo(s) disponible(s)
-                          </div>
-                        )}
+
+            {diasFiltroDisponibilidad.length > 0 && (
+              <div className="filter-pills-container mb-15">
+                {diasFiltroDisponibilidad.map((dia) => (
+                  <div key={dia} className="filter-pill">
+                    {dia.charAt(0).toUpperCase() + dia.slice(1)}
+                    <button className="filter-pill-remove" onClick={() => eliminarDiaFiltro(dia)}>
+                      <FiXCircle size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {disponibilidadSemanalLoading ? (
+              <div className="text-center p-10">
+                <div className="loading-spinner"></div>
+                <div className="text-small mt-10">Cargando disponibilidad...</div>
+              </div>
+            ) : (
+              <div className="disponibilidad-semanal-grid">
+                {diasFiltroDisponibilidad.map((dia) => {
+                  const usuarios = (disponibilidadSemanal && disponibilidadSemanal[dia]) || [];
+                  return (
+                    <div key={dia} className="dia-disponibilidad-card">
+                      <div className="dia-disponibilidad-header">
+                        📅 {dia.charAt(0).toUpperCase() + dia.slice(1)}
                       </div>
-                    );
-                  })}
-                  {disponibilidad.filter(p => p.tiene_disponibilidad_semana).length > 3 && (
-                    <div className="text-center mt-10">
-                      <button 
-                        className="btn-text btn-text-modal"
-                        onClick={() => setShowModalDisponibilidad(true)}
-                        style={{ 
-                          fontSize: '12px',
-                          padding: '6px 12px'
-                        }}
-                      >
-                        Ver todos ({disponibilidad.filter(p => p.tiene_disponibilidad_semana).length} profesionales)
-                      </button>
+                      {usuarios.length > 0 ? (
+                        usuarios.map((u) => (
+                          <div key={`${dia}-${u.id}-${u.hora_inicio || ''}`} className="usuario-disponibilidad-item">
+                            <div className="avatar-small">
+                              {(u.profesional || '').split(' ').map(n => n[0]).join('').slice(0, 2)}
+                            </div>
+                            <div className="usuario-detalles">
+                              <div className="flex-row align-center gap-10">
+                                <span className="font-bold">{u.profesional}</span>
+                                <span className={`badge ${u.rol === 'terapeuta' ? 'badge-info' : 'badge-warning'}`}>
+                                  {u.rol}
+                                </span>
+                              </div>
+                              <div className="text-small">{u.hora_inicio} - {u.hora_fin}</div>
+                              <div className="text-small">Max {u.max_citas_dia} citas · {u.especialidad}</div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-small text-muted">Sin disponibilidad para este día.</div>
+                      )}
                     </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center p-10">
-                  <div className="text-small mt-10">Sin disponibilidad para mostrar</div>
-                </div>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
           
           

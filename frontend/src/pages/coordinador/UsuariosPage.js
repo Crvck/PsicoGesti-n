@@ -201,10 +201,11 @@ const CoordinadorUsuarios = () => {
   };
 
   const filteredUsuarios = usuarios.filter(usuario => {
-    const matchesSearch = 
-      `${usuario.nombre} ${usuario.apellido}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      usuario.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const nombreCompleto = `${usuario.nombre || ''} ${usuario.apellido || ''}`.toLowerCase();
+    const email = (usuario.email || '').toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
     
+    const matchesSearch = nombreCompleto.includes(searchLower) || email.includes(searchLower);
     const matchesRol = !filterRol || usuario.rol === filterRol;
     const matchesActivo = includeInactivos ? true : usuario.activo;
     
@@ -251,8 +252,12 @@ const CoordinadorUsuarios = () => {
         }
 
         const created = await res.json();
-        // Añadir a la lista local (asegura compatibilidad de campos)
-        setUsuarios(prev => [...prev, created]);
+        // Agregar el nuevo usuario a la lista local
+        setUsuarios(prev => [...prev, {
+          ...created,
+          horas_liberadas: 0,
+          horas_objetivo: 0
+        }]);
         notifications.success('Usuario creado exitosamente');
       } catch (error) {
         console.error('Error creando usuario:', error);
@@ -284,8 +289,30 @@ const CoordinadorUsuarios = () => {
           return;
         }
 
-        const updated = await res.json();
-        setUsuarios(prev => prev.map(u => u.id === updated.id ? updated : u));
+        const response = await res.json();
+        const updated = response.data || response;
+        
+        // Actualizar el usuario en la lista local
+        setUsuarios(prev => prev.map(u => {
+          if (u.id === updated.id) {
+            return {
+              ...u,
+              nombre: updated.nombre,
+              apellido: updated.apellido,
+              email: updated.email,
+              telefono: updated.telefono,
+              rol: updated.rol,
+              especialidad: updated.especialidad,
+              fundacion_id: updated.fundacion_id,
+              activo: updated.activo,
+              fecha_registro: updated.fecha_registro || u.fecha_registro,
+              horas_liberadas: u.horas_liberadas,
+              horas_objetivo: u.horas_objetivo
+            };
+          }
+          return u;
+        }));
+        
         notifications.success('Usuario actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando usuario:', error);
@@ -318,11 +345,8 @@ const CoordinadorUsuarios = () => {
       }
 
       const payload = await res.json().catch(() => ({}));
-      const updatedUser = payload.usuario;
-      setUsuarios(prev => prev.map(u => u.id === id ? { ...u, activo: false } : u));
-      if (updatedUser) {
-        setUsuarios(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-      }
+      // Refrescar la lista completa para mostrar el usuario inactivado
+      await fetchUsuarios();
       notifications.success('Usuario inactivado correctamente');
     } catch (error) {
       console.error('Error eliminando usuario:', error);
@@ -363,8 +387,29 @@ const CoordinadorUsuarios = () => {
         return;
       }
 
-      const updated = await res.json();
-      setUsuarios(prev => prev.map(u => u.id === id ? updated : u));
+      const response = await res.json();
+      const updated = response.data || response;
+      
+      // Actualizar el usuario en la lista local
+      setUsuarios(prev => prev.map(u => {
+        if (u.id === id) {
+          return {
+            ...u,
+            activo: updated.activo,
+            nombre: updated.nombre,
+            apellido: updated.apellido,
+            email: updated.email,
+            telefono: updated.telefono,
+            rol: updated.rol,
+            especialidad: updated.especialidad,
+            fundacion_id: updated.fundacion_id,
+            fecha_registro: updated.fecha_registro || u.fecha_registro
+          };
+        }
+        return u;
+      }));
+      
+      notifications.success(`Usuario ${!usuario.activo ? 'activado' : 'desactivado'} correctamente`);
     } catch (error) {
       console.error('Error toggling activo:', error);
       notifications.error('Error cambiando estado de usuario');
@@ -561,10 +606,10 @@ const CoordinadorUsuarios = () => {
                   <td>
                     <div className="flex-row align-center gap-10">
                       <div className="avatar">
-                        {usuario.nombre[0]}{usuario.apellido[0]}
+                        {(usuario.nombre && usuario.nombre[0]) || '?'}{(usuario.apellido && usuario.apellido[0]) || ''}
                       </div>
                       <div>
-                        <div className="font-bold">{usuario.nombre} {usuario.apellido}</div>
+                        <div className="font-bold">{usuario.nombre || 'Sin nombre'} {usuario.apellido || ''}</div>
                         <div className="text-small">ID: {usuario.id}</div>
                       </div>
                     </div>
@@ -1100,6 +1145,39 @@ const CoordinadorUsuarios = () => {
                       <p className="text-small mt-10">No hay pacientes asignados</p>
                     )}
                   </div>
+
+                  {/* Disponibilidad */}
+                  {statsData.disponibilidad && statsData.disponibilidad.length > 0 && (
+                    <div className="card mb-20">
+                      <h5>Disponibilidad Horaria</h5>
+                      <div style={{ maxHeight: '300px', overflowY: 'auto' }} className="mt-10">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Día</th>
+                              <th>Horario</th>
+                              <th>Tipo</th>
+                              <th>Max Citas</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {statsData.disponibilidad.map((d, i) => (
+                              <tr key={i}>
+                                <td style={{ textTransform: 'capitalize' }}>{d.dia}</td>
+                                <td>{d.hora_inicio.substring(0, 5)} - {d.hora_fin.substring(0, 5)}</td>
+                                <td>
+                                  <span className={`badge badge-${d.tipo === 'regular' ? 'success' : d.tipo === 'extraordinaria' ? 'info' : 'warning'}`}>
+                                    {d.tipo}
+                                  </span>
+                                </td>
+                                <td>{d.max_citas}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Motivos de cancelación */}
                   {statsData.motivos_cancelacion.length > 0 && (

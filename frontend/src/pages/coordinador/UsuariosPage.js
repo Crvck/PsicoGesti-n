@@ -1004,21 +1004,21 @@ const CoordinadorUsuarios = () => {
                   <div className="grid-3 mb-20">
                     <div className="card">
                       <div className="text-small">Tasa de Completitud</div>
-                      <div className="font-bold" style={{ fontSize: '24px', color: 'var(--success)' }}>
+                      <div className="font-bold" style={{ fontSize: '24px', color: '#28a745' }}>
                         {statsData.estadisticas.tasa_completitud}%
                       </div>
                       <div className="text-small">{statsData.estadisticas.citas_completadas} completadas</div>
                     </div>
                     <div className="card">
                       <div className="text-small">Tasa de Cancelación</div>
-                      <div className="font-bold" style={{ fontSize: '24px', color: 'var(--danger)' }}>
+                      <div className="font-bold" style={{ fontSize: '24px', color: '#dc3545' }}>
                         {statsData.estadisticas.tasa_cancelacion}%
                       </div>
                       <div className="text-small">{statsData.estadisticas.citas_canceladas} canceladas</div>
                     </div>
                     <div className="card">
                       <div className="text-small">Tasa de Pendientes</div>
-                      <div className="font-bold" style={{ fontSize: '24px', color: 'var(--warning)' }}>
+                      <div className="font-bold" style={{ fontSize: '24px', color: '#fd7e14' }}>
                         {statsData.estadisticas.tasa_pendientes}%
                       </div>
                       <div className="text-small">{statsData.estadisticas.citas_pendientes} pendientes</div>

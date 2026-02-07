@@ -343,15 +343,32 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
-    // 1. Estadísticas de citas (como terapeuta y coterapeuta)
+    // Obtener fechas del mes actual
+    const hoy = new Date();
+    const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const ultimoDiaMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+
+    // 1. Estadísticas de citas (como terapeuta y coterapeuta) del mes actual
     const citasComoPsicologo = await Cita.findAll({
-      where: { psicologo_id: userId },
+      where: { 
+        psicologo_id: userId,
+        fecha: {
+          [Op.gte]: primerDiaMes,
+          [Op.lte]: ultimoDiaMes
+        }
+      },
       attributes: ['estado', 'motivo_cancelacion', 'duracion'],
       raw: true
     });
 
     const citasComoBecario = await Cita.findAll({
-      where: { becario_id: userId },
+      where: { 
+        becario_id: userId,
+        fecha: {
+          [Op.gte]: primerDiaMes,
+          [Op.lte]: ultimoDiaMes
+        }
+      },
       attributes: ['estado', 'motivo_cancelacion', 'duracion'],
       raw: true
     });
@@ -361,22 +378,41 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
     const totalCitas = todasCitas.length;
     const citasCompletadas = todasCitas.filter(c => c.estado === 'completada').length;
     const citasCanceladas = todasCitas.filter(c => c.estado === 'cancelada').length;
-    const citasPendientes = todasCitas.filter(c => c.estado === 'pendiente').length;
+    const citasPendientes = todasCitas.filter(c => c.estado === 'programada' || c.estado === 'confirmada').length;
     
-    const tasaCompletitud = totalCitas > 0 
-      ? Math.round((citasCompletadas / totalCitas) * 10000) / 100 
-      : 0;
+    // Calcular porcentajes que sumen exactamente 100%
+    let tasaCompletitud = 0;
+    let tasaCancelacion = 0;
+    let tasaPendientes = 0;
     
-    const tasaCancelacion = totalCitas > 0 
-      ? Math.round((citasCanceladas / totalCitas) * 10000) / 100 
-      : 0;
+    if (totalCitas > 0) {
+      // Calcular porcentajes iniciales
+      const pctCompletitud = (citasCompletadas / totalCitas) * 100;
+      const pctCancelacion = (citasCanceladas / totalCitas) * 100;
+      const pctPendientes = (citasPendientes / totalCitas) * 100;
+      
+      // Redondear a 2 decimales
+      tasaCompletitud = Math.round(pctCompletitud * 100) / 100;
+      tasaCancelacion = Math.round(pctCancelacion * 100) / 100;
+      tasaPendientes = Math.round(pctPendientes * 100) / 100;
+      
+      // Ajustar el error de redondeo en el valor más grande
+      const suma = tasaCompletitud + tasaCancelacion + tasaPendientes;
+      const diferencia = Math.round((100 - suma) * 100) / 100;
+      
+      if (diferencia !== 0) {
+        // Encontrar el mayor para ajustar
+        if (citasCompletadas >= citasCanceladas && citasCompletadas >= citasPendientes) {
+          tasaCompletitud = Math.round((tasaCompletitud + diferencia) * 100) / 100;
+        } else if (citasCanceladas >= citasPendientes) {
+          tasaCancelacion = Math.round((tasaCancelacion + diferencia) * 100) / 100;
+        } else {
+          tasaPendientes = Math.round((tasaPendientes + diferencia) * 100) / 100;
+        }
+      }
+    }
     
-    const tasaPendientes = totalCitas > 0
-      ? Math.round((citasPendientes / totalCitas) * 10000) / 100
-      : 0;
-    
-    // Calcular citas vencidas (citas pendientes cuya fecha ya pasó)
-    const hoy = new Date();
+    // Calcular citas vencidas (citas pendientes cuya fecha ya pasó en el mes actual)
     hoy.setHours(0, 0, 0, 0);
     
     const citasVencidas = await Cita.count({
@@ -385,8 +421,11 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
           { psicologo_id: userId },
           { becario_id: userId }
         ],
-        estado: 'pendiente',
-        fecha: { [Op.lt]: hoy }
+        estado: { [Op.in]: ['programada', 'confirmada'] },
+        fecha: { 
+          [Op.gte]: primerDiaMes,
+          [Op.lt]: hoy 
+        }
       }
     });
 

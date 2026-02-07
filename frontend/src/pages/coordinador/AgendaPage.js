@@ -84,6 +84,12 @@ const CoordinadorAgenda = () => {
   const [terapeutasSeleccionados, setTerapeutasSeleccionados] = useState([]); // Array de {id, nombre}
   const [searchTerapeutaInput, setSearchTerapeutaInput] = useState('');
   const [showTerapeutasDropdown, setShowTerapeutasDropdown] = useState(false);
+  
+  // Filtros de Estado como chips
+  const [estadosSeleccionados, setEstadosSeleccionados] = useState([]); // Array de valores de estado
+  
+  // Filtros de Tipo de Consulta como chips
+  const [tiposConsultaSeleccionados, setTiposConsultaSeleccionados] = useState([]); // Array de valores de tipo
 
   // Colores fijos para terapeutas y citas
   const coloresTerapeutas = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
@@ -376,8 +382,18 @@ const CoordinadorAgenda = () => {
       matchesTerapeuta = terapeutasSeleccionados.some(t => Number(cita.terapeuta_id) === Number(t.id));
     }
     
-    const matchesEstado = !filterEstado || cita.estado === filterEstado;
-    const matchesTipoConsulta = !filtrosAvanzados.tipo_consulta || cita.tipo_consulta === filtrosAvanzados.tipo_consulta;
+    // Si hay estados seleccionados, filtrar por ellos (OR logic)
+    let matchesEstado = true;
+    if (estadosSeleccionados.length > 0) {
+      matchesEstado = estadosSeleccionados.includes(cita.estado);
+    }
+    
+    // Si hay tipos de consulta seleccionados, filtrar por ellos (OR logic)
+    let matchesTipoConsulta = true;
+    if (tiposConsultaSeleccionados.length > 0) {
+      matchesTipoConsulta = tiposConsultaSeleccionados.includes(cita.tipo_consulta);
+    }
+    
     let matchesFechas = true;
     if (filtrosAvanzados.fecha_inicio && filtrosAvanzados.fecha_fin) {
       matchesFechas = cita.fecha >= filtrosAvanzados.fecha_inicio && cita.fecha <= filtrosAvanzados.fecha_fin;
@@ -406,8 +422,8 @@ const CoordinadorAgenda = () => {
   
   const activeFiltersCount = [
     terapeutasSeleccionados.length > 0 ? terapeutasSeleccionados.length : 0,
-    filterEstado ? 1 : 0,
-    filtrosAvanzados.tipo_consulta ? 1 : 0,
+    estadosSeleccionados.length > 0 ? estadosSeleccionados.length : 0,
+    tiposConsultaSeleccionados.length > 0 ? tiposConsultaSeleccionados.length : 0,
     (filtrosAvanzados.fecha_inicio || filtrosAvanzados.fecha_fin) ? 1 : 0,
     filtrosAvanzados.paciente_id ? 1 : 0
   ].reduce((a, b) => a + b, 0);
@@ -623,6 +639,46 @@ const CoordinadorAgenda = () => {
     if (searchTerapeutaInput.trim() === '') return true;
     return t.nombre.toLowerCase().includes(searchTerapeutaInput.toLowerCase());
   });
+
+  // Función para agregar un estado al filtro
+  const agregarEstadoAlFiltro = (estado) => {
+    if (!estadosSeleccionados.includes(estado)) {
+      setEstadosSeleccionados(prev => [...prev, estado]);
+    }
+  };
+
+  // Función para eliminar un estado del filtro
+  const eliminarEstadoDelFiltro = (estado) => {
+    setEstadosSeleccionados(prev => prev.filter(e => e !== estado));
+  };
+
+  // Función para agregar un tipo de consulta al filtro
+  const agregarTipoConsultaAlFiltro = (tipo) => {
+    if (!tiposConsultaSeleccionados.includes(tipo)) {
+      setTiposConsultaSeleccionados(prev => [...prev, tipo]);
+    }
+  };
+
+  // Función para eliminar un tipo de consulta del filtro
+  const eliminarTipoConsultaDelFiltro = (tipo) => {
+    setTiposConsultaSeleccionados(prev => prev.filter(t => t !== tipo));
+  };
+
+  const resetFiltros = () => {
+    setFilterTerapeuta('');
+    setFilterEstado('');
+    setSearchPaciente('');
+    setTerapeutasSeleccionados([]);
+    setSearchTerapeutaInput('');
+    setEstadosSeleccionados([]);
+    setTiposConsultaSeleccionados([]);
+    setFiltrosAvanzados({
+      fecha_inicio: '',
+      fecha_fin: '',
+      paciente_id: '',
+      tipo_consulta: ''
+    });
+  };
 
   const exportarAgenda = async () => {
       try {
@@ -1147,34 +1203,146 @@ const CoordinadorAgenda = () => {
           
           <div className="form-group">
             <label className="form-label">
-              <FiCheckCircle /> Estado
+              <FiCheckCircle /> Estados
             </label>
-            <select 
-              value={filterEstado} 
-              onChange={(e) => setFilterEstado(e.target.value)}
-              className="select-field"
-            >
-              <option value="">Todos los estados</option>
-              <option value="programada">Programadas</option>
-              <option value="confirmada">Confirmadas</option>
-              <option value="completada">Completadas</option>
-              <option value="cancelada">Canceladas</option>
-            </select>
+            
+            {/* Chips de estados seleccionados */}
+            {estadosSeleccionados.length > 0 && (
+              <div className="flex-row flex-wrap gap-8 mb-10">
+                {estadosSeleccionados.map(estado => {
+                  const etiqueta = estado === 'programada' ? 'Programada' :
+                                  estado === 'confirmada' ? 'Confirmada' :
+                                  estado === 'completada' ? 'Completada' :
+                                  estado === 'cancelada' ? 'Cancelada' : estado;
+                  return (
+                    <div
+                      key={estado}
+                      className="badge badge-info"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        paddingRight: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <span>{etiqueta}</span>
+                      <button
+                        onClick={() => eliminarEstadoDelFiltro(estado)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '16px',
+                          padding: '0 4px',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            
+            {/* Botones para agregar estados */}
+            <div className="flex-row flex-wrap gap-8">
+              {['programada', 'confirmada', 'completada', 'cancelada'].map(estado => {
+                const etiqueta = estado === 'programada' ? 'Programada' :
+                                estado === 'confirmada' ? 'Confirmada' :
+                                estado === 'completada' ? 'Completada' :
+                                estado === 'cancelada' ? 'Cancelada' : estado;
+                const yaSeleccionado = estadosSeleccionados.includes(estado);
+                return (
+                  <button
+                    key={estado}
+                    onClick={() => agregarEstadoAlFiltro(estado)}
+                    className={`badge ${yaSeleccionado ? 'badge-info' : 'badge-light'}`}
+                    style={{
+                      cursor: yaSeleccionado ? 'default' : 'pointer',
+                      opacity: yaSeleccionado ? 0.5 : 1,
+                      border: '1px solid var(--border-color)',
+                      padding: '6px 12px',
+                      fontSize: '12px'
+                    }}
+                    disabled={yaSeleccionado}
+                  >
+                    + {etiqueta}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           
           <div className="form-group">
             <label className="form-label">
-              <FiVideo /> Tipo de Consulta
+              <FiVideo /> Tipos de Consulta
             </label>
-            <select 
-              value={filtrosAvanzados.tipo_consulta}
-              onChange={(e) => handleFiltroAvanzado('tipo_consulta', e.target.value)}
-              className="select-field"
-            >
-              <option value="">Todos los tipos</option>
-              <option value="presencial">Presencial</option>
-              <option value="virtual">Virtual</option>
-            </select>
+            
+            {/* Chips de tipos de consulta seleccionados */}
+            {tiposConsultaSeleccionados.length > 0 && (
+              <div className="flex-row flex-wrap gap-8 mb-10">
+                {tiposConsultaSeleccionados.map(tipo => {
+                  const etiqueta = tipo === 'presencial' ? 'Presencial' : tipo === 'virtual' ? 'Virtual' : tipo;
+                  return (
+                    <div
+                      key={tipo}
+                      className="badge badge-success"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        paddingRight: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <span>{etiqueta}</span>
+                      <button
+                        onClick={() => eliminarTipoConsultaDelFiltro(tipo)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '16px',
+                          padding: '0 4px',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            
+            {/* Botones para agregar tipos de consulta */}
+            <div className="flex-row gap-8">
+              {['presencial', 'virtual'].map(tipo => {
+                const etiqueta = tipo === 'presencial' ? 'Presencial' : tipo === 'virtual' ? 'Virtual' : tipo;
+                const yaSeleccionado = tiposConsultaSeleccionados.includes(tipo);
+                return (
+                  <button
+                    key={tipo}
+                    onClick={() => agregarTipoConsultaAlFiltro(tipo)}
+                    className={`badge ${yaSeleccionado ? 'badge-success' : 'badge-light'}`}
+                    style={{
+                      cursor: yaSeleccionado ? 'default' : 'pointer',
+                      opacity: yaSeleccionado ? 0.5 : 1,
+                      border: '1px solid var(--border-color)',
+                      padding: '6px 12px',
+                      fontSize: '12px'
+                    }}
+                    disabled={yaSeleccionado}
+                  >
+                    + {etiqueta}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
         

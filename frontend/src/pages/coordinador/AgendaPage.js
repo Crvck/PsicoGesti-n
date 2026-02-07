@@ -72,6 +72,7 @@ const CoordinadorAgenda = () => {
     paciente_id: '',
     tipo_consulta: ''
   });
+  const [busquedaTerapeuta, setBusquedaTerapeuta] = useState('');
 
   // Colores fijos para terapeutas y citas
   const coloresTerapeutas = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
@@ -344,7 +345,8 @@ const CoordinadorAgenda = () => {
     // Validar si ya existe una cita para el terapeuta en la misma fecha y hora
     const citasExistentes = getCitasPorDiaYHora(nuevaCitaForm.fecha, nuevaCitaForm.hora);
     const citaConflicto = citasExistentes.find(cita => 
-      Number(cita.terapeuta_id) === Number(nuevaCitaForm.terapeuta_id) && cita.estado !== 'cancelada'
+      Number(cita.terapeuta_id) === Number(nuevaCitaForm.terapeuta_id) &&
+      ['programada', 'confirmada'].includes(cita.estado)
     );
 
     if (citaConflicto) {
@@ -454,12 +456,12 @@ const CoordinadorAgenda = () => {
   const getCitasPorDiaYHora = (fecha, hora) => {
     try {
       const fechaStr = format(new Date(fecha), 'yyyy-MM-dd');
-      const horaNum = hora.split(':')[0];
+      const horaStr = String(hora || '').substring(0, 5);
       
-      return filteredCitas.filter(cita => 
-        cita.fecha === fechaStr &&
-        cita.hora.startsWith(horaNum)
-      );
+      return citas.filter(cita => {
+        const citaHora = String(cita.hora || '').substring(0, 5);
+        return cita.fecha === fechaStr && citaHora === horaStr;
+      });
     } catch (error) {
       console.error('Error filtrando citas:', error);
       return [];
@@ -780,7 +782,7 @@ const CoordinadorAgenda = () => {
                 </div>
               ) : disponibilidad && disponibilidad.length > 0 ? (
                 <>
-                  {disponibilidad.slice(0, 3).map(profesional => {
+                  {disponibilidad.filter(p => p.tiene_disponibilidad_semana).slice(0, 3).map(profesional => {
                     const porcentaje = profesional.porcentaje_ocupacion || 
                       Math.round((profesional.citas_programadas / profesional.max_citas_dia) * 100);
                     
@@ -817,7 +819,7 @@ const CoordinadorAgenda = () => {
                       </div>
                     );
                   })}
-                  {disponibilidad.length > 3 && (
+                  {disponibilidad.filter(p => p.tiene_disponibilidad_semana).length > 3 && (
                     <div className="text-center mt-10">
                       <button 
                         className="btn-text btn-text-modal"
@@ -827,7 +829,7 @@ const CoordinadorAgenda = () => {
                           padding: '6px 12px'
                         }}
                       >
-                        Ver todos ({disponibilidad.length} profesionales)
+                        Ver todos ({disponibilidad.filter(p => p.tiene_disponibilidad_semana).length} profesionales)
                       </button>
                     </div>
                   )}
@@ -1369,8 +1371,27 @@ const CoordinadorAgenda = () => {
       )}
 
       {/* Resumen por Terapeuta */}
-      <div className="grid-3 mt-30">
-        {terapeutas.slice(0, 3).map(terapeuta => {
+      <div className="flex-row align-center gap-10 mb-15 mt-30" style={{ justifyContent: 'space-between' }}>
+        <input
+          type="text"
+          placeholder="Buscar terapeuta o coterapeuta..."
+          value={busquedaTerapeuta}
+          onChange={(e) => setBusquedaTerapeuta(e.target.value)}
+          className="input-field"
+          style={{ maxWidth: '350px' }}
+        />
+        <h3 style={{ margin: 0, textAlign: 'right' }}>Terapeutas y Coterapeutas</h3>
+      </div>
+      <div className="grid-3 gap-20">
+        {terapeutas.filter(terapeuta => {
+          if (!busquedaTerapeuta.trim()) return true;
+          const searchTerm = busquedaTerapeuta.toLowerCase();
+          return (
+            (terapeuta.nombre || '').toLowerCase().includes(searchTerm) ||
+            (terapeuta.email || '').toLowerCase().includes(searchTerm) ||
+            (terapeuta.especialidad || '').toLowerCase().includes(searchTerm)
+          );
+        }).slice(0, 3).map(terapeuta => {
           const citasTerapeuta = filteredCitas.filter(c => c.terapeuta_id === terapeuta.id);
           const citasHoy = citasTerapeuta.filter(c => c.fecha === format(new Date(), 'yyyy-MM-dd')).length;
           return (
@@ -1412,6 +1433,54 @@ const CoordinadorAgenda = () => {
                 <button className="btn-text" onClick={() => { setFilterTerapeuta(terapeuta.id); }}>
                   Ver en calendario
                 </button>
+              </div>
+            </div>
+          );
+        })}
+        {coterapeutas.filter(coterapeuta => {
+          if (!busquedaTerapeuta.trim()) return true;
+          const searchTerm = busquedaTerapeuta.toLowerCase();
+          return (
+            (coterapeuta.nombre || '').toLowerCase().includes(searchTerm) ||
+            (coterapeuta.email || '').toLowerCase().includes(searchTerm)
+          );
+        }).slice(0, 3).map(coterapeuta => {
+          const citasCoterapeuta = filteredCitas.filter(c => c.coterapeuta_id === coterapeuta.id);
+          const citasHoy = citasCoterapeuta.filter(c => c.fecha === format(new Date(), 'yyyy-MM-dd')).length;
+          return (
+            <div key={`ct-${coterapeuta.id}`} className="card" style={{ borderLeft: '4px solid #ffa631' }}>
+              <div className="flex-row align-center gap-10 mb-10">
+                <div 
+                  className="avatar" 
+                  style={{ background: '#ffa631' }}
+                >
+                  {coterapeuta.nombre.split(' ').map(n => n[0]).join('')}
+                </div>
+                <div className="flex-1">
+                  <h4>{coterapeuta.nombre}</h4>
+                  <p className="text-small" style={{ color: '#ffa631', fontWeight: 'bold' }}>Coterapeuta</p>
+                  <p className="text-small">
+                    <FiMail /> {coterapeuta.email}
+                  </p>
+                </div>
+              </div>
+              <div className="grid-2 gap-10">
+                <div>
+                  <div className="text-small">Citas como CT</div>
+                  <div className="font-bold">{citasCoterapeuta.length}</div>
+                </div>
+                <div>
+                  <div className="text-small">Citas hoy</div>
+                  <div className="font-bold">{citasHoy}</div>
+                </div>
+                <div>
+                  <div className="text-small">Confirmadas</div>
+                  <div className="font-bold">{citasCoterapeuta.filter(c => c.estado === 'confirmada').length}</div>
+                </div>
+                <div>
+                  <div className="text-small">Completadas</div>
+                  <div className="font-bold">{citasCoterapeuta.filter(c => c.estado === 'completada').length}</div>
+                </div>
               </div>
             </div>
           );
@@ -1617,7 +1686,7 @@ const CoordinadorAgenda = () => {
                   </div>
                   <div className="stat-item">
                     <div className="stat-value text-success">
-                      {disponibilidad.filter(p => p.estado === 'disponible').length}
+                      {disponibilidad.filter(p => p.tiene_disponibilidad_semana ?? (p.estado === 'disponible')).length}
                     </div>
                     <div className="stat-label">Disponibles</div>
                   </div>
@@ -1651,7 +1720,7 @@ const CoordinadorAgenda = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {disponibilidad.map(profesional => {
+                        {disponibilidad.filter(p => p.tiene_disponibilidad_semana).map(profesional => {
                           const porcentaje = profesional.porcentaje_ocupacion || 
                             Math.round((profesional.citas_programadas / profesional.max_citas_dia) * 100);
                           

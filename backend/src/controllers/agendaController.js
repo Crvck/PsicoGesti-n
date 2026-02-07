@@ -439,6 +439,19 @@ class AgendaController {
             };
             
             const diaSemana = obtenerDiaSemana(fechaConsulta);
+            const obtenerRangoSemana = (fechaStr) => {
+                const fechaObj = new Date(fechaStr);
+                const dia = fechaObj.getDay();
+                const diffLunes = dia === 0 ? -6 : 1 - dia;
+                const inicio = new Date(fechaObj);
+                inicio.setDate(fechaObj.getDate() + diffLunes);
+                inicio.setHours(0, 0, 0, 0);
+                const fin = new Date(inicio);
+                fin.setDate(inicio.getDate() + 6);
+                fin.setHours(23, 59, 59, 999);
+                return { semanaInicio: inicio, semanaFin: fin };
+            };
+            const { semanaInicio, semanaFin } = obtenerRangoSemana(fechaConsulta);
             
             const profesionales = await User.findAll({
                 where: {
@@ -450,12 +463,11 @@ class AgendaController {
                         model: Disponibilidad,
                         as: 'Disponibilidades',
                         where: {
-                            dia_semana: diaSemana,
                             activo: true,
-                            fecha_inicio_vigencia: { [Op.lte]: fechaConsulta },
+                            fecha_inicio_vigencia: { [Op.lte]: semanaFin },
                             [Op.or]: [
                                 { fecha_fin_vigencia: null },
-                                { fecha_fin_vigencia: { [Op.gte]: fechaConsulta } }
+                                { fecha_fin_vigencia: { [Op.gte]: semanaInicio } }
                             ]
                         },
                         required: false
@@ -499,7 +511,8 @@ class AgendaController {
             }, {});
 
             const disponibilidadDetallada = profesionales.map((prof) => {
-                const disponibilidad = (prof.Disponibilidades || [])[0] || null;
+                const disponibilidadesSemana = prof.Disponibilidades || [];
+                const disponibilidad = disponibilidadesSemana.find(d => d.dia_semana === diaSemana) || null;
                 const citasProgramadas = prof.rol === 'coterapeuta'
                     ? (citasMapBec[prof.id] || 0)
                     : (citasMapPsi[prof.id] || 0);
@@ -528,7 +541,8 @@ class AgendaController {
                     cupos_disponibles: cuposDisponibles,
                     porcentaje_ocupacion: porcentajeOcupacion,
                     estado,
-                    intervalo_citas: disponibilidad?.intervalo_citas || 50
+                    intervalo_citas: disponibilidad?.intervalo_citas || 50,
+                    tiene_disponibilidad_semana: disponibilidadesSemana.length > 0
                 };
             });
             

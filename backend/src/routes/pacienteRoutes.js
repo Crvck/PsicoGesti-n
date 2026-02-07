@@ -265,31 +265,29 @@ router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeu
     try {
         console.log('🔍 Solicitando candidatos a alta...');
         
-        // Query CORREGIDA - solo agrupa por las columnas del SELECT
+        // Query sin filtro por ultimo_no_aprobado (columna eliminada)
         const query = `
-            SELECT 
-                p.id,
-                CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
-                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
-                e.motivo_consulta,
-                DATE(p.created_at) as fecha_ingreso,
-                COUNT(DISTINCT c.id) as sesiones_totales,
-                SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as sesiones_completadas,
-                CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
-                CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre
-            FROM pacientes p
-            LEFT JOIN expedientes e ON p.id = e.paciente_id
-            LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
-            LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
-            LEFT JOIN users u_bec ON a.becario_id = u_bec.id
-            LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado != 'cancelada'
-            WHERE p.activo = true
-            -- EXCLUIR pacientes marcados como no aprobados en los últimos 30 días
-            AND (p.ultimo_no_aprobado IS NULL OR p.ultimo_no_aprobado < DATE_SUB(CURDATE(), INTERVAL 30 DAY))
-            GROUP BY p.id, e.motivo_consulta, u_psi.nombre, u_psi.apellido, u_bec.nombre, u_bec.apellido
-            HAVING COUNT(DISTINCT c.id) > 0
-               AND SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) = COUNT(DISTINCT c.id)
-            ORDER BY COUNT(DISTINCT c.id) DESC, paciente_nombre ASC
+          SELECT 
+            p.id,
+            CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
+            TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
+            e.motivo_consulta,
+            DATE(p.created_at) as fecha_ingreso,
+            COUNT(DISTINCT c.id) as sesiones_totales,
+            SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as sesiones_completadas,
+            CONCAT(u_psi.nombre, ' ', u_psi.apellido) as psicologo_nombre,
+            CONCAT(u_bec.nombre, ' ', u_bec.apellido) as becario_nombre
+          FROM pacientes p
+          LEFT JOIN expedientes e ON p.id = e.paciente_id
+          LEFT JOIN asignaciones a ON p.id = a.paciente_id AND a.estado = 'activa'
+          LEFT JOIN users u_psi ON a.psicologo_id = u_psi.id
+          LEFT JOIN users u_bec ON a.becario_id = u_bec.id
+          LEFT JOIN citas c ON p.id = c.paciente_id AND c.estado != 'cancelada'
+          WHERE p.activo = true
+          GROUP BY p.id, e.motivo_consulta, u_psi.nombre, u_psi.apellido, u_bec.nombre, u_bec.apellido
+          HAVING COUNT(DISTINCT c.id) > 0
+             AND SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) = COUNT(DISTINCT c.id)
+          ORDER BY COUNT(DISTINCT c.id) DESC, paciente_nombre ASC
         `;
         
         console.log('📊 Ejecutando query de candidatos a alta...');
@@ -321,11 +319,10 @@ router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeu
         try {
             console.log('🔄 Probando query alternativa...');
             const querySimple = `
-                SELECT p.id, CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre, 
-                       p.ultimo_no_aprobado
-                FROM pacientes p
-                WHERE p.activo = true
-                LIMIT 5
+              SELECT p.id, CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre
+              FROM pacientes p
+              WHERE p.activo = true
+              LIMIT 5
             `;
             const prueba = await sequelize.query(querySimple, { type: QueryTypes.SELECT });
             console.log('🔍 Resultado de prueba:', prueba);
@@ -499,14 +496,7 @@ router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'te
             ]
         });
         
-        // 3. Actualizar la columna ultimo_no_aprobado (para no mostrarlo en candidatos)
-        await sequelize.query(`
-            UPDATE pacientes 
-            SET ultimo_no_aprobado = CURDATE()
-            WHERE id = ?
-        `, {
-            replacements: [id]
-        });
+        // 3. (Eliminado) No se actualiza columna ultimo_no_aprobado porque no existe
         
         // 4. Registrar en logs
         await sequelize.query(`

@@ -361,6 +361,7 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
     const totalCitas = todasCitas.length;
     const citasCompletadas = todasCitas.filter(c => c.estado === 'completada').length;
     const citasCanceladas = todasCitas.filter(c => c.estado === 'cancelada').length;
+    const citasPendientes = todasCitas.filter(c => c.estado === 'pendiente').length;
     
     const tasaCompletitud = totalCitas > 0 
       ? Math.round((citasCompletadas / totalCitas) * 10000) / 100 
@@ -369,6 +370,25 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
     const tasaCancelacion = totalCitas > 0 
       ? Math.round((citasCanceladas / totalCitas) * 10000) / 100 
       : 0;
+    
+    const tasaPendientes = totalCitas > 0
+      ? Math.round((citasPendientes / totalCitas) * 10000) / 100
+      : 0;
+    
+    // Calcular citas vencidas (citas pendientes cuya fecha ya pasó)
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    const citasVencidas = await Cita.count({
+      where: {
+        [Op.or]: [
+          { psicologo_id: userId },
+          { becario_id: userId }
+        ],
+        estado: 'pendiente',
+        fecha: { [Op.lt]: hoy }
+      }
+    });
 
     // Calcular horas liberadas (sumar duración de citas completadas, convertir de minutos a horas)
     const minutosLiberados = todasCitas
@@ -511,8 +531,11 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
         total_citas: totalCitas,
         citas_completadas: citasCompletadas,
         citas_canceladas: citasCanceladas,
+        citas_pendientes: citasPendientes,
+        citas_vencidas: citasVencidas,
         tasa_completitud: tasaCompletitud,
         tasa_cancelacion: tasaCancelacion,
+        tasa_pendientes: tasaPendientes,
         horas_liberadas: horasLiberadas,
         horas_objetivo: horasObjetivo
       },

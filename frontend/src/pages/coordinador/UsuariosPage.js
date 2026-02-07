@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPhone, FiCheckCircle, FiXCircle, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPhone, FiCheckCircle, FiXCircle, FiEye, FiEyeOff, FiBarChart2 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
@@ -23,6 +23,10 @@ const CoordinadorUsuarios = () => {
   });
   const [recordatorioLoading, setRecordatorioLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [statsUser, setStatsUser] = useState(null);
+  const [statsData, setStatsData] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
@@ -158,6 +162,42 @@ const CoordinadorUsuarios = () => {
     } finally {
       setRecordatorioLoading(false);
     }
+  };
+
+  const openStatsModal = async (usuario) => {
+    setStatsUser(usuario);
+    setShowStatsModal(true);
+    setStatsData(null);
+    setStatsLoading(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3000/api/users/${usuario.id}/estadisticas`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
+
+      if (!res.ok) {
+        notifications.error('Error al obtener estadísticas');
+        return;
+      }
+
+      const data = await res.json();
+      setStatsData(data);
+    } catch (error) {
+      console.error('Error al obtener estadísticas:', error);
+      notifications.error('Error al obtener estadísticas');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const closeStatsModal = () => {
+    setShowStatsModal(false);
+    setStatsUser(null);
+    setStatsData(null);
   };
 
   const filteredUsuarios = usuarios.filter(usuario => {
@@ -562,6 +602,13 @@ const CoordinadorUsuarios = () => {
                   <td>
                     <div className="flex-row gap-5">
                       <button 
+                        className="btn-text text-info"
+                        onClick={() => openStatsModal(usuario)}
+                        title="Ver estadísticas"
+                      >
+                        <FiBarChart2 />
+                      </button>
+                      <button 
                         className="btn-text"
                         onClick={() => editarUsuario(usuario)}
                         title="Editar"
@@ -926,6 +973,156 @@ const CoordinadorUsuarios = () => {
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Estadísticas */}
+      {showStatsModal && (
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: '800px', width: '95%' }}>
+            <div className="modal-header">
+              <h3>Estadísticas de Usuario</h3>
+              <button className="modal-close" onClick={closeStatsModal}>×</button>
+            </div>
+            
+            <div className="modal-content">
+              {statsLoading ? (
+                <div className="loading-container">
+                  <div className="loading-spinner"></div>
+                  <div className="loading-text">Cargando estadísticas...</div>
+                </div>
+              ) : statsData ? (
+                <div>
+                  <div className="mb-20">
+                    <h4>{statsData.usuario.nombre} {statsData.usuario.apellido}</h4>
+                    <p className="text-small">{statsData.usuario.rol} - {statsData.usuario.email}</p>
+                  </div>
+
+                  {/* Grid de estadísticas principales */}
+                  <div className="grid-3 mb-20">
+                    <div className="card">
+                      <div className="text-small">Tasa de Completitud</div>
+                      <div className="font-bold" style={{ fontSize: '24px', color: 'var(--success)' }}>
+                        {statsData.estadisticas.tasa_completitud}%
+                      </div>
+                      <div className="text-small">{statsData.estadisticas.citas_completadas} completadas</div>
+                    </div>
+                    <div className="card">
+                      <div className="text-small">Tasa de Cancelación</div>
+                      <div className="font-bold" style={{ fontSize: '24px', color: 'var(--danger)' }}>
+                        {statsData.estadisticas.tasa_cancelacion}%
+                      </div>
+                      <div className="text-small">{statsData.estadisticas.citas_canceladas} canceladas</div>
+                    </div>
+                    <div className="card">
+                      <div className="text-small">Tasa de Pendientes</div>
+                      <div className="font-bold" style={{ fontSize: '24px', color: 'var(--warning)' }}>
+                        {statsData.estadisticas.tasa_pendientes}%
+                      </div>
+                      <div className="text-small">{statsData.estadisticas.citas_pendientes} pendientes</div>
+                    </div>
+                  </div>
+
+                  {/* Grid de información adicional */}
+                  <div className="grid-2 mb-20">
+                    <div className="card">
+                      <div className="text-small">Citas Vencidas</div>
+                      <div className="font-bold" style={{ fontSize: '20px', color: 'var(--danger)' }}>
+                        {statsData.estadisticas.citas_vencidas}
+                      </div>
+                      <div className="text-small">Citas pendientes no marcadas como completadas</div>
+                    </div>
+                    <div className="card">
+                      <div className="text-small">Total de Citas</div>
+                      <div className="font-bold" style={{ fontSize: '20px' }}>
+                        {statsData.estadisticas.total_citas}
+                      </div>
+                      <div className="text-small">En el mes actual</div>
+                    </div>
+                  </div>
+
+                  {/* Horas */}
+                  <div className="card mb-20">
+                    <h5>Progreso de Horas</h5>
+                    <div className="flex-row justify-between align-center mt-10">
+                      <div>
+                        <div className="text-small">Horas Liberadas</div>
+                        <div className="font-bold" style={{ fontSize: '20px', color: 'var(--grnd)' }}>
+                          {statsData.estadisticas.horas_liberadas}h
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-small">Horas Objetivo</div>
+                        <div className="font-bold" style={{ fontSize: '20px', color: 'var(--blu)' }}>
+                          {statsData.estadisticas.horas_objetivo}h
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-small">Porcentaje</div>
+                        <div className="font-bold" style={{ fontSize: '20px' }}>
+                          {statsData.estadisticas.horas_objetivo > 0
+                            ? Math.round((statsData.estadisticas.horas_liberadas / statsData.estadisticas.horas_objetivo) * 100)
+                            : 0}%
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pacientes asignados */}
+                  <div className="card mb-20">
+                    <h5>Pacientes Asignados ({statsData.pacientes_asignados.length})</h5>
+                    {statsData.pacientes_asignados.length > 0 ? (
+                      <div style={{ maxHeight: '200px', overflowY: 'auto' }} className="mt-10">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Nombre</th>
+                              <th>Género</th>
+                              <th>Edad</th>
+                              <th>Fecha Asignación</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {statsData.pacientes_asignados.map(p => (
+                              <tr key={p.paciente_id}>
+                                <td>{p.nombre} {p.apellido}</td>
+                                <td>{p.genero}</td>
+                                <td>{p.edad || '-'}</td>
+                                <td>{new Date(p.fecha_asignacion).toLocaleDateString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-small mt-10">No hay pacientes asignados</p>
+                    )}
+                  </div>
+
+                  {/* Motivos de cancelación */}
+                  {statsData.motivos_cancelacion.length > 0 && (
+                    <div className="card">
+                      <h5>Principales Motivos de Cancelación</h5>
+                      <div className="mt-10">
+                        {statsData.motivos_cancelacion.slice(0, 5).map((m, i) => (
+                          <div key={i} className="flex-row justify-between mb-5">
+                            <span>{m.motivo}</span>
+                            <span className="badge badge-danger">{m.cantidad}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p>No se pudieron cargar las estadísticas</p>
+              )}
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={closeStatsModal}>Cerrar</button>
             </div>
           </div>
         </div>

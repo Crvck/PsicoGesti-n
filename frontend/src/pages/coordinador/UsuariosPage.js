@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPhone, FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPhone, FiCheckCircle, FiXCircle, FiEye, FiEyeOff } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
@@ -22,6 +22,7 @@ const CoordinadorUsuarios = () => {
     recordatorio_citas_hora: '09:00'
   });
   const [recordatorioLoading, setRecordatorioLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
@@ -718,13 +719,32 @@ const CoordinadorUsuarios = () => {
                     {modalType === 'nuevo' ? (
                       <>
                         <label>Contraseña Temporal</label>
-                        <input
-                          type="text"
-                          name="password"
-                          value={formData.password}
-                          className="input-field"
-                          readOnly
-                        />
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <input
+                            type={showPassword ? 'text' : 'text'}
+                            name="password"
+                            value={formData.password}
+                            className="input-field"
+                            readOnly
+                            style={{ flex: 1 }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: '8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              color: '#666'
+                            }}
+                            title={showPassword ? 'Ocultar' : 'Mostrar'}
+                          >
+                            {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                          </button>
+                        </div>
                         <p className="text-small mt-5">El usuario deberá cambiar la contraseña en su primer inicio</p>
                       </>
                     ) : (
@@ -740,14 +760,33 @@ const CoordinadorUsuarios = () => {
                         </label>
                         {formData.cambiarPassword && (
                           <div style={{ marginTop: '10px' }}>
-                            <input
-                              type="password"
-                              name="password"
-                              placeholder="Nueva contraseña"
-                              value={formData.password}
-                              onChange={handleInputChange}
-                              className="input-field"
-                            />
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <input
+                                type={showPassword ? 'text' : 'password'}
+                                name="password"
+                                placeholder="Nueva contraseña"
+                                value={formData.password}
+                                onChange={handleInputChange}
+                                className="input-field"
+                                style={{ flex: 1 }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  color: '#666'
+                                }}
+                                title={showPassword ? 'Ocultar' : 'Mostrar'}
+                              >
+                                {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
+                              </button>
+                            </div>
                           </div>
                         )}
                       </>

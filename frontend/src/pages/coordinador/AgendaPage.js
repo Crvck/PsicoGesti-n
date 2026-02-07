@@ -1401,20 +1401,27 @@ const CoordinadorAgenda = () => {
                   <input
                     type="text"
                     className="input-field"
-                    placeholder={terapeutaPrincipalSeleccionado ? terapeutaPrincipalSeleccionado.nombre : "Buscar terapeuta..."}
-                    value={terapeutaCitaQuery || (terapeutaPrincipalSeleccionado ? terapeutaPrincipalSeleccionado.nombre : '')}
-                    onChange={(e) => { setTerapeutaCitaQuery(e.target.value); setShowTerapeutaCitaList(true); }}
+                    placeholder="Buscar terapeuta..."
+                    value={terapeutaCitaQuery}
+                    onChange={(e) => { 
+                      setTerapeutaCitaQuery(e.target.value); 
+                      setShowTerapeutaCitaList(true); 
+                    }}
                     onFocus={() => setShowTerapeutaCitaList(true)}
                     onBlur={() => setTimeout(() => setShowTerapeutaCitaList(false), 120)}
+                    readOnly={!!terapeutaPrincipalSeleccionado}
+                    style={{ 
+                      backgroundColor: terapeutaPrincipalSeleccionado ? '#f0f4f8' : '#fff',
+                      cursor: terapeutaPrincipalSeleccionado ? 'not-allowed' : 'text'
+                    }}
                   />
-                  {showTerapeutaCitaList && (
+                  {showTerapeutaCitaList && !terapeutaPrincipalSeleccionado && (
                     <div className="autocomplete-panel">
                       {terapeutas.filter(t => {
-                        // Filter by query and by whether they have assignments (citas)
+                        // Filter by query
                         const matchesQuery = (t.nombre || '').toLowerCase().includes(terapeutaCitaQuery.toLowerCase()) ||
                                             (t.email || '').toLowerCase().includes(terapeutaCitaQuery.toLowerCase());
-                        const hasAssignment = citas.some(c => Number(c.terapeuta_id) === Number(t.id));
-                        return matchesQuery && hasAssignment;
+                        return matchesQuery;
                       }).slice(0, 50).map(t => (
                         <div
                           key={t.id}
@@ -1432,10 +1439,9 @@ const CoordinadorAgenda = () => {
                       {terapeutas.filter(t => {
                         const matchesQuery = (t.nombre || '').toLowerCase().includes(terapeutaCitaQuery.toLowerCase()) ||
                                             (t.email || '').toLowerCase().includes(terapeutaCitaQuery.toLowerCase());
-                        const hasAssignment = citas.some(c => Number(c.terapeuta_id) === Number(t.id));
-                        return matchesQuery && hasAssignment;
+                        return matchesQuery;
                       }).length === 0 && (
-                        <div className="text-small autocomplete-empty">No se encontraron terapeutas asignados</div>
+                        <div className="text-small autocomplete-empty">No se encontraron terapeutas</div>
                       )}
                     </div>
                   )}
@@ -1455,11 +1461,10 @@ const CoordinadorAgenda = () => {
                   {showCoterapeutaCitaList && (
                     <div className="autocomplete-panel">
                       {coterapeutas.filter(c => {
-                        // Filter by query and by whether they have assignments (citas as coterapeuta)
+                        // Filter by query
                         const matchesQuery = `${c.nombre || ''} ${c.apellido || ''}`.toLowerCase().includes(coterapeutaCitaQuery.toLowerCase()) ||
                                             (c.email || '').toLowerCase().includes(coterapeutaCitaQuery.toLowerCase());
-                        const hasAssignment = citas.some(cita => Number(cita.coterapeuta_id) === Number(c.id));
-                        return matchesQuery && hasAssignment;
+                        return matchesQuery;
                       }).slice(0, 50).map(c => (
                         <div
                           key={c.id}
@@ -1477,10 +1482,9 @@ const CoordinadorAgenda = () => {
                       {coterapeutas.filter(c => {
                         const matchesQuery = `${c.nombre || ''} ${c.apellido || ''}`.toLowerCase().includes(coterapeutaCitaQuery.toLowerCase()) ||
                                             (c.email || '').toLowerCase().includes(coterapeutaCitaQuery.toLowerCase());
-                        const hasAssignment = citas.some(cita => Number(cita.coterapeuta_id) === Number(c.id));
-                        return matchesQuery && hasAssignment;
+                        return matchesQuery;
                       }).length === 0 && (
-                        <div className="text-small autocomplete-empty">No se encontraron coterapeutas asignados</div>
+                        <div className="text-small autocomplete-empty">No se encontraron coterapeutas</div>
                       )}
                     </div>
                   )}

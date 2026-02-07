@@ -166,38 +166,66 @@ const CoordinadorAgenda = () => {
       // Extraer terapeutas únicos
       const terapeutas = [];
       const terapeutaIds = new Set();
+      let terapeutaPrincipal = null;
+      let coterapeutaPrincipal = null;
       
       activas.forEach(a => {
         // El terapeuta es el psicólogo
         if (a.Psicologo && !terapeutaIds.has(a.Psicologo.id)) {
           terapeutaIds.add(a.Psicologo.id);
-          terapeutas.push({
+          const terapeuta = {
             id: a.Psicologo.id,
             nombre: `${a.Psicologo.nombre} ${a.Psicologo.apellido}`,
             rol: 'terapeuta',
             email: a.Psicologo.email
-          });
+          };
+          terapeutas.push(terapeuta);
+          
+          // Guardar como terapeuta principal si no hay uno
+          if (!terapeutaPrincipal) {
+            terapeutaPrincipal = terapeuta;
+          }
         }
         
         // El coterapeuta es el becario
         if (a.Becario && !terapeutaIds.has(a.Becario.id)) {
           terapeutaIds.add(a.Becario.id);
-          terapeutas.push({
+          const coterapeuta = {
             id: a.Becario.id,
             nombre: `${a.Becario.nombre} ${a.Becario.apellido}`,
             rol: 'coterapeuta',
             email: a.Becario.email
-          });
+          };
+          terapeutas.push(coterapeuta);
+          
+          // Guardar como coterapeuta principal si no hay uno
+          if (!coterapeutaPrincipal) {
+            coterapeutaPrincipal = coterapeuta;
+          }
         }
       });
       
       console.log('✅ Terapeutas asignados:', terapeutas);
       setTerapeutasAsignadosPaciente(terapeutas);
       
-      // El principal es el primero (terapeuta psicólogo)
-      if (terapeutas.length > 0) {
-        setTerapeutaPrincipalSeleccionado(terapeutas[0]);
+      // Auto-rellenar los campos del formulario
+      if (terapeutaPrincipal) {
+        setTerapeutaPrincipalSeleccionado(terapeutaPrincipal);
+        setTerapeutaCitaQuery(terapeutaPrincipal.nombre);
+        setNuevaCitaForm(prev => ({ 
+          ...prev, 
+          terapeuta_id: terapeutaPrincipal.id 
+        }));
       }
+      
+      if (coterapeutaPrincipal) {
+        setCoterapeutaCitaQuery(coterapeutaPrincipal.nombre);
+        setNuevaCitaForm(prev => ({ 
+          ...prev, 
+          coterapeuta_id: coterapeutaPrincipal.id 
+        }));
+      }
+      
     } catch (error) {
       console.error('💥 Error al cargar terapeutas asignados:', error);
       setTerapeutasAsignadosPaciente([]);
@@ -1215,6 +1243,9 @@ const CoordinadorAgenda = () => {
                 setTerapeutasAsignadosPaciente([]);
                 setTerapeutaPrincipalSeleccionado(null);
                 setShowOtrosTerapeutasModal(false);
+                setPacienteCitaQuery('');
+                setTerapeutaCitaQuery('');
+                setCoterapeutaCitaQuery('');
               }}>×</button>
             </div>
             <div className="modal-content">
@@ -1527,6 +1558,9 @@ const CoordinadorAgenda = () => {
                 setTerapeutasAsignadosPaciente([]);
                 setTerapeutaPrincipalSeleccionado(null);
                 setShowOtrosTerapeutasModal(false);
+                setPacienteCitaQuery('');
+                setTerapeutaCitaQuery('');
+                setCoterapeutaCitaQuery('');
               }}>Cancelar</button>
               <button className="btn-primary" onClick={crearCitaDesdeAgenda}>Guardar cita</button>
             </div>

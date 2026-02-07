@@ -83,19 +83,14 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
       const minutosLiberados = citasCompletadas
         .filter(c => c.duracion)
         .reduce((sum, c) => sum + c.duracion, 0);
-      const horasLiberadas = Math.round((minutosLiberados / 60) * 100) / 100;
+      const horasLiberadas = Math.round(minutosLiberados / 60); // Redondear a entero
 
-      // Obtener horas objetivo de la solicitud
+      // Obtener horas objetivo de la solicitud (vinculado por email)
       let horasObjetivo = 0;
       const solicitud = await Solicitud.findOne({
         where: {
           email: u.email,
-          [Op.or]: [
-            { estado: 'APROBADO' },
-            { estado: 'aprobado' },
-            { estado: 'aprobados' },
-            { estado: 'APROBADOS' }
-          ]
+          estado: 'APROBADA'
         },
         attributes: ['horas_a_liberar', 'email', 'estado'],
         order: [['fecha_resolucion', 'DESC']]
@@ -380,7 +375,7 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
     const minutosLiberados = todasCitas
       .filter(c => c.estado === 'completada' && c.duracion)
       .reduce((sum, c) => sum + c.duracion, 0);
-    const horasLiberadas = Math.round((minutosLiberados / 60) * 100) / 100; // Redondear a 2 decimales
+    const horasLiberadas = Math.round(minutosLiberados / 60); // Redondear a entero
 
     // 2. Motivos de cancelación
     const citasCanceladasConMotivo = todasCitas.filter(
@@ -489,17 +484,12 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
       duracion: c.duracion
     }));
 
-    // 6. Obtener horas objetivo del preregistro (solicitud aprobada)
+    // 6. Obtener horas objetivo del preregistro (solicitud aprobada, vinculado por email)
     let horasObjetivo = 0;
     const solicitud = await Solicitud.findOne({
       where: {
         email: user.email,
-        [Op.or]: [
-          { estado: 'APROBADO' },
-          { estado: 'aprobado' },
-          { estado: 'aprobados' },
-          { estado: 'APROBADOS' }
-        ]
+        estado: 'APROBADA'
       },
       attributes: ['horas_a_liberar', 'email', 'estado'],
       order: [['fecha_resolucion', 'DESC']]
@@ -530,7 +520,7 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
           citas_canceladas: citasCanceladas,
           tasa_completitud: tasaCompletitud,
           tasa_cancelacion: tasaCancelacion,
-          horas_liberadas: Math.round(horasLiberadas * 100) / 100,
+          horas_liberadas: horasLiberadas,
           horas_objetivo: horasObjetivo
         },
         motivos_cancelacion: motivosCancelacion,

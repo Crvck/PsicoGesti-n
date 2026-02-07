@@ -255,16 +255,17 @@ const CoordinadorUsuarios = () => {
         notifications.error('Error creando usuario');
       }
     } else {
-      // Editar usuario: enviar al backend
+      // Editar usuario: enviar al backend (sin password a menos que se quiera cambiar)
       try {
         const token = localStorage.getItem('token');
+        const { password, ...dataToSend } = formData; // Excluir password al editar
         const res = await fetch(`http://localhost:3000/api/users/${formData.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': token ? `Bearer ${token}` : ''
           },
-          body: JSON.stringify(formData)
+          body: JSON.stringify(dataToSend)
         });
 
         if (!res.ok) {
@@ -320,12 +321,9 @@ const CoordinadorUsuarios = () => {
   };
 
   const editarUsuario = (usuario) => {
-    // Mapear fecha si es string
-    const mapped = {
-      ...usuario,
-      password: 'P@ssw0rd123'
-    };
-    setFormData(mapped);
+    // NO incluir password al editar - solo se debe cambiar explícitamente
+    const { password, ...usuarioSinPassword } = usuario;
+    setFormData(usuarioSinPassword);
     setModalType('editar');
     setShowModal(true);
   };

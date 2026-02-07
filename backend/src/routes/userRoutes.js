@@ -9,6 +9,7 @@ const EmailService = require('../services/emailService');
 const Cita = require('../models/citaModel');
 const Paciente = require('../models/pacienteModel');
 const Asignacion = require('../models/asignacionModel');
+const Solicitud = require('../models/Solicitud');
 const { sequelize } = require('../models/userModel');
 
 // Obtener todos los coterapeutas
@@ -50,21 +51,59 @@ router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
       order: [['apellido', 'ASC'], ['nombre', 'ASC']]
     });
 
-    // Mapear created_at a fecha_registro para compatibilidad con frontend
-    const mapped = users.map(u => ({
-      id: u.id,
-      nombre: u.nombre,
-      apellido: u.apellido,
-      email: u.email,
-      telefono: u.telefono,
-      rol: u.rol,
-      especialidad: u.especialidad,
-      fundacion_id: u.fundacion_id,
-      activo: u.activo,
-      fecha_registro: u.created_at
+    // Calcular horas para cada usuario
+    const usersConHoras = await Promise.all(users.map(async (u) => {
+      // Obtener citas completadas del usuario
+      const citasCompletadas = await Cita.findAll({
+        where: {
+          [Op.or]: [
+            { psicologo_id: u.id },
+            { becario_id: u.id }
+          ],
+          estado: 'completada'
+        },
+        attributes: ['duracion'],
+        raw: true
+      });
+
+      // Calcular horas liberadas (suma de duraciones en minutos, convertir a horas)
+      const minutosLiberados = citasCompletadas
+        .filter(c => c.duracion)
+        .reduce((sum, c) => sum + c.duracion, 0);
+      const horasLiberadas = Math.round((minutosLiberados / 60) * 100) / 100;
+
+      // Obtener horas objetivo de la solicitud
+      let horasObjetivo = 0;
+      const solicitud = await Solicitud.findOne({
+        where: {
+          email: u.email,
+          estado: 'APROBADO'
+        },
+        attributes: ['horas_a_liberar'],
+        order: [['fecha_resolucion', 'DESC']]
+      });
+
+      if (solicitud && solicitud.horas_a_liberar) {
+        horasObjetivo = solicitud.horas_a_liberar;
+      }
+
+      return {
+        id: u.id,
+        nombre: u.nombre,
+        apellido: u.apellido,
+        email: u.email,
+        telefono: u.telefono,
+        rol: u.rol,
+        especialidad: u.especialidad,
+        fundacion_id: u.fundacion_id,
+        activo: u.activo,
+        fecha_registro: u.created_at,
+        horas_liberadas: horasLiberadas,
+        horas_objetivo: horasObjetivo
+      };
     }));
 
-    res.json(mapped);
+    res.json(usersConHoras);
   } catch (error) {
     console.error('Error al listar usuarios:', error);
     res.status(500).json({ message: 'Error al obtener usuarios' });
@@ -314,10 +353,11 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
       ? Math.round((citasCanceladas / totalCitas) * 10000) / 100 
       : 0;
 
-    // Calcular horas liberadas (citas completadas * duración)
-    const horasLiberadas = todasCitas
+    // Calcular horas liberadas (sumar duración de citas completadas, convertir de minutos a horas)
+    const minutosLiberados = todasCitas
       .filter(c => c.estado === 'completada' && c.duracion)
-      .reduce((sum, c) => sum + (c.duracion / 60), 0);
+      .reduce((sum, c) => sum + c.duracion, 0);
+    const horasLiberadas = Math.round((minutosLiberados / 60) * 100) / 100; // Redondear a 2 decimales
 
     // 2. Motivos de cancelación
     const citasCanceladasConMotivo = todasCitas.filter(
@@ -426,10 +466,20 @@ router.get('/:id/estadisticas', verifyToken, requireRole(['coordinador']), async
       duracion: c.duracion
     }));
 
-    // 6. Calcular horas objetivo (basado en el rol y número de pacientes asignados)
-    // Asumiendo: terapeuta/coterapeuta debe cumplir cierta cantidad de horas por paciente
-    const horasObjetivoPorPaciente = user.rol === 'terapeuta' ? 4 : 3; // ejemplo
-    const horasObjetivo = pacientesAsignados.length * horasObjetivoPorPaciente;
+    // 6. Obtener horas objetivo del preregistro (solicitud aprobada)
+    let horasObjetivo = 0;
+    const solicitud = await Solicitud.findOne({
+      where: {
+        email: user.email,
+        estado: 'APROBADO'
+      },
+      attributes: ['horas_a_liberar'],
+      order: [['fecha_resolucion', 'DESC']]
+    });
+
+    if (solicitud && solicitud.horas_a_liberar) {
+      horasObjetivo = solicitud.horas_a_liberar;
+    }
 
     // Respuesta
     res.json({

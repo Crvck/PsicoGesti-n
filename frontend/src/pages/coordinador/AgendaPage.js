@@ -1,4 +1,116 @@
-      {/* Sección Terapeutas y Coterapeutas eliminada */}
+// frontend/src/pages/coordinador/AgendaPage.js
+import React, { useState, useEffect } from 'react';
+import { 
+  FiCalendar, FiClock, FiUsers, FiFilter, 
+  FiChevronLeft, FiChevronRight, FiRefreshCw,
+  FiUser, FiEye, FiEyeOff, FiMail,
+  FiPhone, FiVideo, FiMapPin, FiEdit2,
+  FiDownload, FiBarChart2, FiCheckCircle, FiXCircle, FiAlertCircle,
+  FiSearch, FiUserCheck, FiSettings, FiArchive
+} from 'react-icons/fi';
+import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { es } from 'date-fns/locale';
+import ApiService from '../../services/api';
+import ConfiguracionService from '../../services/configuracionService';
+import './coordinador.css';
+import notifications from '../../utils/notifications';
+import confirmations from '../../utils/confirmations';
+
+const CoordinadorAgenda = () => {
+  const [citas, setCitas] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [view, setView] = useState('week');
+  const [loading, setLoading] = useState(true);
+  const [filterTerapeuta, setFilterTerapeuta] = useState('');
+  const [filterEstado, setFilterEstado] = useState('');
+  const [terapeutas, setTerapeutas] = useState([]);
+  const [showDetalles, setShowDetalles] = useState(false);
+  const [selectedCita, setSelectedCita] = useState(null);
+  const [mostrarTodas, setMostrarTodas] = useState(true);
+  const [estadisticas, setEstadisticas] = useState(null);
+  const [disponibilidad, setDisponibilidad] = useState([]);
+  const [disponibilidadLoading, setDisponibilidadLoading] = useState(false);
+  const [showModalDisponibilidad, setShowModalDisponibilidad] = useState(false);
+  const [disponibilidadSemanal, setDisponibilidadSemanal] = useState(null);
+  const [diasFiltroDisponibilidad, setDiasFiltraDisponibilidad] = useState([]);
+  const [disponibilidadSemanalLoading, setDisponibilidadSemanalLoading] = useState(false);
+  const [pacientes, setPacientes] = useState([]);
+  const [searchPaciente, setSearchPaciente] = useState('');
+  const [filteredPacientes, setFilteredPacientes] = useState([]);
+  const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
+  const [coterapeutas, setCoterapeutas] = useState([]);
+  const [showAsignarCitaModal, setShowAsignarCitaModal] = useState(false);
+  const [pacienteCitaQuery, setPacienteCitaQuery] = useState('');
+  const [terapeutaCitaQuery, setTerapeutaCitaQuery] = useState('');
+  const [coterapeutaCitaQuery, setCoterapeutaCitaQuery] = useState('');
+  const [showPacienteCitaList, setShowPacienteCitaList] = useState(false);
+  const [showTerapeutaCitaList, setShowTerapeutaCitaList] = useState(false);
+  const [showCoterapeutaCitaList, setShowCoterapeutaCitaList] = useState(false);
+  const [nuevaCitaForm, setNuevaCitaForm] = useState({
+    titulo: '',
+    paciente_id: '',
+    terapeuta_id: '',
+    coterapeuta_id: '',
+    fecha: format(new Date(), 'yyyy-MM-dd'),
+    hora: '09:00',
+    tipo_consulta: 'presencial',
+    duracion: 50,
+    total_sesiones: 1,
+    notas: '',
+    color: '#1F85BA'
+  });
+  const [citaColorOverrides, setCitaColorOverrides] = useState(() => {
+    try {
+      const stored = localStorage.getItem('agendaCitaColors');
+      return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+      console.warn('No se pudo leer agendaCitaColors:', e);
+      return {};
+    }
+  });
+  
+  const [filtrosAvanzados, setFiltrosAvanzados] = useState({
+    fecha_inicio: '',
+    fecha_fin: '',
+    paciente_id: '',
+    tipo_consulta: ''
+  });
+  const [busquedaTerapeuta, setBusquedaTerapeuta] = useState('');
+  
+  // Filtros para el modal de disponibilidad
+  const [disponibilidadSearchTerm, setDisponibilidadSearchTerm] = useState('');
+  const [disponibilidadFilterRol, setDisponibilidadFilterRol] = useState(''); // '' = todos, 'terapeuta', 'coterapeuta'
+  const [disponibilidadCurrentPage, setDisponibilidadCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
+
+  // Nuevo sistema de filtros tipo chips
+  const [terapeutasSeleccionados, setTerapeutasSeleccionados] = useState([]); // Array de {id, nombre}
+  const [searchTerapeutaInput, setSearchTerapeutaInput] = useState('');
+  const [showTerapeutasDropdown, setShowTerapeutasDropdown] = useState(false);
+  
+  // Filtros de Estado como chips
+  const [estadosSeleccionados, setEstadosSeleccionados] = useState([]); // Array de valores de estado
+  
+  // Filtros de Tipo de Consulta como chips
+  const [tiposConsultaSeleccionados, setTiposConsultaSeleccionados] = useState([]); // Array de valores de tipo
+
+  // Colores fijos para terapeutas y citas
+  const coloresTerapeutas = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
+  const coloresCitas = ['#1F85BA', '#29ce9b', '#ffa631', '#fa3144', '#7c4dff', '#00bcd4', '#8bc34a', '#ff7043'];
+  const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+  const obtenerDiaSemanaKey = (fechaObj) => diasSemana[fechaObj.getDay()];
+
+  useEffect(() => {
+    fetchTerapeutas();
+    fetchPacientes();
+    fetchCoterapeutas();
+    fetchConfigCitas();
+  }, []);
+
+  useEffect(() => {
+    const hoy = obtenerDiaSemanaKey(new Date());
+    setDiasFiltraDisponibilidad([hoy]);
+  }, []);
 
   useEffect(() => {
     try {
@@ -802,8 +914,16 @@
 
       {/* Estadísticas rápidas - MEJORADO */}
       {estadisticas && (
-        <div className="grid-2 mb-20" style={{ gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <div className="card card-primary-coord">
+        <div
+          className="grid-2 mb-20"
+          style={{
+            display: 'flex',
+            gap: '20px',
+            flexWrap: 'nowrap',
+            alignItems: 'stretch'
+          }}
+        >
+          <div className="card card-primary-coord" style={{ flex: 1, minWidth: 0 }}>
             <div className="flex-row align-center gap-15 mb-15">
               <div className="avatar" style={{ background: 'var(--blu)' }}>
                 <FiBarChart2 size={24} />
@@ -869,7 +989,7 @@
           </div>
           
 
-          <div className="card card-secondary-coord">
+          <div className="card card-secondary-coord" style={{ flex: 1, minWidth: 0 }}>
             <div className="flex-row align-center gap-15 mb-15">
               <div className="avatar" style={{ background: 'var(--grnb)' }}>
                 <FiUserCheck size={24} />
@@ -954,59 +1074,6 @@
           
         </div>
       )}
-
-      <div className="calendar-controls">
-        <div className="view-selector">
-          <button 
-            className={`btn-header ${view === 'day' ? 'active' : ''}`}
-            onClick={() => setView('day')}
-          >
-            <FiCalendar /> Día
-          </button>
-          <button 
-            className={`btn-header ${view === 'week' ? 'active' : ''}`}
-            onClick={() => setView('week')}
-          >
-            <FiCalendar /> Semana
-          </button>
-        </div>
-
-        <div className="date-navigation">
-          <button className="btn-header" onClick={goToPrevious}>
-            <FiChevronLeft /> {view === 'day' ? 'Ayer' : 'Sem. anterior'}
-          </button>
-          
-          <div className="current-date">
-            <h3>
-              {view === 'day' 
-                ? formatDateSpanish(selectedDate)
-                : getWeekRange()
-              }
-            </h3>
-            <div className="text-small">
-              <FiClock className="mr-5" />
-              {activeFiltersCount > 0 ? (
-                <>
-                  Filtradas: <span style={{ fontWeight: 'bold', color: 'var(--blu)' }}>{filteredCitas.length}</span> / <span style={{ color: 'var(--gray)' }}>{citas.length}</span>
-                </>
-              ) : (
-                <>Total: <span style={{ fontWeight: 'bold' }}>{filteredCitas.length}</span></>
-              )}
-            </div>
-          </div>
-          
-          <button className="btn-header" onClick={goToNext}>
-            {view === 'day' ? 'Mañana' : 'Próx. semana'} <FiChevronRight />
-          </button>
-        </div>
-
-        <div className="quick-actions">
-          <button className="btn-primary" onClick={goToToday}>
-            Hoy
-          </button>
-
-        </div>
-      </div>
 
       {/* Filtros - MEJORADO con alineación consistente */}
       <div className="filters-container mb-20">
@@ -1331,6 +1398,59 @@
               )}
             </div>
           </div> */}
+        </div>
+      </div>
+
+      <div className="calendar-controls">
+        <div className="view-selector">
+          <button 
+            className={`btn-header ${view === 'day' ? 'active' : ''}`}
+            onClick={() => setView('day')}
+          >
+            <FiCalendar /> Día
+          </button>
+          <button 
+            className={`btn-header ${view === 'week' ? 'active' : ''}`}
+            onClick={() => setView('week')}
+          >
+            <FiCalendar /> Semana
+          </button>
+        </div>
+
+        <div className="date-navigation">
+          <button className="btn-header" onClick={goToPrevious}>
+            <FiChevronLeft /> {view === 'day' ? 'Ayer' : 'Sem. anterior'}
+          </button>
+          
+          <div className="current-date">
+            <h3>
+              {view === 'day' 
+                ? formatDateSpanish(selectedDate)
+                : getWeekRange()
+              }
+            </h3>
+            <div className="text-small">
+              <FiClock className="mr-5" />
+              {activeFiltersCount > 0 ? (
+                <>
+                  Filtradas: <span style={{ fontWeight: 'bold', color: 'var(--blu)' }}>{filteredCitas.length}</span> / <span style={{ color: 'var(--gray)' }}>{citas.length}</span>
+                </>
+              ) : (
+                <>Total: <span style={{ fontWeight: 'bold' }}>{filteredCitas.length}</span></>
+              )}
+            </div>
+          </div>
+          
+          <button className="btn-header" onClick={goToNext}>
+            {view === 'day' ? 'Mañana' : 'Próx. semana'} <FiChevronRight />
+          </button>
+        </div>
+
+        <div className="quick-actions">
+          <button className="btn-primary" onClick={goToToday}>
+            Hoy
+          </button>
+
         </div>
       </div>
 
@@ -1674,122 +1794,8 @@
         </div>
       )}
 
-      {/* Resumen por Terapeuta */}
-      <div className="flex-row align-center gap-10 mb-15 mt-30" style={{ justifyContent: 'space-between' }}>
-        <input
-          type="text"
-          placeholder="Buscar terapeuta o coterapeuta..."
-          value={busquedaTerapeuta}
-          onChange={(e) => setBusquedaTerapeuta(e.target.value)}
-          className="input-field"
-          style={{ maxWidth: '350px' }}
-        />
-        <h3 style={{ margin: 0, textAlign: 'right' }}>Terapeutas y Coterapeutas</h3>
-      </div>
-      <div className="grid-3 gap-20">
-        {terapeutas.filter(terapeuta => {
-          if (!busquedaTerapeuta.trim()) return true;
-          const searchTerm = busquedaTerapeuta.toLowerCase();
-          return (
-            (terapeuta.nombre || '').toLowerCase().includes(searchTerm) ||
-            (terapeuta.email || '').toLowerCase().includes(searchTerm) ||
-            (terapeuta.especialidad || '').toLowerCase().includes(searchTerm)
-          );
-        }).slice(0, 3).map(terapeuta => {
-          const citasTerapeuta = filteredCitas.filter(c => c.terapeuta_id === terapeuta.id);
-          const citasHoy = citasTerapeuta.filter(c => c.fecha === format(new Date(), 'yyyy-MM-dd')).length;
-          return (
-            <div key={terapeuta.id} className="card">
-              <div className="flex-row align-center gap-10 mb-10">
-                <div 
-                  className="avatar" 
-                  style={{ background: terapeuta.color }}
-                >
-                  {terapeuta.nombre.split(' ').map(n => n[0]).join('')}
-                </div>
-                <div className="flex-1">
-                  <h4>{terapeuta.nombre}</h4>
-                  <p className="text-small">{terapeuta.especialidad}</p>
-                  <p className="text-small">
-                    <FiMail /> {terapeuta.email}
-                  </p>
-                </div>
-              </div>
-              <div className="grid-2 gap-10">
-                <div>
-                  <div className="text-small">Citas totales</div>
-                  <div className="font-bold">{citasTerapeuta.length}</div>
-                </div>
-                <div>
-                  <div className="text-small">Citas hoy</div>
-                  <div className="font-bold">{citasHoy}</div>
-                </div>
-                <div>
-                  <div className="text-small">Confirmadas</div>
-                  <div className="font-bold">{citasTerapeuta.filter(c => c.estado === 'confirmada').length}</div>
-                </div>
-                <div>
-                  <div className="text-small">Con coterapeuta</div>
-                  <div className="font-bold">{citasTerapeuta.filter(c => c.coterapeuta_nombre).length}</div>
-                </div>
-              </div>
-              <div className="mt-10">
-                <button className="btn-text" onClick={() => { setFilterTerapeuta(terapeuta.id); }}>
-                  Ver en calendario
-                </button>
-              </div>
-            </div>
-          );
-        })}
-        {coterapeutas.filter(coterapeuta => {
-          if (!busquedaTerapeuta.trim()) return true;
-          const searchTerm = busquedaTerapeuta.toLowerCase();
-          return (
-            (coterapeuta.nombre || '').toLowerCase().includes(searchTerm) ||
-            (coterapeuta.email || '').toLowerCase().includes(searchTerm)
-          );
-        }).slice(0, 3).map(coterapeuta => {
-          const citasCoterapeuta = filteredCitas.filter(c => c.coterapeuta_id === coterapeuta.id);
-          const citasHoy = citasCoterapeuta.filter(c => c.fecha === format(new Date(), 'yyyy-MM-dd')).length;
-          return (
-            <div key={`ct-${coterapeuta.id}`} className="card" style={{ borderLeft: '4px solid #ffa631' }}>
-              <div className="flex-row align-center gap-10 mb-10">
-                <div 
-                  className="avatar" 
-                  style={{ background: '#ffa631' }}
-                >
-                  {coterapeuta.nombre.split(' ').map(n => n[0]).join('')}
-                </div>
-                <div className="flex-1">
-                  <h4>{coterapeuta.nombre}</h4>
-                  <p className="text-small" style={{ color: '#ffa631', fontWeight: 'bold' }}>Coterapeuta</p>
-                  <p className="text-small">
-                    <FiMail /> {coterapeuta.email}
-                  </p>
-                </div>
-              </div>
-              <div className="grid-2 gap-10">
-                <div>
-                  <div className="text-small">Citas como CT</div>
-                  <div className="font-bold">{citasCoterapeuta.length}</div>
-                </div>
-                <div>
-                  <div className="text-small">Citas hoy</div>
-                  <div className="font-bold">{citasHoy}</div>
-                </div>
-                <div>
-                  <div className="text-small">Confirmadas</div>
-                  <div className="font-bold">{citasCoterapeuta.filter(c => c.estado === 'confirmada').length}</div>
-                </div>
-                <div>
-                  <div className="text-small">Completadas</div>
-                  <div className="font-bold">{citasCoterapeuta.filter(c => c.estado === 'completada').length}</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      
+     
 
       {/* Modal de Detalles de Cita */}
       {showDetalles && selectedCita && (

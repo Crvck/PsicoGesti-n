@@ -20,7 +20,7 @@ class AuthController {
             // 2. Buscar el usuario usando Sequelize
             console.log('🔍 Buscando usuario...');
             const user = await User.findOne({ 
-                where: { email: email, activo: true } 
+                where: { email: email } 
             });
 
             // 3. Verificar si el usuario existe

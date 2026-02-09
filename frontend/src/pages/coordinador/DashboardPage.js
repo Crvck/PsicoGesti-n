@@ -543,12 +543,7 @@ const CoordinadorDashboard = () => {
 
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
                   <button className="btn-secondary" onClick={handleCerrarModal}>Cancelar</button>
-                  <button className="action-btn" onClick={handleDenegarSolicitud} style={{ background: 'var(--rl)', color: 'white', border: 'none' }}>
-                    <FiX /> Denegar
-                  </button>
-                  <button className="action-btn" onClick={handleAprobarSolicitud} style={{ background: 'var(--grnb)', color: 'white', border: 'none' }}>
-                    <FiCheck /> Confirmar Acceso
-                  </button>
+                  <button className="btn-primary" onClick={handleAprobarSolicitud}>Confirmar</button>
                 </div>
               </div>
 

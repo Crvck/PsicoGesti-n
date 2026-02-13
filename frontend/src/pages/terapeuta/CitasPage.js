@@ -540,7 +540,12 @@ const PsicologoCitas = () => {
         {filteredCitas.length > 0 ? (
           <div className="citas-cards">
             {filteredCitas.map((cita) => (
-              <div key={cita.id} className="cita-card">
+              <div
+                key={cita.id}
+                className="cita-card"
+                onClick={() => openCitaModal(cita)}
+                style={{ cursor: 'pointer' }}
+              >
                 <div className="cita-card-header">
                   <div className="cita-time">
                     <FiClock /> {cita.hora} ({cita.duracion} min)

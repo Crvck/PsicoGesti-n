@@ -522,6 +522,18 @@ const CoordinadorAgenda = () => {
       }
 
       notifications.success('Cita registrada correctamente');
+
+      try {
+        await ApiService.post('/asignaciones', {
+          paciente_id: Number(nuevaCitaForm.paciente_id),
+          terapeuta_id: Number(nuevaCitaForm.terapeuta_id),
+          coterapeuta_id: nuevaCitaForm.coterapeuta_id ? Number(nuevaCitaForm.coterapeuta_id) : null,
+          notas: 'Asignación automática desde agenda'
+        });
+      } catch (error) {
+        console.error('Error asignando paciente a terapeuta:', error);
+        notifications.warning('La cita se creó, pero no se pudo asignar al terapeuta');
+      }
       setShowAsignarCitaModal(false);
       setPacienteCitaQuery('');
       setTerapeutaCitaQuery('');

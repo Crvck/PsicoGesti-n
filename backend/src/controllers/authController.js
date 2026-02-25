@@ -28,7 +28,12 @@ class AuthController {
                 console.log('❌ Usuario no encontrado');
                 return res.status(401).json({ message: 'Credenciales inválidas' });
             }
-            console.log('✅ Usuario encontrado:', user.email);
+                // 3. Verificar si el usuario existe y está activo
+                if (user.activo === false) {
+                    console.log('❌ Usuario inactivo');
+                    return res.status(403).json({ message: 'Usuario inactivo, contacte a coordinación' });
+                }
+                console.log('✅ Usuario encontrado:', user.email);
 
             // 4. Comparar la contraseña
             console.log('🔐 Verificando contraseña...');

@@ -40,29 +40,50 @@ const BecarioDashboard = () => {
 
       const apiUrl = process.env.REACT_APP_API_URL;
 
-      // Mis pacientes (asignaciones)
-      const misPacRes = await fetch(`${apiUrl}/api/asignaciones/mis-pacientes`, { headers });
+      // Optimización: Ejecutar todas las llamadas en paralelo
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      
+      // Preparar todas las fechas que necesitamos
+      const fechasProximas = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() + i + 1);
+        return format(d, 'yyyy-MM-dd');
+      });
+      
+      const fechasCompletadas = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        return format(d, 'yyyy-MM-dd');
+      });
+
+      // Ejecutar todas las llamadas en paralelo (16 llamadas -> 1 ejecución paralela)
+      const [
+        misPacRes,
+        citasHoyRes,
+        ...citasProximasRes
+      ] = await Promise.all([
+        fetch(`${apiUrl}/api/asignaciones/mis-pacientes`, { headers }),
+        fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers }),
+        ...fechasProximas.map(fecha => fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${fecha}`, { headers })),
+        ...fechasCompletadas.map(fecha => fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${fecha}`, { headers }))
+      ]);
+
+      // Procesar respuestas
       const misPacJson = await misPacRes.json().catch(() => ({}));
       const misPacArr = Array.isArray(misPacJson) ? misPacJson : (Array.isArray(misPacJson?.data) ? misPacJson.data : []);
       const pacientesAsignados = misPacArr.length;
       setMisPacientes(misPacArr);
 
-      // Citas de hoy (filtradas al becario actual)
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const citasHoyRes = await fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers });
+      // Citas de hoy
       const citasHoyJson = await citasHoyRes.json().catch(() => ({}));
       const citasHoyArr = Array.isArray(citasHoyJson) ? citasHoyJson : (Array.isArray(citasHoyJson?.data) ? citasHoyJson.data : []);
       const citasHoyFiltradas = userId ? citasHoyArr.filter(c => String(c.becario_id) === String(userId)) : citasHoyArr;
       setCitasHoy(citasHoyFiltradas);
 
-      // Próximas citas (próximos 7 días) para el becario
+      // Próximas citas (próximos 7 días)
       let citasProximas = 0;
-      for (let i = 1; i <= 7; i++) {
-        const d = new Date();
-        d.setDate(d.getDate() + i);
-        const dStr = format(d, 'yyyy-MM-dd');
-        const res = await fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${dStr}`, { headers });
-        const j = await res.json().catch(() => ({}));
+      for (let i = 0; i < 7; i++) {
+        const j = await citasProximasRes[i].json().catch(() => ({}));
         const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
         citasProximas += (userId ? arr.filter(c => String(c.becario_id) === String(userId)).length : arr.length);
       }
@@ -70,11 +91,7 @@ const BecarioDashboard = () => {
       // Citas completadas (últimos 7 días)
       let citasCompletadas = 0;
       for (let i = 0; i < 7; i++) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const dStr = format(d, 'yyyy-MM-dd');
-        const res = await fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${dStr}`, { headers });
-        const j = await res.json().catch(() => ({}));
+        const j = await citasProximasRes[7 + i].json().catch(() => ({}));
         const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
         citasCompletadas += (userId ? arr.filter(c => String(c.becario_id) === String(userId) && c.estado === 'completada').length : arr.filter(c => c.estado === 'completada').length);
       }

@@ -42,8 +42,13 @@ const CoordinadorDashboard = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchDashboardData();
-    fetchCancelacionesMes();
+    // Optimización: Ejecutar ambas llamadas en paralelo
+    Promise.all([
+      fetchDashboardData(),
+      fetchCancelacionesMes()
+    ]).catch(error => {
+      console.error('Error cargando datos del dashboard:', error);
+    });
   }, []);
 
   const fetchDashboardData = async () => {

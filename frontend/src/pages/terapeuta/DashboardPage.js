@@ -66,7 +66,16 @@ const terapeutaDashboard = () => {
         notifications.error('La variable REACT_APP_API_URL no está definida.');
         return;
       }
-      const agendaRes = await fetch(`${apiUrl}/api/agenda/global?${agendaQuery.toString()}`, { headers });
+
+      // Optimización: Ejecutar ambas llamadas API en paralelo
+      const [agendaRes, asigRes] = await Promise.all([
+        fetch(`${apiUrl}/api/agenda/global?${agendaQuery.toString()}`, { headers }),
+        fetch(`${apiUrl}/api/pacientes/activos`, { headers }).catch(error => {
+          console.error('Error cargando pacientes activos:', error);
+          return { ok: false };
+        })
+      ]);
+
       const agendaJson = await safeJson(agendaRes);
       const citasRaw = Array.isArray(agendaJson) ? agendaJson : (agendaJson.data?.citas || agendaJson.data || []);
       const citasWeek = citasRaw.map((c) => ({
@@ -103,16 +112,16 @@ const terapeutaDashboard = () => {
       // Pacientes asignados usando el endpoint /api/pacientes/activos
       let pacientesAsignadosList = [];
       try {
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const asigRes = await fetch(`${apiUrl}/api/pacientes/activos`, { headers });
-        const asigJson = await safeJson(asigRes);
-        const asigArr = normalizeArray(asigJson);
-        pacientesAsignadosList = asigArr.map(p => ({
-          id: p.id,
-          nombre: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim()
-        })).filter(p => p.id && p.nombre);
+        if (asigRes.ok) {
+          const asigJson = await safeJson(asigRes);
+          const asigArr = normalizeArray(asigJson);
+          pacientesAsignadosList = asigArr.map(p => ({
+            id: p.id,
+            nombre: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim()
+          })).filter(p => p.id && p.nombre);
+        }
       } catch (error) {
-        console.error('Error cargando pacientes activos:', error);
+        console.error('Error procesando pacientes activos:', error);
         notifications.error('No se pudieron cargar los pacientes asignados.');
       }
       setPacientesAsignados(pacientesAsignadosList);

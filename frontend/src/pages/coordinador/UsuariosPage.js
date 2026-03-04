@@ -48,7 +48,8 @@ const CoordinadorUsuarios = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/users', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/users`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
@@ -75,7 +76,8 @@ const CoordinadorUsuarios = () => {
     try {
       setRecordatorioLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/recordatorios/configuracion', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/recordatorios/configuracion`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
@@ -106,7 +108,8 @@ const CoordinadorUsuarios = () => {
     try {
       setRecordatorioLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/recordatorios/configuracion', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/recordatorios/configuracion`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -141,7 +144,8 @@ const CoordinadorUsuarios = () => {
     try {
       setRecordatorioLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/recordatorios/enviar', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/recordatorios/enviar`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -172,7 +176,8 @@ const CoordinadorUsuarios = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/users/${usuario.id}/estadisticas`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/users/${usuario.id}/estadisticas`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
@@ -236,7 +241,8 @@ const CoordinadorUsuarios = () => {
     if (modalType === 'nuevo') {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:3000/api/users', {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        const res = await fetch(`${apiUrl}/api/users`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -267,6 +273,7 @@ const CoordinadorUsuarios = () => {
       // Editar usuario: enviar al backend
       try {
         const token = localStorage.getItem('token');
+        const apiUrl = process.env.REACT_APP_API_URL;
         // En modo edición, solo incluir password si cambiarPassword es true
         const dataToSend = { ...formData };
         if (!dataToSend.cambiarPassword) {
@@ -274,7 +281,7 @@ const CoordinadorUsuarios = () => {
         }
         delete dataToSend.cambiarPassword; // no enviar el campo checkbox al backend
         
-        const res = await fetch(`http://localhost:3000/api/users/${formData.id}`, {
+        const res = await fetch(`${apiUrl}/api/users/${formData.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -330,7 +337,8 @@ const CoordinadorUsuarios = () => {
     
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/users/${id}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/users/${id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -368,11 +376,12 @@ const CoordinadorUsuarios = () => {
   const toggleEstadoUsuario = async (id) => {
     try {
       const token = localStorage.getItem('token');
+      const apiUrl = process.env.REACT_APP_API_URL;
       // Encontrar usuario actual
       const usuario = usuarios.find(u => u.id === id);
       if (!usuario) return;
 
-      const res = await fetch(`http://localhost:3000/api/users/${id}`, {
+      const res = await fetch(`${apiUrl}/api/users/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

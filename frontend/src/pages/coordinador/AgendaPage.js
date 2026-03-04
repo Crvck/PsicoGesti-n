@@ -710,8 +710,9 @@ const CoordinadorAgenda = () => {
             };
 
           const token = localStorage.getItem('token');
+          const apiUrl = process.env.REACT_APP_API_URL;
           
-          const response = await fetch('http://localhost:3000/api/reportes/exportar-agenda-csv', {
+          const response = await fetch(`${apiUrl}/api/reportes/exportar-agenda-csv`, {
               method: 'POST',
               headers: {
                   'Content-Type': 'application/json',

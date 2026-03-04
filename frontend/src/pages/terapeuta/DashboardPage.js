@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import {
-  FiUsers, FiCalendar, FiUserCheck, FiClock, FiRefreshCw
+  FiUsers, FiCalendar, FiUserCheck, FiClock, FiRefreshCw, FiAlertCircle
 } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import notifications from '../../utils/notifications';
 
-const PsicologoDashboard = () => {
+const terapeutaDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
     pacientesActivos: 0,
     citasHoy: 0,
     citasSemana: 0,
-    becariosAsignados: 0
+    citasCompletadas: 0
   });
   const [citasHoy, setCitasHoy] = useState([]);
   const [becarios, setBecarios] = useState([]);
@@ -58,10 +58,15 @@ const PsicologoDashboard = () => {
       const agendaQuery = new URLSearchParams({
         fecha_inicio: fechaInicio,
         fecha_fin: fechaFin,
-        psicologo_id: decodedUserId || ''
+        terapeuta_id: decodedUserId || ''
       });
 
-      const agendaRes = await fetch(`http://localhost:3000/api/agenda/global?${agendaQuery.toString()}`, { headers });
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) {
+        notifications.error('La variable REACT_APP_API_URL no está definida.');
+        return;
+      }
+      const agendaRes = await fetch(`${apiUrl}/api/agenda/global?${agendaQuery.toString()}`, { headers });
       const agendaJson = await safeJson(agendaRes);
       const citasRaw = Array.isArray(agendaJson) ? agendaJson : (agendaJson.data?.citas || agendaJson.data || []);
       const citasWeek = citasRaw.map((c) => ({
@@ -82,9 +87,10 @@ const PsicologoDashboard = () => {
       // Citas hoy
       const citasHoyArr = citasWeek.filter(c => c.fecha === todayStr).map(c => ({
         id: c.id,
-        paciente: c.paciente_nombre,
+        paciente_nombre: c.paciente_nombre,
         hora: c.hora || '',
         tipo: c.tipo,
+        estado: c.estado,
         coterapeuta: c.coterapeuta_nombre || ''
       }));
       setCitasHoy(citasHoyArr);
@@ -94,26 +100,28 @@ const PsicologoDashboard = () => {
         .map((nombre, idx) => ({ id: `bec-${idx}`, nombre, pacientes: 0, observaciones: 0 }));
       setBecarios(becariosFromCitas);
 
-      // Pacientes asignados (desde asignaciones)
-      const asigRes = await fetch('http://localhost:3000/api/asignaciones', { headers });
-      const asigJson = await safeJson(asigRes);
-      const asigArr = normalizeArray(asigJson).filter(a =>
-        String(a.terapeuta_id || a.psicologo_id || a.Psicologo?.id) === String(decodedUserId)
-      );
-      const pacientesSet = new Map();
-      asigArr.forEach(a => {
-        const id = a.paciente_id || a.Paciente?.id || a.paciente?.id || a.id;
-        const nombre = a.Paciente ? `${a.Paciente.nombre} ${a.Paciente.apellido}` : (a.paciente || '').trim();
-        if (id && nombre) pacientesSet.set(id, nombre);
-      });
-      const pacientesAsignadosList = Array.from(pacientesSet.entries()).map(([id, nombre]) => ({ id, nombre }));
+      // Pacientes asignados usando el endpoint /api/pacientes/activos
+      let pacientesAsignadosList = [];
+      try {
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const asigRes = await fetch(`${apiUrl}/api/pacientes/activos`, { headers });
+        const asigJson = await safeJson(asigRes);
+        const asigArr = normalizeArray(asigJson);
+        pacientesAsignadosList = asigArr.map(p => ({
+          id: p.id,
+          nombre: p.nombre_completo || `${p.nombre || ''} ${p.apellido || ''}`.trim()
+        })).filter(p => p.id && p.nombre);
+      } catch (error) {
+        console.error('Error cargando pacientes activos:', error);
+        notifications.error('No se pudieron cargar los pacientes asignados.');
+      }
       setPacientesAsignados(pacientesAsignadosList);
 
       const pacientesActivos = pacientesAsignadosList.length;
-      const becariosAsignados = becariosFromCitas.length;
       const citasSemana = citasWeek.length;
+      const citasCompletadas = citasWeek.filter(c => c.estado === 'completada').length;
 
-      setEstadisticas({ pacientesActivos, citasHoy: citasHoyArr.length, citasSemana, becariosAsignados });
+      setEstadisticas({ pacientesActivos, citasHoy: citasHoyArr.length, citasSemana, citasCompletadas });
     } catch (error) {
       console.error('Error cargando dashboard:', error);
       notifications.error('Error cargando panel');
@@ -124,18 +132,18 @@ const PsicologoDashboard = () => {
 
   const statCards = [
     {
-      title: 'Pacientes Activos',
-      value: estadisticas.pacientesActivos,
-      icon: <FiUsers />,
-      color: 'var(--grnb)',
-      change: 'En tratamiento'
-    },
-    {
       title: 'Citas Hoy',
       value: estadisticas.citasHoy,
       icon: <FiCalendar />,
+      color: 'var(--grnb)',
+      change: 'Programadas para hoy'
+    },
+    {
+      title: 'Pacientes Activos',
+      value: estadisticas.pacientesActivos,
+      icon: <FiUsers />,
       color: 'var(--blu)',
-      change: 'Programadas'
+      change: 'En tratamiento'
     },
     {
       title: 'Citas Esta Semana',
@@ -145,13 +153,12 @@ const PsicologoDashboard = () => {
       change: 'Próximos 7 días'
     },
     {
-      title: 'Becarios Asignados',
-      value: estadisticas.becariosAsignados,
-      icon: <FiUserCheck />,
-      color: 'var(--grnd)',
-      change: 'En supervisión'
-    },
-    
+      title: 'Citas Completadas',
+      value: estadisticas.citasCompletadas,
+      icon: <FiAlertCircle />,
+      color: 'var(--grnl)',
+      change: 'Esta semana'
+    }
   ];
 
 
@@ -159,7 +166,7 @@ const PsicologoDashboard = () => {
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
-        <div className="loading-text">Cargando panel del psicólogo...</div>
+        <div className="loading-text">Cargando panel del terapeuta...</div>
       </div>
     );
   }
@@ -168,8 +175,8 @@ const PsicologoDashboard = () => {
     <div className="dashboard-page">
       <div className="page-header">
         <div>
-          <h1>Panel del Psicólogo</h1>
-          <p>Supervisión y gestión de pacientes</p>
+          <h1>Panel del Terapeuta</h1>
+          <p>Bienvenido a tu centro de gestión de citas y pacientes</p>
         </div>
         <button className="btn-secondary" onClick={fetchDashboardData}>
           <FiRefreshCw /> Actualizar
@@ -199,60 +206,68 @@ const PsicologoDashboard = () => {
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Citas de Hoy</h3>
-            <button className="btn-text" onClick={() => navigate('/psicologo/citas')}>Ver Agenda</button>
+            <button className="btn-text" onClick={() => navigate('/terapeuta/citas')}>Ver Calendario</button>
           </div>
-
+          
           <div className="citas-list">
-            {citasHoy.map((cita) => (
-              <div key={cita.id} className="cita-item">
-                <div className="cita-info">
-                  <div className="cita-paciente">{cita.paciente}</div>
-                  <div className="cita-hora">{cita.hora} • {cita.tipo === 'presencial' ? 'Presencial' : 'Virtual'} • {cita.coterapeuta || 'Sin coterapeuta'}</div>
+            {citasHoy.length > 0 ? (
+              citasHoy.slice(0, 5).map((cita) => (
+                <div key={cita.id} className="cita-item">
+                  <div className="cita-info">
+                    <div className="cita-paciente">{cita.paciente_nombre}</div>
+                    <div className="cita-hora">{cita.hora}</div>
+                  </div>
+                  <div className={`cita-estado badge ${
+                    cita.estado === 'confirmada' ? 'badge-success' :
+                    cita.estado === 'programada' ? 'badge-warning' :
+                    'badge-danger'
+                  }`}>
+                    {cita.estado}
+                  </div>
                 </div>
-                <button className="btn-text">Ver</button>
+              ))
+            ) : (
+              <div className="no-citas">
+                <div className="no-citas-icon">📅</div>
+                <div>No hay citas programadas para hoy</div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         {/* Pacientes asignados */}
         <div className="dashboard-section">
           <div className="section-header">
-            <h3>Pacientes asignados</h3>
-            <button className="btn-text" onClick={() => navigate('/psicologo/pacientes')}>Ver todos</button>
+            <h3>Mis Pacientes</h3>
+            <button className="btn-text" onClick={() => navigate('/terapeuta/pacientes')}>Ver todos</button>
           </div>
-
+          
           <div className="pacientes-list">
-            {pacientesAsignados.map((paciente) => (
-              <div key={paciente.id} className="paciente-item">
-                <div className="paciente-info">
-                  <div className="paciente-nombre">{paciente.nombre}</div>
+            {pacientesAsignados.length > 0 ? (
+              pacientesAsignados.slice(0, 6).map((paciente, idx) => (
+                <div key={paciente.id + '-' + idx} className="paciente-item">
+                  <div className="paciente-info">
+                    <div className="paciente-nombre">{paciente.nombre}</div>
+                    <div className="paciente-fecha">
+                      En tratamiento activo
+                    </div>
+                  </div>
+                  <button className="btn-text" onClick={() => navigate('/terapeuta/pacientes')}>Ver</button>
                 </div>
+              ))
+            ) : (
+              <div className="no-citas">
+                <div className="no-citas-icon">👥</div>
+                <div>No tienes pacientes asignados</div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
-        {/* Becarios Asignados */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Coterapeutas en citas</h3>
-            <button className="btn-text" onClick={() => navigate('/psicologo/citas')}>Ver agenda</button>
-          </div>
-
-          <div className="pacientes-list">
-            {becarios.map((becario) => (
-              <div key={becario.id} className="paciente-item">
-                <div className="paciente-info">
-                  <div className="paciente-nombre">{becario.nombre}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        
       </div>
     </div>
   );
 };
 
-export default PsicologoDashboard;
+export default terapeutaDashboard;

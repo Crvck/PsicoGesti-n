@@ -38,13 +38,15 @@ const TerapeutaDashboard = () => {
       };
       const normalizeArray = (j) => Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
 
+      const apiUrl = process.env.REACT_APP_API_URL;
+
       // Pacientes activos
-      const pacRes = await fetch('http://localhost:3000/api/pacientes/activos', { headers });
+      const pacRes = await fetch(`${apiUrl}/api/pacientes/activos`, { headers });
       const pacJson = await safeJson(pacRes);
       const pacientesActivos = normalizeArray(pacJson).length;
 
       // Becarios asignados al psicólogo
-      const becRes = await fetch('http://localhost:3000/api/asignaciones/mis-becarios', { headers });
+      const becRes = await fetch(`${apiUrl}/api/asignaciones/mis-becarios`, { headers });
       const becJson = await safeJson(becRes);
       const becLista = normalizeArray(becJson).map(b => ({
         id: b.id,
@@ -56,7 +58,7 @@ const TerapeutaDashboard = () => {
       setBecarios(becLista);
 
       // Citas hoy
-      const citasHoyRes = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers });
+      const citasHoyRes = await fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers });
       const citasHoyJson = await safeJson(citasHoyRes);
       const citasHoyArr = normalizeArray(citasHoyJson).map(c => ({
         id: c.id,
@@ -71,7 +73,7 @@ const TerapeutaDashboard = () => {
       for (let i = 0; i < 7; i++) {
         const d = new Date(today);
         d.setDate(today.getDate() + i);
-        const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${toISODate(d)}`, { headers });
+        const res = await fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${toISODate(d)}`, { headers });
         const j = await safeJson(res);
         citasSemana += normalizeArray(j).length;
       }
@@ -106,21 +108,12 @@ const TerapeutaDashboard = () => {
       icon: <FiClock />,
       color: 'var(--yy)',
       change: 'Próximos 7 días'
-    },
-    {
-      title: 'Becarios Asignados',
-      value: estadisticas.becariosAsignados,
-      icon: <FiUserCheck />,
-      color: 'var(--grnd)',
-      change: 'En supervisión'
-    },
-    
+    }
   ];
 
   if (loading) {
     return (
       <div className="loading-container">
-        <div className="loading-spinner"></div>
         <div className="loading-text">Cargando panel del psicólogo...</div>
       </div>
     );
@@ -153,55 +146,35 @@ const TerapeutaDashboard = () => {
           </div>
         ))}
       </div>
-
-      {/* Main Content Grid */}
-      <div className="dashboard-content-grid">
-        {/* Citas de Hoy */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Citas de Hoy</h3>
-            <button className="btn-text" onClick={() => navigate('/psicologo/citas')}>Ver Agenda</button>
+      
+      <div className="citas-list">
+        {citasHoy.map((cita) => (
+          <div key={cita.id} className="cita-item">
+            <div className="cita-info">
+              <div className="cita-paciente">{cita.paciente}</div>
+              <div className="cita-hora">{cita.hora} • {cita.tipo === 'presencial' ? 'Presencial' : 'Virtual'}</div>
+            </div>
+            <button className="btn-text">Ver</button>
           </div>
-          
-          <div className="citas-list">
-            {citasHoy.map((cita) => (
-              <div key={cita.id} className="cita-item">
-                <div className="cita-info">
-                  <div className="cita-paciente">{cita.paciente}</div>
-                  <div className="cita-hora">{cita.hora} • {cita.tipo === 'presencial' ? 'Presencial' : 'Virtual'}</div>
-                </div>
-                <button className="btn-text">Ver</button>
+        ))}
+      </div>
+      
+      <div className="pacientes-list">
+        {becarios.map((becario) => (
+          <div key={becario.id} className="paciente-item">
+            <div className="paciente-info">
+              <div className="paciente-nombre">{becario.nombre}</div>
+              <div className="paciente-fecha">
+                {becario.pacientes} pacientes • {becario.observaciones} observaciones
               </div>
-            ))}
+            </div>
+            <div className="paciente-progreso">
+              <span className="progreso-text">
+                {becario.observaciones} registradas
+              </span>
+            </div>
           </div>
-        </div>
-
-        {/* Becarios Asignados */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Becarios en Supervisión</h3>
-            <button className="btn-text" onClick={() => navigate('/psicologo/supervision')}>Ver todos</button>
-          </div>
-          
-          <div className="pacientes-list">
-            {becarios.map((becario) => (
-              <div key={becario.id} className="paciente-item">
-                <div className="paciente-info">
-                  <div className="paciente-nombre">{becario.nombre}</div>
-                  <div className="paciente-fecha">
-                    {becario.pacientes} pacientes • {becario.observaciones} observaciones
-                  </div>
-                </div>
-                <div className="paciente-progreso">
-                  <span className="progreso-text">
-                    {becario.observaciones} registradas
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        
+        ))}
       </div>
     </div>
   );

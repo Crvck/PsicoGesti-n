@@ -106,7 +106,8 @@ const CoordinadorDashboard = () => {
       const fechaInicio = primerDia.toISOString().split('T')[0];
       const fechaFin = ultimoDia.toISOString().split('T')[0];
       
-      const response = await fetch('http://localhost:3000/api/reportes/estadisticas', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${apiUrl}/api/reportes/estadisticas`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

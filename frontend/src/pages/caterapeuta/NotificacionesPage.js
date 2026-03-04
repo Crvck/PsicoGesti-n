@@ -14,7 +14,8 @@ const BecarioNotificaciones = () => {
   const fetchNotificaciones = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/notificaciones', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${apiUrl}/api/notificaciones`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -50,7 +51,8 @@ const BecarioNotificaciones = () => {
   const marcarComoLeida = async (notifId) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:3000/api/notificaciones/${notifId}/leer`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${apiUrl}/api/notificaciones/${notifId}/leer`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -83,7 +85,8 @@ const BecarioNotificaciones = () => {
   const marcarTodasComoLeidas = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/notificaciones/leer-todas', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${apiUrl}/api/notificaciones/leer-todas`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

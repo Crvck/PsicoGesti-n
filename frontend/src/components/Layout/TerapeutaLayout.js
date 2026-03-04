@@ -26,9 +26,7 @@ const TerapeutaLayout = () => {
     { path: '/terapeuta/dashboard', icon: <FiHome />, label: 'Panel Principal', permiso: 'ver_panel_terapeuta' },
     { path: '/terapeuta/pacientes', icon: <FiUsers />, label: 'Mis Pacientes', permiso: 'ver_mis_pacientes' },
     { path: '/terapeuta/citas', icon: <FiCalendar />, label: 'Mis Citas', permiso: 'gestionar_mis_citas' },
-    { path: '/terapeuta/expedientes', icon: <FiFileText />, label: 'Expedientes', permiso: 'ver_expedientes_asignados' },
     { path: '/terapeuta/sesiones', icon: <FiBarChart2 />, label: 'Registro Sesiones', permiso: 'registrar_sesiones' },
-    { path: '/terapeuta/supervision', icon: <FiUserCheck />, label: 'Supervisión', permiso: 'supervisar_coterapeutas' },
     { path: '/terapeuta/configuracion', icon: <FiSettings />, label: 'Configuración' },
   ];
 

@@ -1,25 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  FiCalendar, FiUsers, FiClock, FiBell, 
-  FiTrendingUp, FiAlertCircle, FiRefreshCw 
+  FiCalendar, FiUsers, FiClock, 
+  FiAlertCircle, FiRefreshCw 
 } from 'react-icons/fi';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import notifications from '../../utils/notifications';
-import confirmations from '../../utils/confirmations';
 
 const BecarioDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
     citasHoy: 0,
     citasProximas: 0,
     pacientesAsignados: 0,
-    observacionesPendientes: 0,
-    notificacionesSinLeer: 0,
     citasCompletadas: 0
   });
   const [citasHoy, setCitasHoy] = useState([]);
-  const [notificaciones, setNotificaciones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
   const [misPacientes, setMisPacientes] = useState([]);
@@ -43,23 +38,18 @@ const BecarioDashboard = () => {
         setUserId(null);
       }
 
+      const apiUrl = process.env.REACT_APP_API_URL;
+
       // Mis pacientes (asignaciones)
-      const misPacRes = await fetch('http://localhost:3000/api/asignaciones/mis-pacientes', { headers });
+      const misPacRes = await fetch(`${apiUrl}/api/asignaciones/mis-pacientes`, { headers });
       const misPacJson = await misPacRes.json().catch(() => ({}));
       const misPacArr = Array.isArray(misPacJson) ? misPacJson : (Array.isArray(misPacJson?.data) ? misPacJson.data : []);
       const pacientesAsignados = misPacArr.length;
       setMisPacientes(misPacArr);
 
-      // Notificaciones del becario
-      const notifRes = await fetch('http://localhost:3000/api/notificaciones', { headers });
-      const notifJson = await notifRes.json().catch(() => ({}));
-      const notifArr = Array.isArray(notifJson) ? notifJson : (Array.isArray(notifJson?.data) ? notifJson.data : []);
-      const notificacionesSinLeer = notifJson?.countNoLeidas ?? notifArr.filter(n => n.leido === false).length;
-      setNotificaciones(notifArr);
-
       // Citas de hoy (filtradas al becario actual)
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const citasHoyRes = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers });
+      const citasHoyRes = await fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${todayStr}`, { headers });
       const citasHoyJson = await citasHoyRes.json().catch(() => ({}));
       const citasHoyArr = Array.isArray(citasHoyJson) ? citasHoyJson : (Array.isArray(citasHoyJson?.data) ? citasHoyJson.data : []);
       const citasHoyFiltradas = userId ? citasHoyArr.filter(c => String(c.becario_id) === String(userId)) : citasHoyArr;
@@ -71,19 +61,10 @@ const BecarioDashboard = () => {
         const d = new Date();
         d.setDate(d.getDate() + i);
         const dStr = format(d, 'yyyy-MM-dd');
-        const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${dStr}`, { headers });
+        const res = await fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${dStr}`, { headers });
         const j = await res.json().catch(() => ({}));
         const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
         citasProximas += (userId ? arr.filter(c => String(c.becario_id) === String(userId)).length : arr.length);
-      }
-
-      // Observaciones pendientes del becario
-      let observacionesPendientes = 0;
-      if (userId) {
-        const obsRes = await fetch(`http://localhost:3000/api/observaciones/becario/${userId}`, { headers });
-        const obsJson = await obsRes.json().catch(() => ({}));
-        const obsArr = Array.isArray(obsJson) ? obsJson : (Array.isArray(obsJson?.data) ? obsJson.data : []);
-        observacionesPendientes = obsArr.filter(o => o.tipo_observacion !== 'retroalimentacion').length;
       }
 
       // Citas completadas (últimos 7 días)
@@ -92,13 +73,13 @@ const BecarioDashboard = () => {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const dStr = format(d, 'yyyy-MM-dd');
-        const res = await fetch(`http://localhost:3000/api/citas/citas-por-fecha?fecha=${dStr}`, { headers });
+        const res = await fetch(`${apiUrl}/api/citas/citas-por-fecha?fecha=${dStr}`, { headers });
         const j = await res.json().catch(() => ({}));
         const arr = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : []);
         citasCompletadas += (userId ? arr.filter(c => String(c.becario_id) === String(userId) && c.estado === 'completada').length : arr.filter(c => c.estado === 'completada').length);
       }
 
-      setEstadisticas({ citasHoy: citasHoyFiltradas.length, pacientesAsignados, observacionesPendientes, notificacionesSinLeer, citasProximas, citasCompletadas });
+      setEstadisticas({ citasHoy: citasHoyFiltradas.length, pacientesAsignados, citasProximas, citasCompletadas });
     } catch (error) {
       console.error('Error cargando dashboard:', error);
       notifications.error('Error cargando panel del becario');
@@ -128,20 +109,6 @@ const BecarioDashboard = () => {
       icon: <FiClock />,
       color: 'var(--yy)',
       change: 'Próximos 7 días'
-    },
-    {
-      title: 'Notificaciones',
-      value: estadisticas.notificacionesSinLeer,
-      icon: <FiBell />,
-      color: 'var(--rr)',
-      change: 'Sin leer'
-    },
-    {
-      title: 'Observaciones Pendientes',
-      value: estadisticas.observacionesPendientes,
-      icon: <FiTrendingUp />,
-      color: 'var(--grnd)',
-      change: 'Por registrar'
     },
     {
       title: 'Citas Completadas',
@@ -219,34 +186,6 @@ const BecarioDashboard = () => {
               <div className="no-citas">
                 <div className="no-citas-icon">📅</div>
                 <div>No hay citas programadas para hoy</div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Notificaciones Recientes */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            <h3>Notificaciones Recientes</h3>
-            <button className="btn-text" onClick={() => navigate('/becario/notificaciones')}>Ver todas</button>
-          </div>
-          
-          <div className="notifications-list">
-            {notificaciones.slice(0, 5).map((notif) => (
-              <div key={notif.id} className={`notification-item ${!notif.leida ? 'unread' : ''}`}>
-                <div>
-                  <h4>{notif.titulo}</h4>
-                  <p>{notif.mensaje}</p>
-                  <small>{new Date(notif.created_at || notif.fecha_notificacion || Date.now()).toLocaleTimeString()}</small>
-                </div>
-                {!notif.leida && <span className="badge badge-info">Nuevo</span>}
-              </div>
-            ))}
-            
-            {notificaciones.length === 0 && (
-              <div className="no-citas">
-                <div className="no-citas-icon">🔔</div>
-                <div>No hay notificaciones</div>
               </div>
             )}
           </div>

@@ -53,7 +53,9 @@ const PsicologoPacientes = () => {
   const fetchExpediente = async (pacienteId) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/expedientes/paciente/${pacienteId}/completo`, {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const res = await fetch(`${apiUrl}/api/expedientes/paciente/${pacienteId}/completo`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 
@@ -86,7 +88,9 @@ const PsicologoPacientes = () => {
   const fetchPerfilPsicopedagogico = async (pacienteId) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/psicopedagogico/paciente/${pacienteId}`, {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const res = await fetch(`${apiUrl}/api/psicopedagogico/paciente/${pacienteId}`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 
@@ -144,7 +148,9 @@ const PsicologoPacientes = () => {
   const fetchBecarios = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/users/becarios', {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const res = await fetch(`${apiUrl}/api/users/becarios`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const data = await res.json();
@@ -159,7 +165,9 @@ const PsicologoPacientes = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const res = await fetch(`${apiUrl}/api/pacientes/activos`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
@@ -225,7 +233,8 @@ const PsicologoPacientes = () => {
     setGuardandoDiagnostico(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/psicopedagogico/paciente/${selectedPaciente.id}/diagnostico`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/psicopedagogico/paciente/${selectedPaciente.id}/diagnostico`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify({ diagnostico: diagnosticoInput })
@@ -257,7 +266,8 @@ const PsicologoPacientes = () => {
     setGuardandoEvolucion(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/psicopedagogico/paciente/${selectedPaciente.id}/evoluciones`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/psicopedagogico/paciente/${selectedPaciente.id}/evoluciones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify({
@@ -899,7 +909,8 @@ const PsicologoPacientes = () => {
                   // Debug: registrar body que vamos a enviar
                   console.log('🚀 Enviando request POST /api/citas/nueva con body:', body);
 
-                  const res = await fetch('http://localhost:3000/api/citas/nueva', {
+                  const apiUrl = process.env.REACT_APP_API_URL;
+                  const res = await fetch(`${apiUrl}/api/citas/nueva`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
                     body: JSON.stringify(body)
@@ -1015,7 +1026,7 @@ const PsicologoPacientes = () => {
                     notas: 'Sesión registrada desde expediente'
                   };
 
-                  const resCita = await fetch('http://localhost:3000/api/citas/nueva', {
+                  const resCita = await fetch(`${apiUrl}/api/citas/nueva`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
                     body: JSON.stringify(citaBody)
@@ -1038,7 +1049,7 @@ const PsicologoPacientes = () => {
                   const citaCreada = jsonCita.data;
 
                   // Marcar cita como completada
-                  const resPut = await fetch(`http://localhost:3000/api/citas/cita/${citaCreada.id}`, {
+                  const resPut = await fetch(`${apiUrl}/api/citas/cita/${citaCreada.id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
                     body: JSON.stringify({ estado: 'completada' })
@@ -1076,7 +1087,7 @@ const PsicologoPacientes = () => {
 
                   console.log('🚀 Enviando POST /api/sesiones con body:', sesionBody);
 
-                  const resSesion = await fetch('http://localhost:3000/api/sesiones', {
+                  const resSesion = await fetch(`${apiUrl}/api/sesiones`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
                     body: JSON.stringify(sesionBody)

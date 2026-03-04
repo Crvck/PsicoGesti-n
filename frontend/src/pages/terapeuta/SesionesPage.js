@@ -96,7 +96,8 @@ const PsicologoSesiones = () => {
         console.log('⚠️ Paciente no encontrado en la lista, cargando desde API...');
         try {
           const token = localStorage.getItem('token');
-          const res = await fetch(`http://localhost:3000/api/pacientes/${pacienteId}`, {
+          const apiUrl = process.env.REACT_APP_API_URL;
+          const res = await fetch(`${apiUrl}/api/pacientes/${pacienteId}`, {
             headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
           });
           
@@ -239,7 +240,8 @@ const PsicologoSesiones = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/sesiones/recientes?limit=${limit}&offset=${offset}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/sesiones/recientes?limit=${limit}&offset=${offset}`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 
@@ -286,8 +288,9 @@ const PsicologoSesiones = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
+      const apiUrl = process.env.REACT_APP_API_URL;
       // Obtener pacientes activos para el select
-      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+      const res = await fetch(`${apiUrl}/api/pacientes/activos`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       if (!res.ok) {
@@ -318,7 +321,8 @@ const PsicologoSesiones = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/sesiones/paciente/${pacienteId}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/sesiones/paciente/${pacienteId}`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 
@@ -361,7 +365,8 @@ const PsicologoSesiones = () => {
     try {
       console.log('🔍 Obteniendo citas para paciente_id:', pacienteId);
       const token = localStorage.getItem('token');
-      const url = `http://localhost:3000/api/citas/paciente/${pacienteId}`;
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const url = `${apiUrl}/api/citas/paciente/${pacienteId}`;
       console.log('📡 URL:', url);
       
       const res = await fetch(url, {
@@ -409,6 +414,7 @@ const PsicologoSesiones = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const apiUrl = process.env.REACT_APP_API_URL;
     try {
       notifications.info('Registrando sesión...');
       const token = localStorage.getItem('token');
@@ -447,7 +453,7 @@ const PsicologoSesiones = () => {
       
       try {
         console.log(`🔍 Obteniendo datos de la cita ID: ${citaIdNumber}`);
-        const resCita = await fetch(`http://localhost:3000/api/citas/cita/${citaIdNumber}`, {
+        const resCita = await fetch(`${apiUrl}/api/citas/cita/${citaIdNumber}`, {
           headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
         });
         
@@ -499,7 +505,7 @@ const PsicologoSesiones = () => {
 
       console.log('📤 Enviando sesión con terapeuta y coterapeuta:', sesionBody);
 
-      const resSesion = await fetch('http://localhost:3000/api/sesiones', {
+      const resSesion = await fetch(`${apiUrl}/api/sesiones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify(sesionBody)

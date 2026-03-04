@@ -26,7 +26,8 @@ const BecarioLayout = () => {
   const fetchNotificaciones = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/notificaciones/', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${apiUrl}/api/notificaciones/`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

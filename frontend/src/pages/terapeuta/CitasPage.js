@@ -66,7 +66,9 @@ const PsicologoCitas = () => {
         psicologo_id: decodedUserId || ''
       });
 
-      const res = await fetch(`http://localhost:3000/api/agenda/global?${query.toString()}`, { headers });
+        const apiUrl = process.env.REACT_APP_API_URL;
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const res = await fetch(`${apiUrl}/api/agenda/global?${query.toString()}`, { headers });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: 'Error en servidor' }));
@@ -105,7 +107,8 @@ const PsicologoCitas = () => {
       }
 
       try {
-        const resB = await fetch('http://localhost:3000/api/users/becarios', { headers });
+        const apiUrl = process.env.REACT_APP_API_URL;
+        const resB = await fetch(`${apiUrl}/api/users/becarios`, { headers });
         const dataB = await resB.json();
         const normalized = (dataB || []).map(b => ({
           ...b,
@@ -258,7 +261,8 @@ const PsicologoCitas = () => {
     if (!cita) return;
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/citas/cita/${cita.id}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/citas/cita/${cita.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify({ estado: 'completada' }) // Cambiamos el estado a 'completada'
@@ -306,7 +310,8 @@ const PsicologoCitas = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/citas/cita/${cita.id}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/citas/cita/${cita.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify({ estado: 'cancelada', motivo_cancelacion: motivoFinal })
@@ -332,7 +337,8 @@ const PsicologoCitas = () => {
     }
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/citas/cancelar-futuras/${pendingCancelCita.paciente_id}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/citas/cancelar-futuras/${pendingCancelCita.paciente_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify({ motivo_cancelacion: pendingCancelMotivo })
@@ -559,9 +565,9 @@ const PsicologoCitas = () => {
                     }`}
                     style={
                       (cita.estado === 'confirmada' || cita.estado === 'completada') 
-                        ? { backgroundColor: '#28a745', color: '#28a745' } 
+                        ? { backgroundColor: '#5b8666', color: '#28a745' } 
                         : cita.estado === 'cancelada'
-                        ? { backgroundColor: '#dc3545', color: '#dc3545' }
+                        ? { backgroundColor: '#8a545a', color: '#dc3545' }
                         : {}
                     }
                   >
@@ -716,13 +722,14 @@ const PsicologoCitas = () => {
                     borderRadius: '4px',
                     border: '1px solid #ddd',
                     width: '100%',
-                    backgroundColor: '#fff',
+                    backgroundColor: '#2c3e50',
+                    color: '#ecf0f1',
                     cursor: 'pointer'
                   }}
                 >
-                  <option value="">Seleccionar motivo...</option>
+                  <option value="" style={{ backgroundColor: '#2c3e50', color: '#ecf0f1' }}>Seleccionar motivo...</option>
                   {motivosCancelacionOpciones.map((opcion, idx) => (
-                    <option key={idx} value={opcion}>{opcion}</option>
+                    <option key={idx} value={opcion} style={{ backgroundColor: '#2c3e50', color: '#ecf0f1' }}>{opcion}</option>
                   ))}
                 </select>
               </div>

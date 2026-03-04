@@ -26,9 +26,7 @@ const PsicologoLayout = () => {
     { path: '/psicologo/dashboard', icon: <FiHome />, label: 'Panel Principal', permiso: 'ver_panel_psicologo' },
     { path: '/psicologo/pacientes', icon: <FiUsers />, label: 'Mis Pacientes', permiso: 'ver_mis_pacientes' },
     { path: '/psicologo/citas', icon: <FiCalendar />, label: 'Mis Citas', permiso: 'gestionar_mis_citas' },
-    { path: '/psicologo/expedientes', icon: <FiFileText />, label: 'Expedientes', permiso: 'ver_expedientes' },
     { path: '/psicologo/sesiones', icon: <FiBarChart2 />, label: 'Registro Sesiones', permiso: 'registrar_sesiones' },
-    { path: '/psicologo/supervision', icon: <FiUserCheck />, label: 'Supervisión', permiso: 'supervisar_becarios' },
   ];
 
   return (

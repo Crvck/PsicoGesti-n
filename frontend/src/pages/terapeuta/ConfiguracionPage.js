@@ -48,14 +48,13 @@ const TerapeutaConfiguracion = () => {
     try {
       setSaving(true);
       const token = localStorage.getItem('token');
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : ''
-      };
-
-      const response = await fetch('http://localhost:3000/api/users/change-password', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${apiUrl}/api/users/change-password`, {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
         body: JSON.stringify({
           currentPassword: passwordData.currentPassword,
           newPassword: passwordData.newPassword
@@ -65,8 +64,6 @@ const TerapeutaConfiguracion = () => {
       if (response.ok) {
         notifications.success('Contraseña actualizada. Vuelve a iniciar sesión');
         setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        
-        // Cerrar sesión después de 2 segundos
         setTimeout(() => {
           localStorage.removeItem('token');
           window.location.href = '/login';
@@ -93,9 +90,7 @@ const TerapeutaConfiguracion = () => {
       </div>
 
       <div className="card" style={{ maxWidth: '600px', margin: '0 auto' }}>
-        <div className="section-header" style={{ marginBottom: '30px' }}>
-          <h3><FiLock /> Seguridad de Contraseña</h3>
-        </div>
+        <h3><FiLock /> Seguridad de Contraseña</h3>
 
         <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
           <div className="form-group">

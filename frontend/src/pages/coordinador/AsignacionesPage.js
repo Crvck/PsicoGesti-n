@@ -60,9 +60,10 @@ const CoordinadorAsignaciones = () => {
       setLoading(true);
 
       const token = localStorage.getItem('token');
+      const apiUrl = process.env.REACT_APP_API_URL;
 
       // Fetch coterapeutas (normalizar campos para UI)
-      const resBec = await fetch('http://localhost:3000/api/users?rol=coterapeuta', {
+      const resBec = await fetch(`${apiUrl}/api/users?rol=coterapeuta`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const becariosData = await resBec.json();
@@ -76,7 +77,7 @@ const CoordinadorAsignaciones = () => {
       setBecarios(normalizedBecarios);
 
       // Fetch terapeutas
-      const resUsers = await fetch('http://localhost:3000/api/users?rol=terapeuta', {
+      const resUsers = await fetch(`${apiUrl}/api/users?rol=terapeuta`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const usersData = await resUsers.json();
@@ -84,7 +85,7 @@ const CoordinadorAsignaciones = () => {
       setPsicologos(psicologosList);
 
       // Fetch pacientes sin asignar
-      const resPacSin = await fetch('http://localhost:3000/api/pacientes/sin-asignar', {
+      const resPacSin = await fetch(`${apiUrl}/api/pacientes/sin-asignar`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const pacSinJson = await resPacSin.json();
@@ -98,7 +99,7 @@ const CoordinadorAsignaciones = () => {
       })));
 
       // Fetch asignaciones activas
-      const resAsig = await fetch('http://localhost:3000/api/asignaciones', {
+      const resAsig = await fetch(`${apiUrl}/api/asignaciones`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const asigJson = await resAsig.json();
@@ -148,7 +149,8 @@ const CoordinadorAsignaciones = () => {
         notas: assignNotes
       };
 
-      const res = await fetch('http://localhost:3000/api/asignaciones', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/asignaciones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify(body)
@@ -233,7 +235,8 @@ const CoordinadorAsignaciones = () => {
       
       if (confirmado) {
         const token = localStorage.getItem('token');
-        const res = await fetch(`http://localhost:3000/api/asignaciones/${asignacionId}/finalizar`, {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        const res = await fetch(`${apiUrl}/api/asignaciones/${asignacionId}/finalizar`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
         });

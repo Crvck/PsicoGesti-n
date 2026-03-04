@@ -31,7 +31,7 @@ class AuthController {
                 // 3. Verificar si el usuario existe y está activo
                 if (user.activo === false) {
                     console.log('❌ Usuario inactivo');
-                    return res.status(403).json({ message: 'Usuario inactivo, contacte a coordinación' });
+                    return res.status(403).json({ message: 'Tu usuario ha sido desactivado, comunícate con el administrador' });
                 }
                 console.log('✅ Usuario encontrado:', user.email);
 

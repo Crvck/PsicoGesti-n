@@ -52,7 +52,8 @@ const CoterapeutaConfiguracion = () => {
         'Authorization': token ? `Bearer ${token}` : ''
       };
 
-      const response = await fetch('http://localhost:3000/api/users/change-password', {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${apiUrl}/api/users/change-password`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

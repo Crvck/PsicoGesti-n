@@ -25,7 +25,9 @@ const PsicologoPacientes = () => {
   const fetchExpediente = async (pacienteId) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/expedientes/paciente/${pacienteId}/completo`, {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const res = await fetch(`${apiUrl}/api/expedientes/paciente/${pacienteId}/completo`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 
@@ -71,7 +73,9 @@ const PsicologoPacientes = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const res = await fetch(`${apiUrl}/api/pacientes/activos`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''

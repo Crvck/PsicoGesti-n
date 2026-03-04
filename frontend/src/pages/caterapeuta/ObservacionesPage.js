@@ -31,8 +31,9 @@ const BecarioObservaciones = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
+      const apiUrl = process.env.REACT_APP_API_URL;
       // Obtener pacientes activos
-      const resPacientes = await fetch('http://localhost:3000/api/pacientes/activos', {
+      const resPacientes = await fetch(`${apiUrl}/api/pacientes/activos`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       if (!resPacientes.ok) {
@@ -51,7 +52,7 @@ const BecarioObservaciones = () => {
       }
 
       // Obtener sesiones recientes (para becarios, muestra últimas registradas)
-      const resSesiones = await fetch('http://localhost:3000/api/sesiones/recientes?limit=50', {
+      const resSesiones = await fetch(`${apiUrl}/api/sesiones/recientes?limit=50`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       if (!resSesiones.ok) {
@@ -104,7 +105,8 @@ const BecarioObservaciones = () => {
     try {
       if (!pacienteId) { setCitasPaciente([]); return; }
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/citas/paciente/${pacienteId}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/citas/paciente/${pacienteId}`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       if (!res.ok) { setCitasPaciente([]); return; }
@@ -122,6 +124,7 @@ const BecarioObservaciones = () => {
     try {
       notifications.info('Registrando sesión...');
       const token = localStorage.getItem('token');
+      const apiUrl = process.env.REACT_APP_API_URL;
       if (!formData.paciente_id || !selectedCitaId) {
         notifications.error('Selecciona el paciente y una cita programada');
         return;
@@ -139,7 +142,7 @@ const BecarioObservaciones = () => {
         privado: false
       };
 
-      const resSesion = await fetch('http://localhost:3000/api/sesiones', {
+      const resSesion = await fetch(`${apiUrl}/api/sesiones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify(sesionBody)

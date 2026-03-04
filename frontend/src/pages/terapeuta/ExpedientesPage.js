@@ -29,7 +29,7 @@ const PsicologoExpedientes = () => {
       setLoading(true);
       const token = localStorage.getItem('token');
       // Obtener pacientes activos y luego mapear a una vista de expedientes básicos
-      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/api/pacientes/activos`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       if (!res.ok) {
@@ -55,9 +55,9 @@ const PsicologoExpedientes = () => {
     }
   };
 
-  const fetchSesionesPaciente = async (expedienteId) => {
+  const fetchSesionesPaciente = async (pacienteId) => {
     try {
-      const response = await ApiService.get(`/expedientes/${expedienteId}/sesiones`);
+      const response = await ApiService.get(`/sesiones/paciente/${pacienteId}`);
       const sesiones = response?.data || [];
       setSesionesPaciente(sesiones);
 
@@ -88,7 +88,7 @@ const PsicologoExpedientes = () => {
     try {
       setLoading(true);
       setSelectedExpediente(item);
-      const response = await ApiService.get(`/expedientes/${item.id}`);
+      const response = await ApiService.get(`/expedientes/paciente/${item.id}/completo`);
       const expediente = response?.data || {};
       setExpediente(expediente);
       await fetchSesionesPaciente(item.id);
@@ -134,9 +134,9 @@ const PsicologoExpedientes = () => {
         redes_apoyo: editFormData.redes_apoyo
       };
 
-      console.log('🔧 URL:', `http://localhost:3000/api/expedientes/paciente/${pacienteId}`);
+      console.log('🔧 URL:', `${process.env.REACT_APP_API_URL}/api/expedientes/paciente/${pacienteId}`);
 
-      let res = await fetch(`http://localhost:3000/api/expedientes/paciente/${pacienteId}`, {
+      let res = await fetch(`${process.env.REACT_APP_API_URL}/api/expedientes/paciente/${pacienteId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify(dataToSave)
@@ -145,7 +145,7 @@ const PsicologoExpedientes = () => {
       // Si retorna 404, significa que no existe el expediente, lo creamos
       if (res.status === 404) {
         console.log('📝 Expediente no existe, creando...');
-        res = await fetch(`http://localhost:3000/api/expedientes/paciente/${pacienteId}`, {
+        res = await fetch(`${process.env.REACT_APP_API_URL}/api/expedientes/paciente/${pacienteId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
           body: JSON.stringify(dataToSave)
@@ -190,7 +190,7 @@ const PsicologoExpedientes = () => {
 
       if (!confirmado) return;
 
-      const res = await fetch(`http://localhost:3000/api/altas/proponer/${pacienteId}`, {
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/api/altas/proponer/${pacienteId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' },
         body: JSON.stringify(propuestaData)
@@ -280,8 +280,8 @@ const PsicologoExpedientes = () => {
 
       {/* Lista de Expedientes */}
       <div className="grid-2 gap-20">
-        {filteredExpedientes.map((expediente) => (
-          <div key={expediente.id} className="card">
+        {filteredExpedientes.map((expediente, index) => (
+          <div key={`expediente-${expediente.id}-${index}`} className="card">
             <div className="flex-row align-center justify-between mb-10">
               <div className="flex-row align-center gap-10">
                 <div className="avatar">

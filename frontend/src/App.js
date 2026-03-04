@@ -21,9 +21,7 @@ import CoterapeutaConfiguracion from './pages/caterapeuta/ConfiguracionPage';
 import TerapeutaDashboard from './pages/terapeuta/DashboardPage';
 import TerapeutaPacientes from './pages/terapeuta/PacientesPage';
 import TerapeutaCitas from './pages/terapeuta/CitasPage';
-import TerapeutaExpedientes from './pages/terapeuta/ExpedientesPage';
 import TerapeutaSesiones from './pages/terapeuta/SesionesPage';
-import TerapeutaSupervision from './pages/terapeuta/SupervisionPage';
 import TerapeutaConfiguracion from './pages/terapeuta/ConfiguracionPage';
 
 // Páginas para Psicopedagógico
@@ -67,9 +65,7 @@ function App() {
             <Route path="terapeuta/dashboard" element={<TerapeutaDashboard />} />
             <Route path="terapeuta/pacientes" element={<TerapeutaPacientes />} />
             <Route path="terapeuta/citas" element={<TerapeutaCitas />} />
-            <Route path="terapeuta/expedientes" element={<TerapeutaExpedientes />} />
             <Route path="terapeuta/sesiones" element={<TerapeutaSesiones />} />
-            <Route path="terapeuta/supervision" element={<TerapeutaSupervision />} />
             <Route path="terapeuta/configuracion" element={<TerapeutaConfiguracion />} />
             
             {/* Coordinador */}

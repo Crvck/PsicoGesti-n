@@ -34,7 +34,9 @@ const PsicologoSupervision = () => {
       const token = localStorage.getItem('token');
       
       // Obtener becarios asignados al psicólogo actual
-      const becariosRes = await fetch('http://localhost:3000/api/asignaciones/mis-becarios', {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+        const becariosRes = await fetch(`${apiUrl}/api/asignaciones/mis-becarios`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       
@@ -51,7 +53,7 @@ const PsicologoSupervision = () => {
         // Obtener observaciones recientes para los becarios asignados
         const observacionesPromises = becariosAsignados.map(async (becario) => {
           try {
-            const obsRes = await fetch(`http://localhost:3000/api/observaciones/becario/${becario.id}`, {
+              const obsRes = await fetch(`${apiUrl}/api/observaciones/becario/${becario.id}`, {
               headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
             });
             if (!obsRes.ok) return [];
@@ -97,9 +99,10 @@ const PsicologoSupervision = () => {
     
     try {
       const token = localStorage.getItem('token');
+      const apiUrl = process.env.REACT_APP_API_URL;
       // Intentar registrar feedback (si el backend lo soporta)
       try {
-        await fetch(`http://localhost:3000/api/observaciones/feedback/${becarioId}`, {
+        await fetch(`${apiUrl}/api/observaciones/feedback/${becarioId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

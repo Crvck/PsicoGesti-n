@@ -92,8 +92,9 @@ const CoordinadorPacientes = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
+      const apiUrl = process.env.REACT_APP_API_URL;
       // Usar endpoint /activos que incluye información de asignaciones
-      const res = await fetch('http://localhost:3000/api/pacientes/activos', {
+      const res = await fetch(`${apiUrl}/api/pacientes/activos`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
@@ -165,7 +166,8 @@ const CoordinadorPacientes = () => {
     if (modalType === 'nuevo') {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:3000/api/pacientes', {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        const res = await fetch(`${apiUrl}/api/pacientes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -193,7 +195,8 @@ const CoordinadorPacientes = () => {
       // Editar paciente: enviar al backend
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`http://localhost:3000/api/pacientes/${formData.id}`, {
+        const apiUrl = process.env.REACT_APP_API_URL;
+        const res = await fetch(`${apiUrl}/api/pacientes/${formData.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -232,7 +235,8 @@ const CoordinadorPacientes = () => {
       const paciente = pacientes.find(p => p.id === id);
       if (!paciente) return;
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/pacientes/${id}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/pacientes/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -261,7 +265,8 @@ const CoordinadorPacientes = () => {
     
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/pacientes/${id}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/pacientes/${id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -334,7 +339,8 @@ const CoordinadorPacientes = () => {
   const fetchExpediente = async (pacienteId) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3000/api/expedientes/paciente/${pacienteId}/completo`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      const res = await fetch(`${apiUrl}/api/expedientes/paciente/${pacienteId}/completo`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 

@@ -470,10 +470,10 @@ const CoordinadorAltas = () => {
                 <div className="flex-row align-center justify-between mb-15">
                   <div className="flex-row align-center gap-10">
                     <div className="avatar">
-                      {propuesta.paciente_nombre.split(' ').map(n => n[0]).join('')}
+                      {(propuesta.paciente_nombre || '').split(' ').filter(n => n).map(n => n[0]).join('')}
                     </div>
                     <div>
-                      <h4>{propuesta.paciente_nombre}</h4>
+                      <h4>{propuesta.paciente_nombre || 'Sin nombre'}</h4>
                       <p className="text-small">Propuesta por terapeuta</p>
                     </div>
                   </div>
@@ -523,10 +523,10 @@ const CoordinadorAltas = () => {
                 <div className="flex-row align-center justify-between mb-15">
                   <div className="flex-row align-center gap-10">
                     <div className="avatar">
-                      {paciente.paciente_nombre.split(' ').map(n => n[0]).join('')}
+                      {(paciente.paciente_nombre || '').split(' ').filter(n => n).map(n => n[0]).join('')}
                     </div>
                     <div>
-                      <h4>{paciente.paciente_nombre}</h4>
+                      <h4>{paciente.paciente_nombre || 'Sin nombre'}</h4>
                       <p className="text-small">{paciente.edad} años • {paciente.motivo_consulta}</p>
                     </div>
                   </div>
@@ -687,7 +687,7 @@ const CoordinadorAltas = () => {
                       <td>
                         <div className="flex-row align-center gap-10">
                           <div className="avatar-small">
-                            {(alta.paciente_nombre || '').split(' ').map(n => n[0]).join('')}
+                            {(alta.paciente_nombre || '').split(' ').filter(n => n).map(n => n[0]).join('')}
                           </div>
                           <div>
                             <div className="font-bold">

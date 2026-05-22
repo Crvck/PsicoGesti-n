@@ -3,6 +3,7 @@ import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiMail, FiPh
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { createCoordinatorTour } from '../../utils/coordinatorTour';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, WidthType } from 'docx';
 import { saveAs } from 'file-saver';
 
@@ -27,6 +28,7 @@ const CoordinadorUsuarios = () => {
   const [statsUser, setStatsUser] = useState(null);
   const [statsData, setStatsData] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [tour] = useState(() => createCoordinatorTour('usuarios'));
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
@@ -209,11 +211,11 @@ const CoordinadorUsuarios = () => {
     const nombreCompleto = `${usuario.nombre || ''} ${usuario.apellido || ''}`.toLowerCase();
     const email = (usuario.email || '').toLowerCase();
     const searchLower = searchTerm.toLowerCase();
-    
+
     const matchesSearch = nombreCompleto.includes(searchLower) || email.includes(searchLower);
     const matchesRol = !filterRol || usuario.rol === filterRol;
     const matchesActivo = includeInactivos ? true : usuario.activo;
-    
+
     return matchesSearch && matchesRol && matchesActivo;
   });
 
@@ -237,7 +239,7 @@ const CoordinadorUsuarios = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (modalType === 'nuevo') {
       try {
         const token = localStorage.getItem('token');
@@ -280,7 +282,7 @@ const CoordinadorUsuarios = () => {
           delete dataToSend.password;
         }
         delete dataToSend.cambiarPassword; // no enviar el campo checkbox al backend
-        
+
         const res = await fetch(`${apiUrl}/api/users/${formData.id}`, {
           method: 'PUT',
           headers: {
@@ -298,7 +300,7 @@ const CoordinadorUsuarios = () => {
 
         const response = await res.json();
         const updated = response.data || response;
-        
+
         // Actualizar el usuario en la lista local
         setUsuarios(prev => prev.map(u => {
           if (u.id === updated.id) {
@@ -319,14 +321,14 @@ const CoordinadorUsuarios = () => {
           }
           return u;
         }));
-        
+
         notifications.success('Usuario actualizado exitosamente');
       } catch (error) {
         console.error('Error actualizando usuario:', error);
         notifications.error('Error actualizando usuario');
       }
     }
-    
+
     setShowModal(false);
     resetForm();
   };
@@ -334,7 +336,7 @@ const CoordinadorUsuarios = () => {
   const deleteUsuario = async (id) => {
     const confirmado = await confirmations.danger('¿Seguro que desea eliminar este usuario?');
     if (!confirmado) return;
-    
+
     try {
       const token = localStorage.getItem('token');
       const apiUrl = process.env.REACT_APP_API_URL;
@@ -398,7 +400,7 @@ const CoordinadorUsuarios = () => {
 
       const response = await res.json();
       const updated = response.data || response;
-      
+
       // Actualizar el usuario en la lista local
       setUsuarios(prev => prev.map(u => {
         if (u.id === id) {
@@ -417,7 +419,7 @@ const CoordinadorUsuarios = () => {
         }
         return u;
       }));
-      
+
       notifications.success(`Usuario ${!usuario.activo ? 'activado' : 'desactivado'} correctamente`);
     } catch (error) {
       console.error('Error toggling activo:', error);
@@ -442,7 +444,7 @@ const CoordinadorUsuarios = () => {
 
   const exportarListado = async () => {
     try {
-      
+
       const titulo = filterRol ? `Listado de ${getRolLabel(filterRol).text}` : 'Listado de todos los usuarios';
       const fecha = new Date().toLocaleString();
       const rows = [];
@@ -485,7 +487,7 @@ const CoordinadorUsuarios = () => {
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.docx`);
+      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`);
       notifications.success('Descarga iniciada');
     } catch (err) {
       console.error('Error exportando listado:', err);
@@ -524,16 +526,21 @@ const CoordinadorUsuarios = () => {
           <h1>Gestión de Usuarios</h1>
           <p>Administración de coordinadores, terapeutas y coterapeutas</p>
         </div>
-        <button 
-          className="btn-primary"
-          onClick={() => {
-            resetForm();
-            setModalType('nuevo');
-            setShowModal(true);
-          }}
-        >
-          <FiUserPlus /> Nuevo Usuario
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              resetForm();
+              setModalType('nuevo');
+              setShowModal(true);
+            }}
+          >
+            <FiUserPlus /> Nuevo Usuario
+          </button>
+        </div>
       </div>
 
       {/* Filtros y Búsqueda */}
@@ -548,10 +555,10 @@ const CoordinadorUsuarios = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <div className="filter-buttons">
-          <select 
-            value={filterRol} 
+          <select
+            value={filterRol}
             onChange={(e) => setFilterRol(e.target.value)}
             className="select-field"
             style={{ width: '200px' }}
@@ -609,7 +616,7 @@ const CoordinadorUsuarios = () => {
           <tbody>
             {filteredUsuarios.map((usuario) => {
               const rolInfo = getRolLabel(usuario.rol);
-              
+
               return (
                 <tr key={usuario.id}>
                   <td>
@@ -655,21 +662,21 @@ const CoordinadorUsuarios = () => {
                   </td>
                   <td>
                     <div className="flex-row gap-5">
-                      <button 
+                      <button
                         className="btn-text text-info"
                         onClick={() => openStatsModal(usuario)}
                         title="Ver estadísticas"
                       >
                         <FiBarChart2 />
                       </button>
-                      <button 
+                      <button
                         className="btn-text"
                         onClick={() => editarUsuario(usuario)}
                         title="Editar"
                       >
                         <FiEdit2 />
                       </button>
-                      <button 
+                      <button
                         className={`btn-text ${usuario.activo ? 'text-danger' : 'text-success'}`}
                         onClick={() => toggleEstadoUsuario(usuario.id)}
                         title={usuario.activo ? 'Desactivar' : 'Activar'}
@@ -704,7 +711,7 @@ const CoordinadorUsuarios = () => {
             <p>Terapeutas: {usuarios.filter(u => u.rol === 'terapeuta').length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Distribución por Rol</h4>
           <div className="mt-10">
@@ -721,7 +728,7 @@ const CoordinadorUsuarios = () => {
             ))}
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">
@@ -749,7 +756,7 @@ const CoordinadorUsuarios = () => {
               <h3>{modalType === 'nuevo' ? 'Nuevo Usuario' : 'Editar Usuario'}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
             </div>
-            
+
             <form onSubmit={handleSubmit}>
               <div className="form-grid">
                 <div className="form-group">
@@ -763,7 +770,7 @@ const CoordinadorUsuarios = () => {
                     required
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Apellido</label>
                   <input
@@ -775,7 +782,7 @@ const CoordinadorUsuarios = () => {
                     required
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Email</label>
                   <input
@@ -787,7 +794,7 @@ const CoordinadorUsuarios = () => {
                     required
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Teléfono</label>
                   <input
@@ -798,7 +805,7 @@ const CoordinadorUsuarios = () => {
                     className="input-field"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Rol</label>
                   <select
@@ -814,7 +821,7 @@ const CoordinadorUsuarios = () => {
                     <option value="coordinador">Coordinador</option>
                   </select>
                 </div>
-                
+
                 <div className="form-group">
                   <label>Especialidad</label>
                   <input
@@ -826,7 +833,7 @@ const CoordinadorUsuarios = () => {
                     placeholder="Ej: Terapia Cognitivo-Conductual"
                   />
                 </div>
-                
+
                 {formData.rol === 'terapeuta' && modalType === 'nuevo' && (
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
                     <label>Contraseña Temporal</label>
@@ -859,7 +866,7 @@ const CoordinadorUsuarios = () => {
                     <p className="text-small mt-5">El usuario deberá cambiar la contraseña en su primer inicio</p>
                   </div>
                 )}
-                
+
                 {modalType === 'editar' && (
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
                     <label className="flex-row align-center gap-10">
@@ -904,7 +911,7 @@ const CoordinadorUsuarios = () => {
                     )}
                   </div>
                 )}
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -917,13 +924,13 @@ const CoordinadorUsuarios = () => {
                   </label>
                 </div>
               </div>
-              
+
               <div className="modal-footer">
                 <button type="submit" className="btn-primary">
                   {modalType === 'nuevo' ? 'Crear Usuario' : 'Guardar Cambios'}
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="btn-danger"
                   onClick={() => setShowModal(false)}
                 >
@@ -1040,7 +1047,7 @@ const CoordinadorUsuarios = () => {
               <h3>Estadísticas de Usuario</h3>
               <button className="modal-close" onClick={closeStatsModal}>×</button>
             </div>
-            
+
             <div className="modal-content">
               {statsLoading ? (
                 <div className="loading-container">
@@ -1207,7 +1214,7 @@ const CoordinadorUsuarios = () => {
                 <p>No se pudieron cargar las estadísticas</p>
               )}
             </div>
-            
+
             <div className="modal-footer">
               <button className="btn-secondary" onClick={closeStatsModal}>Cerrar</button>
             </div>

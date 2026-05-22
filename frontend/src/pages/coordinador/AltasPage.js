@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   FiTrendingUp, FiCheckCircle, FiXCircle, FiFilter,
   FiSearch, FiCalendar, FiUser, FiFileText, FiDownload,
   FiUsers, FiActivity, FiBarChart2, FiClock,
@@ -10,6 +10,7 @@ import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 import ApiService from '../../services/api';
+import { createCoordinatorTour } from '../../utils/coordinatorTour';
 
 const CoordinadorAltas = () => {
   const [altas, setAltas] = useState([]);
@@ -19,15 +20,15 @@ const CoordinadorAltas = () => {
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
   const [busquedaPaciente, setBusquedaPaciente] = useState('');
-  
+
   // Estados para el modal de dar de alta
   const [showModalAlta, setShowModalAlta] = useState(false);
   const [selectedPacienteAlta, setSelectedPacienteAlta] = useState(null);
-  
+
   // Estados para el modal de ver detalles
   const [showModalDetalles, setShowModalDetalles] = useState(false);
   const [selectedAltaDetalles, setSelectedAltaDetalles] = useState(null);
-  
+
   // Estados para procesar propuestas
   const [showModalProcesarPropuesta, setShowModalProcesarPropuesta] = useState(false);
   const [selectedPropuesta, setSelectedPropuesta] = useState(null);
@@ -37,8 +38,9 @@ const CoordinadorAltas = () => {
     evaluacion_final: '',
     motivo_rechazo: ''
   });
-  
+
   const [estadisticas, setEstadisticas] = useState({});
+  const [tour] = useState(() => createCoordinatorTour('altas'));
   const [formData, setFormData] = useState({
     paciente_id: '',
     tipo_alta: '',
@@ -143,21 +145,21 @@ const CoordinadorAltas = () => {
           '¿Estás seguro de marcar este paciente como "No Aprobar"? ' +
           'El paciente no será mostrado como candidato a alta por 30 días.'
         );
-        
+
         if (confirmado) {
           try {
             console.log(`📤 Enviando solicitud para marcar paciente ${pacienteId} como no aprobado...`);
-            
+
             // Llamar al endpoint
             const response = await ApiService.post(`/pacientes/${pacienteId}/no-aprobar-alta`);
-            
+
             if (response.success) {
               notifications.success(`✅ ${response.message}`);
               console.log('✅ Respuesta del backend:', response.data);
-              
+
               // 1. Eliminar inmediatamente del estado local
               setCandidatosAlta(prev => prev.filter(p => p.id !== pacienteId));
-              
+
               // 2. Recargar después de 2 segundos para confirmar
               setTimeout(async () => {
                 console.log('🔄 Recargando lista de candidatos...');
@@ -228,28 +230,28 @@ const CoordinadorAltas = () => {
 
   const handleSubmitAlta = async (e) => {
     e.preventDefault();
-    
+
     try {
       const confirmado = await confirmations.warning(
         '¿Estás seguro de dar de alta a este paciente? Esta acción no se puede deshacer.'
       );
-      
+
       if (!confirmado) return;
 
       const response = await ApiService.post('/altas', formData);
-      
+
       if (response.success) {
         notifications.success(response.message || 'Paciente dado de alta exitosamente');
-        
+
         // Actualizar listas
         setAltas([response.data.alta, ...altas]);
-        
+
         // Recargar la lista de candidatos (para que desaparezca de la lista)
         await fetchCandidatosAlta();
-        
+
         // Recargar estadísticas
         await fetchEstadisticas();
-        
+
         // Limpiar y cerrar modal
         setFormData({
           paciente_id: '',
@@ -276,18 +278,18 @@ const CoordinadorAltas = () => {
       setLoading(true);
       let url = '/altas?';
       const params = [];
-      
+
       if (filtroEstado) params.push(`tipo_alta=${filtroEstado}`);
       if (filtroMes) {
         const year = new Date().getFullYear();
         params.push(`fecha_inicio=${year}-${parseInt(filtroMes) + 1}-01`);
         params.push(`fecha_fin=${year}-${parseInt(filtroMes) + 1}-31`);
       }
-      
+
       if (params.length > 0) {
         url += params.join('&');
       }
-      
+
       const response = await ApiService.get(url);
       if (response.success) {
         setAltas(response.data);
@@ -302,7 +304,7 @@ const CoordinadorAltas = () => {
   const exportarReporteAltas = async () => {
     try {
       notifications.info('Generando reporte de altas...');
-      
+
       // Obtener fechas del filtro actual
       const params = new URLSearchParams();
       if (filtroMes) {
@@ -314,9 +316,9 @@ const CoordinadorAltas = () => {
       if (filtroEstado) {
         params.append('tipo_alta', filtroEstado);
       }
-      
+
       const response = await ApiService.get(`/reportes/altas?formato=excel&${params.toString()}`);
-      
+
       if (response.success && response.data.archivo_url) {
         notifications.success(`Reporte generado exitosamente (${response.data.total_registros} registros)`);
       } else {
@@ -355,7 +357,7 @@ const CoordinadorAltas = () => {
       console.log(`📋 Solicitando detalles del alta ID: ${alta.id}`);
       const response = await ApiService.get(`/altas/${alta.id}`);
       console.log('📊 Respuesta de detalles:', response);
-      
+
       if (response.success) {
         setSelectedAltaDetalles(response.data);
         setShowModalDetalles(true);
@@ -376,9 +378,9 @@ const CoordinadorAltas = () => {
 
   const altasFiltradas = busquedaPaciente.trim()
     ? altasOrdenadas.filter((alta) => {
-        const nombreCompleto = `${alta.paciente_nombre || ''} ${alta.paciente_apellido || ''}`.toLowerCase();
-        return nombreCompleto.includes(busquedaPaciente.trim().toLowerCase());
-      })
+      const nombreCompleto = `${alta.paciente_nombre || ''} ${alta.paciente_apellido || ''}`.toLowerCase();
+      return nombreCompleto.includes(busquedaPaciente.trim().toLowerCase());
+    })
     : altasOrdenadas.slice(0, 10);
 
   if (loading && altas.length === 0) {
@@ -397,6 +399,11 @@ const CoordinadorAltas = () => {
           <h1>Seguimiento de Altas</h1>
           <p>Gestión y seguimiento de altas terapéuticas</p>
         </div>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
+        </div>
       </div>
 
       {/* Estadísticas de Altas */}
@@ -412,7 +419,7 @@ const CoordinadorAltas = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="card">
           <div className="stat-box">
             <div className="stat-icon">
@@ -426,7 +433,7 @@ const CoordinadorAltas = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="card">
           <div className="stat-box">
             <div className="stat-icon">
@@ -440,7 +447,7 @@ const CoordinadorAltas = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="card">
           <div className="stat-box">
             <div className="stat-icon">
@@ -463,7 +470,7 @@ const CoordinadorAltas = () => {
               Propuestas de Alta Pendientes ({propuestas.length})
             </h3>
           </div>
-          
+
           <div className="grid-2">
             {propuestas.map((propuesta) => (
               <div key={propuesta.id} className="card" style={{ borderLeft: '4px solid #ff9f43' }}>
@@ -481,7 +488,7 @@ const CoordinadorAltas = () => {
                     Pendiente
                   </div>
                 </div>
-                
+
                 <div className="mb-15">
                   <div className="text-small">
                     <strong>Evaluación:</strong> {propuesta.evaluacion_final || 'Sin especificar'}
@@ -495,9 +502,9 @@ const CoordinadorAltas = () => {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-primary flex-1"
                     onClick={() => abrirModalProcesarPropuesta(propuesta)}
                   >
@@ -515,7 +522,7 @@ const CoordinadorAltas = () => {
         <div className="section-header">
           <h3>Candidatos a Alta ({candidatosAlta.length})</h3>
         </div>
-        
+
         {candidatosAlta.length > 0 ? (
           <div className="grid-2">
             {candidatosAlta.map((paciente) => (
@@ -535,20 +542,20 @@ const CoordinadorAltas = () => {
                     <div className="text-small">progreso</div>
                   </div>
                 </div>
-                
+
                 <div className="mb-15">
                   <div className="card-progress-label">
                     <span>{paciente.sesiones_completadas}/{paciente.sesiones_totales} sesiones</span>
                     <span>{paciente.progreso}%</span>
                   </div>
                   <div className="progress-container">
-                    <div 
+                    <div
                       className="progress-bar"
                       style={{ width: `${paciente.progreso}%` }}
                     ></div>
                   </div>
                 </div>
-                
+
                 <div className="grid-2 gap-10 mb-15">
                   <div>
                     <div className="text-small">Terapeuta</div>
@@ -559,20 +566,20 @@ const CoordinadorAltas = () => {
                     <div className="font-bold">{paciente.coterapeuta || 'No asignado'}</div>
                   </div>
                 </div>
-                
+
                 <div className="mb-15">
                   <div className="text-small">Recomendación</div>
                   <div className="font-bold text-success">{paciente.recomendacion}</div>
                 </div>
-                
+
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-primary flex-1"
                     onClick={() => procesarAlta(paciente.id, 'aprobar')}
                   >
                     <FiCheckCircle /> Procesar Alta
                   </button>
-                  <button 
+                  <button
                     className="btn-danger flex-1"
                     onClick={() => procesarAlta(paciente.id, 'rechazar')}
                   >
@@ -611,8 +618,8 @@ const CoordinadorAltas = () => {
                 style={{ width: '260px' }}
               />
             </div>
-            <select 
-              value={filtroEstado} 
+            <select
+              value={filtroEstado}
               onChange={(e) => setFiltroEstado(e.target.value)}
               className="select-field"
               style={{ width: '180px' }}
@@ -624,9 +631,9 @@ const CoordinadorAltas = () => {
               <option value="graduacion">Graduaciones</option>
               <option value="no_continua">No Continúa</option>
             </select>
-            
-            <select 
-              value={filtroMes} 
+
+            <select
+              value={filtroMes}
               onChange={(e) => setFiltroMes(e.target.value)}
               className="select-field"
               style={{ width: '150px' }}
@@ -645,9 +652,9 @@ const CoordinadorAltas = () => {
               <option value="10">Noviembre</option>
               <option value="11">Diciembre</option>
             </select>
-            
-            <button 
-              className="btn-secondary" 
+
+            <button
+              className="btn-secondary"
               onClick={handleFilterChange}
               disabled={loading}
             >
@@ -655,7 +662,7 @@ const CoordinadorAltas = () => {
             </button>
           </div>
         </div>
-        
+
         {loading ? (
           <div className="loading-container" style={{ minHeight: '200px' }}>
             <div className="loading-spinner"></div>
@@ -696,7 +703,7 @@ const CoordinadorAltas = () => {
                             <div className="text-small">
                               {alta.motivo_detallado?.substring(0, 30) || 'Sin motivo específico'}...
                             </div>
-                            <button 
+                            <button
                               className="btn-text mt-5"
                               onClick={() => verDetallesAlta(alta)}
                             >
@@ -752,7 +759,7 @@ const CoordinadorAltas = () => {
                 setSelectedPacienteAlta(null);
               }}>×</button>
             </div>
-            
+
             <form onSubmit={handleSubmitAlta}>
               <div className="modal-content">
                 {selectedPacienteAlta && (
@@ -764,13 +771,13 @@ const CoordinadorAltas = () => {
                     <strong>Sesiones completadas:</strong> {selectedPacienteAlta.sesiones_completadas}
                   </div>
                 )}
-                
+
                 <div className="grid-2 gap-20">
                   <div className="form-group">
                     <label>Tipo de Alta *</label>
                     <select
                       value={formData.tipo_alta}
-                      onChange={(e) => setFormData({...formData, tipo_alta: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, tipo_alta: e.target.value })}
                       className="select-field"
                       required
                     >
@@ -782,12 +789,12 @@ const CoordinadorAltas = () => {
                       <option value="no_continua">No Continúa</option>
                     </select>
                   </div>
-                  
+
                   <div className="form-group">
                     <label>Evaluación Final</label>
                     <select
                       value={formData.evaluacion_final}
-                      onChange={(e) => setFormData({...formData, evaluacion_final: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, evaluacion_final: e.target.value })}
                       className="select-field"
                     >
                       <option value="">Seleccionar evaluación</option>
@@ -798,49 +805,49 @@ const CoordinadorAltas = () => {
                     </select>
                   </div>
                 </div>
-                
+
                 <div className="form-group mt-15">
                   <label>Motivo Detallado *</label>
                   <textarea
                     value={formData.motivo_detallado}
-                    onChange={(e) => setFormData({...formData, motivo_detallado: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, motivo_detallado: e.target.value })}
                     className="textarea-field"
                     rows="4"
                     placeholder="Describa el motivo del alta..."
                     required
                   />
                 </div>
-                
+
                 <div className="form-group mt-15">
                   <label>Recomendaciones</label>
                   <textarea
                     value={formData.recomendaciones}
-                    onChange={(e) => setFormData({...formData, recomendaciones: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, recomendaciones: e.target.value })}
                     className="textarea-field"
                     rows="3"
                     placeholder="Recomendaciones para el paciente..."
                   />
                 </div>
-                
+
                 <div className="grid-2 gap-20 mt-15">
                   <div className="form-group">
                     <label className="flex-row align-center gap-10">
                       <input
                         type="checkbox"
                         checked={formData.seguimiento_recomendado}
-                        onChange={(e) => setFormData({...formData, seguimiento_recomendado: e.target.checked})}
+                        onChange={(e) => setFormData({ ...formData, seguimiento_recomendado: e.target.checked })}
                       />
                       Seguimiento Recomendado
                     </label>
                   </div>
-                  
+
                   {formData.seguimiento_recomendado && (
                     <div className="form-group">
                       <label>Fecha de Seguimiento</label>
                       <input
                         type="date"
                         value={formData.fecha_seguimiento}
-                        onChange={(e) => setFormData({...formData, fecha_seguimiento: e.target.value})}
+                        onChange={(e) => setFormData({ ...formData, fecha_seguimiento: e.target.value })}
                         className="input-field"
                         min={new Date().toISOString().split('T')[0]}
                       />
@@ -848,10 +855,10 @@ const CoordinadorAltas = () => {
                   )}
                 </div>
               </div>
-              
+
               <div className="modal-footer">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="btn-secondary"
                   onClick={() => {
                     setShowModalAlta(false);  // ✅ CORREGIDO
@@ -860,8 +867,8 @@ const CoordinadorAltas = () => {
                 >
                   Cancelar
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn-primary"
                   disabled={!formData.tipo_alta || !formData.motivo_detallado}
                 >
@@ -872,15 +879,15 @@ const CoordinadorAltas = () => {
           </div>
         </div>
       )}
-      
+
       {/* Modal de Detalles de Alta */}
       {showModalDetalles && selectedAltaDetalles && (
         <div className="modal-overlay">
           <div className="modal-container modal-large">
             <div className="modal-header">
               <h3>
-                {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
-                  ? 'Detalles de No Aprobación' 
+                {selectedAltaDetalles.tipo_alta === 'no_aprobado'
+                  ? 'Detalles de No Aprobación'
                   : 'Detalles de Alta'}
               </h3>
               <button className="modal-close" onClick={() => {
@@ -888,7 +895,7 @@ const CoordinadorAltas = () => {
                 setSelectedAltaDetalles(null);
               }}>×</button>
             </div>
-            
+
             <div className="modal-content">
               <div className="grid-2 gap-20">
                 <div>
@@ -903,22 +910,22 @@ const CoordinadorAltas = () => {
                     <strong>Motivo de consulta:</strong> {selectedAltaDetalles.motivo_consulta || 'Sin información'}
                   </div>
                   <div className="detail-row">
-                    <strong>Fecha:</strong> 
+                    <strong>Fecha:</strong>
                     <div>
-                      {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
-                        ? 'No aprobado: ' 
+                      {selectedAltaDetalles.tipo_alta === 'no_aprobado'
+                        ? 'No aprobado: '
                         : 'Alta: '}
                       {new Date(selectedAltaDetalles.fecha_alta).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
-                
+
                 <div>
                   <h4>Información del Proceso</h4>
                   <div className="detail-row">
                     <strong>Tipo:</strong>
                     <span className={`badge badge-${getTipoAltaLabel(selectedAltaDetalles.tipo_alta).color}`}>
-                      {getTipoAltaLabel(selectedAltaDetalles.tipo_alta).icon} 
+                      {getTipoAltaLabel(selectedAltaDetalles.tipo_alta).icon}
                       {getTipoAltaLabel(selectedAltaDetalles.tipo_alta).text}
                     </span>
                   </div>
@@ -940,18 +947,18 @@ const CoordinadorAltas = () => {
                   )}
                 </div>
               </div>
-              
+
               <div className="mt-20">
                 <h4>
-                  {selectedAltaDetalles.tipo_alta === 'no_aprobado' 
-                    ? 'Motivo de No Aprobación' 
+                  {selectedAltaDetalles.tipo_alta === 'no_aprobado'
+                    ? 'Motivo de No Aprobación'
                     : 'Motivo Detallado'}
                 </h4>
                 <div className="card p-15 mt-10">
                   {selectedAltaDetalles.motivo_detallado || 'Sin información disponible'}
                 </div>
               </div>
-              
+
               {selectedAltaDetalles.recomendaciones && (
                 <div className="mt-20">
                   <h4>Recomendaciones</h4>
@@ -960,15 +967,15 @@ const CoordinadorAltas = () => {
                   </div>
                 </div>
               )}
-              
+
               {selectedAltaDetalles.tipo_alta === 'no_aprobado' && (
                 <div className="mt-20 alert-message warning">
-                  <strong>Nota:</strong> Este paciente fue marcado como "No Aprobado" para alta terapéutica. 
+                  <strong>Nota:</strong> Este paciente fue marcado como "No Aprobado" para alta terapéutica.
                   Continuará en tratamiento y podrá ser evaluado nuevamente en el futuro.
                 </div>
               )}
             </div>
-            
+
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => {
                 setShowModalDetalles(false);
@@ -993,7 +1000,7 @@ const CoordinadorAltas = () => {
                 setSelectedPropuesta(null);
               }}>×</button>
             </div>
-            
+
             <div className="modal-content">
               <div className="alert-message info mb-20">
                 <strong>Paciente:</strong> {selectedPropuesta.paciente_nombre}
@@ -1011,7 +1018,7 @@ const CoordinadorAltas = () => {
                 <label>Decisión *</label>
                 <select
                   value={procesarData.accion}
-                  onChange={(e) => setProcesarData({...procesarData, accion: e.target.value})}
+                  onChange={(e) => setProcesarData({ ...procesarData, accion: e.target.value })}
                   className="select-field"
                   required
                 >
@@ -1027,7 +1034,7 @@ const CoordinadorAltas = () => {
                       <label>Tipo de Alta *</label>
                       <select
                         value={procesarData.tipo_alta}
-                        onChange={(e) => setProcesarData({...procesarData, tipo_alta: e.target.value})}
+                        onChange={(e) => setProcesarData({ ...procesarData, tipo_alta: e.target.value })}
                         className="select-field"
                         required
                       >
@@ -1038,12 +1045,12 @@ const CoordinadorAltas = () => {
                         <option value="no_continua">No Continúa</option>
                       </select>
                     </div>
-                    
+
                     <div className="form-group">
                       <label>Evaluación Final</label>
                       <select
                         value={procesarData.evaluacion_final}
-                        onChange={(e) => setProcesarData({...procesarData, evaluacion_final: e.target.value})}
+                        onChange={(e) => setProcesarData({ ...procesarData, evaluacion_final: e.target.value })}
                         className="select-field"
                       >
                         <option value="">Usar evaluación del terapeuta</option>
@@ -1060,7 +1067,7 @@ const CoordinadorAltas = () => {
                   <label>Motivo del Rechazo *</label>
                   <textarea
                     value={procesarData.motivo_rechazo}
-                    onChange={(e) => setProcesarData({...procesarData, motivo_rechazo: e.target.value})}
+                    onChange={(e) => setProcesarData({ ...procesarData, motivo_rechazo: e.target.value })}
                     className="textarea-field"
                     rows="4"
                     placeholder="Explica por qué rechazas esta propuesta..."
@@ -1069,9 +1076,9 @@ const CoordinadorAltas = () => {
                 </div>
               )}
             </div>
-            
+
             <div className="modal-footer">
-              <button 
+              <button
                 className="btn-secondary"
                 onClick={() => {
                   setShowModalProcesarPropuesta(false);
@@ -1080,7 +1087,7 @@ const CoordinadorAltas = () => {
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 className="btn-primary"
                 onClick={procesarPropuesta}
                 disabled={

@@ -4,6 +4,7 @@ import {
 } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { createCoterapeutaTour } from '../../utils/coterapeutaTour';
 import '../coordinador/coordinador.css';
 
 const CoterapeutaConfiguracion = () => {
@@ -19,6 +20,7 @@ const CoterapeutaConfiguracion = () => {
     new: false,
     confirm: false
   });
+  const tour = createCoterapeutaTour('configuracion');
 
   const handlePasswordChange = (field, value) => {
     setPasswordData(prev => ({ ...prev, [field]: value }));
@@ -89,6 +91,9 @@ const CoterapeutaConfiguracion = () => {
           <h1>Configuración</h1>
           <p>Cambia tu contraseña de acceso</p>
         </div>
+        <button className="btn-secondary" onClick={() => tour.drive()}>
+          Tour
+        </button>
       </div>
 
       <div className="card" style={{ maxWidth: '600px', margin: '0 auto' }}>

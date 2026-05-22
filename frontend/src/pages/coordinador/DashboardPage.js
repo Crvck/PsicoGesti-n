@@ -1,27 +1,69 @@
 // frontend/src/pages/coordinador/DashboardPage.js
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
+import {
   FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
   FiUserCheck, FiClock, FiAlertCircle, FiRefreshCw,
   FiActivity, FiUser, FiCheck, FiX, FiUserPlus,
-  FiEye, FiPhone, FiMapPin, FiBook, FiBriefcase, FiMail 
+  FiEye, FiPhone, FiMapPin, FiBook, FiBriefcase, FiMail
 } from 'react-icons/fi';
-import './coordinador.css'; 
+import './coordinador.css';
 import { useNavigate } from 'react-router-dom';
 import notifications from '../../utils/notifications';
 import DashboardService from '../../services/dashboardService';
 
+import { driver } from "driver.js";
+import "driver.js/dist/driver.css";
+
+
+const driverObj = driver({
+  showProgress: true,
+  steps: [
+    {
+      element: '.page-header',
+      popover: {
+        title: 'Encabezado del panel',
+        description: 'Aquí puedes actualizar la vista o iniciar el tour de demostración.'
+      }
+    },
+    {
+      element: '.stats-grid',
+      popover: {
+        title: 'Indicadores principales',
+        description: 'Esta sección resume la actividad y los indicadores más importantes del sistema.'
+      }
+    },
+    {
+      element: '.dashboard-content-grid',
+      popover: {
+        title: 'Bloques operativos',
+        description: 'Aquí se muestran solicitudes, actividad reciente, citas por terapeuta y carga de coterapeutas.'
+      }
+    },
+    {
+      element: '.modal-overlay-custom',
+      popover: {
+        title: 'Acciones rápidas',
+        description: 'Desde el detalle de solicitudes puedes aprobar o rechazar registros sin salir del panel.'
+      }
+    }
+  ]
+});
+
+
+
+
+
 const CoordinadorDashboard = () => {
   const navigate = useNavigate();
-  
+
   // Estados de datos
-  const [estadisticas, setEstadisticas] = useState({ 
-    coterapeutasActivos: 0, 
-    terapeutasActivos: 0, 
-    pacientesActivos: 0, 
-    citasHoy: 0, 
-    citasCompletadasHoy: 0, 
-    altasMesActual: 0 
+  const [estadisticas, setEstadisticas] = useState({
+    coterapeutasActivos: 0,
+    terapeutasActivos: 0,
+    pacientesActivos: 0,
+    citasHoy: 0,
+    citasCompletadasHoy: 0,
+    altasMesActual: 0
   });
   const [actividadReciente, setActividadReciente] = useState([]);
   const [distribucionTerapeutas, setDistribucionTerapeutas] = useState([]);
@@ -29,15 +71,15 @@ const CoordinadorDashboard = () => {
   const [alertas, setAlertas] = useState([]);
   const [cancelacionesMes, setCancelacionesMes] = useState({ promedio: 0, motivos: [] });
   const [showMotivosModal, setShowMotivosModal] = useState(false);
-  
+
   // Estado para Solicitudes y Modal
-  const [solicitudes, setSolicitudes] = useState([]); 
+  const [solicitudes, setSolicitudes] = useState([]);
   const [selectedSolicitud, setSelectedSolicitud] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [rolAsignar, setRolAsignar] = useState('');
   const [solicitudesPage, setSolicitudesPage] = useState(1);
   const solicitudesPerPage = 6;
-  
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -57,42 +99,42 @@ const CoordinadorDashboard = () => {
       // Llamada al servicio
       const response = await DashboardService.obtenerDashboardCoordinador();
       console.log('Response completo del dashboard:', response);
-      
+
       let datos = {};
       try {
-          datos = DashboardService.transformarDatosCoordinador(response);
+        datos = DashboardService.transformarDatosCoordinador(response);
       } catch (e) {
-          console.error('Error en transformarDatosCoordinador:', e);
-          datos = response; // Fallback si falla la transformación
+        console.error('Error en transformarDatosCoordinador:', e);
+        datos = response; // Fallback si falla la transformación
       }
-      
+
       setEstadisticas(datos.estadisticas || response.data?.estadisticas || {});
       setActividadReciente(datos.actividadReciente || []);
       setCoterapeutasCarga(datos.coterapeutasCarga || []);
       setAlertas(datos.alertas || []);
-      
+
       // === SOLUCIÓN 1: ARREGLO DE SOLICITUDES ===
-      const listaSolicitudes = 
-          datos.solicitudes || 
-          response.solicitudes_pendientes || 
-          response.data?.solicitudes_pendientes || 
-          [];
+      const listaSolicitudes =
+        datos.solicitudes ||
+        response.solicitudes_pendientes ||
+        response.data?.solicitudes_pendientes ||
+        [];
       console.log('Solicitudes cargadas:', listaSolicitudes);
       setSolicitudes(listaSolicitudes);
       setSolicitudesPage(1);
 
       // === SOLUCIÓN 2: ARREGLO DE CITAS POR TERAPEUTA ===
       // Busca en múltiples ubicaciones por si el nombre varía en el backend
-        const listaTerapeutas = 
-          datos.distribucionTerapeutas || 
-          response.citas_por_terapeuta || 
-          response.distribucion_terapeutas ||
-          response.data?.citas_por_terapeuta ||
-          [];
-      
+      const listaTerapeutas =
+        datos.distribucionTerapeutas ||
+        response.citas_por_terapeuta ||
+        response.distribucion_terapeutas ||
+        response.data?.citas_por_terapeuta ||
+        [];
+
       console.log("Datos Terapeutas cargados:", listaTerapeutas);
       setDistribucionTerapeutas(listaTerapeutas);
-      
+
     } catch (error) {
       console.error(error);
       setError(`Error al cargar datos: ${error.message}`);
@@ -107,10 +149,10 @@ const CoordinadorDashboard = () => {
       const hoy = new Date();
       const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
       const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
-      
+
       const fechaInicio = primerDia.toISOString().split('T')[0];
       const fechaFin = ultimoDia.toISOString().split('T')[0];
-      
+
       const apiUrl = process.env.REACT_APP_API_URL;
       const response = await fetch(`${apiUrl}/api/reportes/estadisticas`, {
         method: 'POST',
@@ -124,16 +166,16 @@ const CoordinadorDashboard = () => {
           fecha_fin: fechaFin
         })
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         const stats = data.data || data;
-        
+
         const canceladas = parseInt(stats.citas_canceladas) || 0;
         const completadas = parseInt(stats.citas_completadas) || 0;
         const total = canceladas + completadas;
         const promedio = total > 0 ? Math.round((canceladas / total) * 100) : 0;
-        
+
         setCancelacionesMes({
           promedio,
           canceladas,
@@ -157,7 +199,7 @@ const CoordinadorDashboard = () => {
     };
     setSelectedSolicitud(solicitudNormalizada);
     const rolSugerido = solicitudNormalizada.rol === 'Practicante' ? 'coterapeuta' : '';
-    setRolAsignar(rolSugerido); 
+    setRolAsignar(rolSugerido);
     setShowModal(true);
   };
 
@@ -170,43 +212,43 @@ const CoordinadorDashboard = () => {
   // --- LÓGICA DE APROBACIÓN (POST) ---
   const handleAprobarSolicitud = async () => {
     if (!rolAsignar || rolAsignar === "") {
-        notifications.error("No se seleccionó un rol.");
-        return;
+      notifications.error("No se seleccionó un rol.");
+      return;
     }
 
     if (!selectedSolicitud || !selectedSolicitud.id) {
-        notifications.error("Error", "Solicitud no válida.");
-        return;
+      notifications.error("Error", "Solicitud no válida.");
+      return;
     }
 
     try {
-        await DashboardService.aprobarSolicitud(selectedSolicitud.id, rolAsignar);
-        notifications.success('Solicitud Aprobada', `Usuario creado para ${selectedSolicitud.nombre}`);
-        setSolicitudes(prev => prev.filter(s => s.id !== selectedSolicitud.id));
-        handleCerrarModal();
+      await DashboardService.aprobarSolicitud(selectedSolicitud.id, rolAsignar);
+      notifications.success('Solicitud Aprobada', `Usuario creado para ${selectedSolicitud.nombre}`);
+      setSolicitudes(prev => prev.filter(s => s.id !== selectedSolicitud.id));
+      handleCerrarModal();
     } catch (error) {
-        console.error("=== ERROR en handleAprobarSolicitud ===");
-        const msg = error?.response?.data?.message || error.message || "Error al procesar la solicitud";
-        notifications.error("Error", msg);
+      console.error("=== ERROR en handleAprobarSolicitud ===");
+      const msg = error?.response?.data?.message || error.message || "Error al procesar la solicitud";
+      notifications.error("Error", msg);
     }
   };
 
   // --- LÓGICA DE RECHAZO (POST) ---
   const handleDenegarSolicitud = async () => {
     if (!selectedSolicitud || !selectedSolicitud.id) {
-        notifications.error("Error", "Solicitud no válida.");
-        return;
+      notifications.error("Error", "Solicitud no válida.");
+      return;
     }
 
     try {
-        await DashboardService.denegarSolicitud(selectedSolicitud.id);
-        notifications.success('Solicitud Rechazada', `Solicitud rechazada para ${selectedSolicitud.nombre}`);
-        setSolicitudes(prev => prev.filter(s => s.id !== selectedSolicitud.id));
-        handleCerrarModal();
+      await DashboardService.denegarSolicitud(selectedSolicitud.id);
+      notifications.success('Solicitud Rechazada', `Solicitud rechazada para ${selectedSolicitud.nombre}`);
+      setSolicitudes(prev => prev.filter(s => s.id !== selectedSolicitud.id));
+      handleCerrarModal();
     } catch (error) {
-        console.error("=== ERROR en handleDenegarSolicitud ===");
-        const msg = error?.response?.data?.message || error.message || "Error al rechazar la solicitud";
-        notifications.error("Error", msg);
+      console.error("=== ERROR en handleDenegarSolicitud ===");
+      const msg = error?.response?.data?.message || error.message || "Error al rechazar la solicitud";
+      notifications.error("Error", msg);
     }
   };
 
@@ -220,11 +262,11 @@ const CoordinadorDashboard = () => {
     { title: 'Pacientes Activos', value: estadisticas.pacientesActivos, icon: <FiActivity />, color: 'var(--yy)', change: 'En tratamiento' },
     { title: 'Citas Hoy', value: estadisticas.citasHoy, icon: <FiCalendar />, color: 'var(--grnd)', change: `${estadisticas.citasCompletadasHoy} completadas` },
     { title: 'Altas Este Mes', value: estadisticas.altasMesActual, icon: <FiTrendingUp />, color: 'var(--grnl)', change: 'Pacientes finalizados' },
-    { 
-      title: 'Cancelaciones Este Mes', 
-      value: `${cancelacionesMes.promedio}%`, 
-      icon: <FiAlertCircle />, 
-      color: 'var(--rr)', 
+    {
+      title: 'Cancelaciones Este Mes',
+      value: `${cancelacionesMes.promedio}%`,
+      icon: <FiAlertCircle />,
+      color: 'var(--rr)',
       change: `${cancelacionesMes.canceladas || 0} de ${cancelacionesMes.total || 0} citas`,
       clickable: cancelacionesMes.motivos?.length > 0,
       onClick: () => cancelacionesMes.motivos?.length > 0 && setShowMotivosModal(true)
@@ -250,6 +292,7 @@ const CoordinadorDashboard = () => {
     }
   };
 
+
   const renderDisponibilidad = (rawDisponibilidad) => {
     const disponibilidadLista = parseDisponibilidad(rawDisponibilidad);
     if (!disponibilidadLista.length) return 'Sin información';
@@ -268,6 +311,8 @@ const CoordinadorDashboard = () => {
     return solicitud.motivo || solicitud.comentario || solicitud.motivo_solicitud || solicitud.descripcion || 'No especificado';
   };
 
+
+
   useEffect(() => {
     setSolicitudesPage(prev => Math.min(prev, totalSolicitudesPages));
   }, [totalSolicitudesPages]);
@@ -285,15 +330,18 @@ const CoordinadorDashboard = () => {
         <button className="btn-secondary" onClick={fetchDashboardData} disabled={loading}>
           <FiRefreshCw /> Actualizar
         </button>
+        <button className="btn-secondary" id='demoTour' style={{ marginLeft: '10px' }} onClick={() => driverObj.drive()} disabled={loading}>
+          Tour de demostracion
+        </button>
       </div>
 
       {/* Stats Grid */}
       <div className="stats-grid">
         {statCards.map((stat, index) => (
-          <div 
-            key={index} 
+          <div
+            key={index}
             className="stat-card"
-            style={{ 
+            style={{
               cursor: stat.clickable ? 'pointer' : 'default',
               transition: 'transform 0.2s, box-shadow 0.2s'
             }}
@@ -325,14 +373,14 @@ const CoordinadorDashboard = () => {
       </div>
 
       <div className="dashboard-content-grid">
-        
+
         {/* SECCIÓN SOLICITUDES */}
         <div className="dashboard-section">
           <div className="section-header">
             <h3>Solicitudes de Registro</h3>
             <span className="badge badge-danger">{solicitudes.length} Pendientes</span>
           </div>
-          
+
           <div className="solicitudes-list">
             {solicitudes.length > 0 ? (
               solicitudesPaginadas.map((solicitud) => (
@@ -340,21 +388,21 @@ const CoordinadorDashboard = () => {
                   <div className="timeline-content" style={{ width: '100%' }}>
                     <div className="flex-row justify-between align-center">
                       <div className="solicitud-info">
-                          <div className="flex-row gap-2 align-center">
-                            <FiUserPlus className="text-muted" />
-                            <strong>{solicitud.nombre}</strong>
-                          </div>
-                          <div className="text-small text-muted" style={{ marginLeft: '20px' }}>
-                            {solicitud.rol} • {solicitud.fecha ? new Date(solicitud.fecha).toLocaleDateString() : 'Fecha N/A'}
-                          </div>
+                        <div className="flex-row gap-2 align-center">
+                          <FiUserPlus className="text-muted" />
+                          <strong>{solicitud.nombre}</strong>
+                        </div>
+                        <div className="text-small text-muted" style={{ marginLeft: '20px' }}>
+                          {solicitud.rol} • {solicitud.fecha ? new Date(solicitud.fecha).toLocaleDateString() : 'Fecha N/A'}
+                        </div>
                       </div>
-                      <button 
-                          className="btn-text"
-                          onClick={() => handleAbrirModal(solicitud)}
-                          title="Ver detalles"
-                          style={{ fontSize: '18px', padding: '8px', color: 'var(--blu)' }}
+                      <button
+                        className="btn-text"
+                        onClick={() => handleAbrirModal(solicitud)}
+                        title="Ver detalles"
+                        style={{ fontSize: '18px', padding: '8px', color: 'var(--blu)' }}
                       >
-                          <FiEye />
+                        <FiEye />
                       </button>
                     </div>
                   </div>
@@ -362,7 +410,7 @@ const CoordinadorDashboard = () => {
               ))
             ) : (
               <div className="no-data-message">
-                <FiCheck size={40} style={{ color: 'var(--grnb)' }}/>
+                <FiCheck size={40} style={{ color: 'var(--grnb)' }} />
                 <p>No hay solicitudes pendientes</p>
               </div>
             )}
@@ -404,7 +452,7 @@ const CoordinadorDashboard = () => {
                   <div className="timeline-content">
                     <div className="flex-row justify-between">
                       <strong>{actividad.descripcion}</strong>
-                      <span className="text-small">{new Date(actividad.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      <span className="text-small">{new Date(actividad.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                     <div className="text-small mt-5">Por: {actividad.usuario}</div>
                   </div>
@@ -424,7 +472,7 @@ const CoordinadorDashboard = () => {
                   // Normalizar datos por si vienen con nombres diferentes
                   const citasCount = terapeuta.citas || terapeuta.cantidad || terapeuta.count || 0;
                   const colorBarra = terapeuta.color || 'var(--blu)';
-                  
+
                   return (
                     <div key={index} className="psychologist-item">
                       <div className="psychologist-info">
@@ -468,8 +516,8 @@ const CoordinadorDashboard = () => {
       {/* MODAL */}
       {showModal && selectedSolicitud && (
         <div className="modal-overlay-custom">
-          <div className="modal-card-custom modal-container"> 
-            
+          <div className="modal-card-custom modal-container">
+
             <div className="modal-header-custom border-bottom" style={{ padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, color: 'var(--white)' }}>Aprobar Solicitud</h3>
               <button onClick={handleCerrarModal} className="btn-text" style={{ fontSize: '20px' }}><FiX /></button>
@@ -495,37 +543,37 @@ const CoordinadorDashboard = () => {
                   </div>
                 </div>
                 <div className="stat-box">
-                   <FiPhone className="stat-icon" style={{ fontSize: '16px' }} />
-                   <div className="stat-content">
+                  <FiPhone className="stat-icon" style={{ fontSize: '16px' }} />
+                  <div className="stat-content">
                     <div className="stat-label">Teléfono</div>
                     <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.telefono || 'N/A'}</div>
-                   </div>
+                  </div>
                 </div>
                 <div className="stat-box">
-                   <FiBook className="stat-icon" style={{ fontSize: '16px' }} />
-                   <div className="stat-content">
+                  <FiBook className="stat-icon" style={{ fontSize: '16px' }} />
+                  <div className="stat-content">
                     <div className="stat-label">Matrícula</div>
                     <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.matricula || 'N/A'}</div>
-                   </div>
+                  </div>
                 </div>
                 <div className="stat-box">
-                   <FiMapPin className="stat-icon" style={{ fontSize: '16px' }} />
-                   <div className="stat-content">
+                  <FiMapPin className="stat-icon" style={{ fontSize: '16px' }} />
+                  <div className="stat-content">
                     <div className="stat-label">Institución</div>
                     <div style={{ fontWeight: 'bold' }}>{selectedSolicitud.institucion || (selectedSolicitud.matricula ? 'CESUN' : 'N/A')}</div>
-                   </div>
+                  </div>
                 </div>
               </div>
 
               <div className="form-group">
-                <label className="stat-label"><FiBriefcase style={{ marginRight: '5px' }}/> Motivo de solicitud</label>
+                <label className="stat-label"><FiBriefcase style={{ marginRight: '5px' }} /> Motivo de solicitud</label>
                 <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', fontSize: '13px', color: 'var(--white)' }}>
                   {obtenerMotivoSolicitud(selectedSolicitud)}
                 </div>
               </div>
 
               <div className="form-group mt-15">
-                <label className="stat-label"><FiClock style={{ marginRight: '5px' }}/> Disponibilidad</label>
+                <label className="stat-label"><FiClock style={{ marginRight: '5px' }} /> Disponibilidad</label>
                 <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', fontSize: '13px', color: 'var(--white)' }}>
                   {renderDisponibilidad(selectedSolicitud.disponibilidad || selectedSolicitud.disponibilidad_horaria)}
                 </div>
@@ -533,18 +581,18 @@ const CoordinadorDashboard = () => {
 
               <div className="mt-30 border-top" style={{ paddingTop: '20px' }}>
                 <div className="form-group">
-                   <label>Asignar Rol en el Sistema:</label>
-                   <select 
-                      className="form-control" 
-                      value={rolAsignar} 
-                      onChange={(e) => setRolAsignar(e.target.value)}
-                      style={{ width: '100%', padding: '10px', borderRadius: '6px', background: 'var(--blud)', border: '1px solid var(--blub)', color: 'white' }}
-                   >
-                      <option value="">-- Seleccionar --</option>
-                      <option value="psicopedagogico">Psicopedagógico</option>
-                       <option value="terapeuta">Terapeuta</option>
-                       <option value="coterapeuta">Coterapeuta</option>
-                   </select>
+                  <label>Asignar Rol en el Sistema:</label>
+                  <select
+                    className="form-control"
+                    value={rolAsignar}
+                    onChange={(e) => setRolAsignar(e.target.value)}
+                    style={{ width: '100%', padding: '10px', borderRadius: '6px', background: 'var(--blud)', border: '1px solid var(--blub)', color: 'white' }}
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    <option value="psicopedagogico">Psicopedagógico</option>
+                    <option value="terapeuta">Terapeuta</option>
+                    <option value="coterapeuta">Coterapeuta</option>
+                  </select>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
@@ -602,16 +650,16 @@ const CoordinadorDashboard = () => {
                             <td>{item.cantidad}</td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{ 
-                                  width: '100px', 
-                                  height: '8px', 
-                                  background: '#e0e0e0', 
+                                <div style={{
+                                  width: '100px',
+                                  height: '8px',
+                                  background: '#e0e0e0',
                                   borderRadius: '4px',
                                   overflow: 'hidden'
                                 }}>
-                                  <div style={{ 
-                                    width: `${porcentaje}%`, 
-                                    height: '100%', 
+                                  <div style={{
+                                    width: `${porcentaje}%`,
+                                    height: '100%',
                                     background: 'var(--rr)',
                                     transition: 'width 0.3s ease'
                                   }}></div>

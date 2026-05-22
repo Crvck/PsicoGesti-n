@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { 
+import {
   FiLock, FiEye, FiEyeOff, FiAlertCircle
 } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { createTherapistTour } from '../../utils/therapistTour';
 import '../coordinador/coordinador.css';
 
 const TerapeutaConfiguracion = () => {
   const [saving, setSaving] = useState(false);
-  
+
   // Cambio de contraseña
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -20,6 +21,7 @@ const TerapeutaConfiguracion = () => {
     new: false,
     confirm: false
   });
+  const tour = createTherapistTour('configuracion');
 
   const handlePasswordChange = (field, value) => {
     setPasswordData(prev => ({ ...prev, [field]: value }));
@@ -87,6 +89,9 @@ const TerapeutaConfiguracion = () => {
           <h1>Cambiar Contraseña</h1>
           <p>Actualiza tu contraseña para mantener tu cuenta segura</p>
         </div>
+        <button className="btn-secondary" onClick={() => tour.drive()}>
+          Tour
+        </button>
       </div>
 
       <div className="card" style={{ maxWidth: '600px', margin: '0 auto' }}>
@@ -192,8 +197,8 @@ const TerapeutaConfiguracion = () => {
         </div>
 
         <div className="form-actions" style={{ marginTop: '20px' }}>
-          <button 
-            className="btn-primary" 
+          <button
+            className="btn-primary"
             onClick={handleChangePassword}
             disabled={saving}
           >

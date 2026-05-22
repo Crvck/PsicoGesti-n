@@ -3,6 +3,7 @@ import { FiSearch, FiUserPlus, FiEdit2, FiTrash2, FiFilter, FiUser, FiCalendar, 
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { createCoordinatorTour } from '../../utils/coordinatorTour';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } from 'docx';
 import { saveAs } from 'file-saver';
 
@@ -38,6 +39,7 @@ const CoordinadorPacientes = () => {
   const [showDetalles, setShowDetalles] = useState(false);
   const [expediente, setExpediente] = useState(null);
   const [sesionesPaciente, setSesionesPaciente] = useState([]);
+  const [tour] = useState(() => createCoordinatorTour('pacientes'));
 
   useEffect(() => {
     fetchPacientes();
@@ -141,14 +143,14 @@ const CoordinadorPacientes = () => {
   };
 
   const filteredPacientes = pacientes.filter(paciente => {
-    const matchesSearch = 
+    const matchesSearch =
       `${paciente.nombre} ${paciente.apellido}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (paciente.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (paciente.motivo_consulta || paciente.notas || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesEstado = !filterEstado || paciente.estado === filterEstado;
     const matchesActivo = includeInactivos ? true : paciente.activo;
-    
+
     return matchesSearch && matchesEstado && matchesActivo;
   });
 
@@ -162,7 +164,7 @@ const CoordinadorPacientes = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (modalType === 'nuevo') {
       try {
         const token = localStorage.getItem('token');
@@ -219,7 +221,7 @@ const CoordinadorPacientes = () => {
         notifications.error('Error actualizando paciente');
       }
     }
-    
+
     setShowModal(false);
     resetForm();
   };
@@ -262,7 +264,7 @@ const CoordinadorPacientes = () => {
   const deletePaciente = async (id) => {
     const confirmado = await confirmations.danger('¿Seguro que desea eliminar (inactivar) este paciente?');
     if (!confirmado) return;
-    
+
     try {
       const token = localStorage.getItem('token');
       const apiUrl = process.env.REACT_APP_API_URL;
@@ -430,7 +432,7 @@ const CoordinadorPacientes = () => {
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.docx`);
+      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`);
       notifications.success('Descarga iniciada');
     } catch (err) {
       console.error('Error exportando listado de pacientes (coordinador):', err);
@@ -454,16 +456,21 @@ const CoordinadorPacientes = () => {
           <h1>Gestión de Pacientes</h1>
           <p>Administración de pacientes del sistema</p>
         </div>
-        <button 
-          className="btn-primary"
-          onClick={() => {
-            resetForm();
-            setModalType('nuevo');
-            setShowModal(true);
-          }}
-        >
-          <FiUserPlus /> Nuevo Paciente
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              resetForm();
+              setModalType('nuevo');
+              setShowModal(true);
+            }}
+          >
+            <FiUserPlus /> Nuevo Paciente
+          </button>
+        </div>
       </div>
 
       {/* Filtros y Búsqueda */}
@@ -478,10 +485,10 @@ const CoordinadorPacientes = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <div className="filter-buttons">
-          <select 
-            value={filterEstado} 
+          <select
+            value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
             className="select-field"
             style={{ width: '200px' }}
@@ -539,7 +546,7 @@ const CoordinadorPacientes = () => {
             {filteredPacientes.map((paciente) => {
               const estadoInfo = getEstadoLabel(paciente.estado);
               const edad = calcularEdad(paciente.fecha_nacimiento);
-              
+
               return (
                 <tr key={paciente.id}>
                   <td>
@@ -590,7 +597,7 @@ const CoordinadorPacientes = () => {
                   </td>
                   <td>
                     <div className="flex-row gap-5">
-                      <button 
+                      <button
                         className="btn-text"
                         onClick={() => editarPaciente(paciente)}
                         title="Editar"
@@ -598,7 +605,7 @@ const CoordinadorPacientes = () => {
                         <FiEdit2 />
                       </button>
 
-                      <button 
+                      <button
                         className={`btn-text ${paciente.activo ? 'text-danger' : 'text-success'}`}
                         onClick={() => toggleActivoPaciente(paciente.id)}
                         title={paciente.activo ? 'Desactivar' : 'Activar'}
@@ -614,7 +621,7 @@ const CoordinadorPacientes = () => {
                         <FiTrash2 />
                       </button>
 
-                      <button 
+                      <button
                         className="btn-text"
                         title="Ver expediente"
                         onClick={() => showPacienteDetalles(paciente)}
@@ -642,7 +649,7 @@ const CoordinadorPacientes = () => {
             <p>Asignados: {pacientes.filter(p => p.terapeuta_asignado || p.coterapeuta_asignado).length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Estadísticas</h4>
           <div className="mt-10">
@@ -653,15 +660,15 @@ const CoordinadorPacientes = () => {
             <p>Altas este mes: {pacientes.filter(p => p.estado === 'alta_terapeutica').length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">
-            
+
             <button type="button" className="btn-secondary w-100" onClick={exportarListadoPacientes}>
               Exportar Listado
             </button>
-            
+
           </div>
         </div>
       </div>
@@ -674,7 +681,7 @@ const CoordinadorPacientes = () => {
               <h3>{modalType === 'nuevo' ? 'Nuevo Paciente' : 'Editar Paciente'}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
             </div>
-            
+
             <form onSubmit={handleSubmit}>
               <div className="form-grid">
                 <div className="form-group">
@@ -688,7 +695,7 @@ const CoordinadorPacientes = () => {
                     required
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Apellido</label>
                   <input
@@ -700,7 +707,7 @@ const CoordinadorPacientes = () => {
                     required
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Fecha de nacimiento</label>
                   <input
@@ -711,7 +718,7 @@ const CoordinadorPacientes = () => {
                     className="input-field"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Género</label>
                   <select
@@ -727,7 +734,7 @@ const CoordinadorPacientes = () => {
                     <option value="prefiero_no_decir">Prefiero no decir</option>
                   </select>
                 </div>
-                
+
                 <div className="form-group">
                   <label>Teléfono</label>
                   <input
@@ -738,7 +745,7 @@ const CoordinadorPacientes = () => {
                     className="input-field"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Email</label>
                   <input
@@ -749,7 +756,7 @@ const CoordinadorPacientes = () => {
                     className="input-field"
                   />
                 </div>
-                
+
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Dirección</label>
                   <input
@@ -760,7 +767,7 @@ const CoordinadorPacientes = () => {
                     className="input-field"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -772,7 +779,7 @@ const CoordinadorPacientes = () => {
                     <span>Es estudiante</span>
                   </label>
                 </div>
-                
+
                 {formData.es_estudiante && (
                   <>
                     <div className="form-group">
@@ -785,7 +792,7 @@ const CoordinadorPacientes = () => {
                         className="input-field"
                       />
                     </div>
-                    
+
                     <div className="form-group">
                       <label>Institución educativa</label>
                       <input
@@ -798,7 +805,7 @@ const CoordinadorPacientes = () => {
                     </div>
                   </>
                 )}
-                
+
                 <div className="form-group">
                   <label>Contacto de emergencia</label>
                   <input
@@ -810,7 +817,7 @@ const CoordinadorPacientes = () => {
                     placeholder="Nombre"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Teléfono emergencia</label>
                   <input
@@ -822,7 +829,7 @@ const CoordinadorPacientes = () => {
                     placeholder="Teléfono"
                   />
                 </div>
-                
+
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Motivo de consulta</label>
                   <textarea
@@ -834,7 +841,7 @@ const CoordinadorPacientes = () => {
                     required
                   />
                 </div>
-                
+
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Antecedentes</label>
                   <textarea
@@ -845,7 +852,7 @@ const CoordinadorPacientes = () => {
                     rows="3"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Estado</label>
                   <select
@@ -860,7 +867,7 @@ const CoordinadorPacientes = () => {
                     <option value="traslado">Traslado</option>
                   </select>
                 </div>
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -873,13 +880,13 @@ const CoordinadorPacientes = () => {
                   </label>
                 </div>
               </div>
-              
+
               <div className="modal-footer">
                 <button type="submit" className="btn-primary">
                   {modalType === 'nuevo' ? 'Crear Paciente' : 'Guardar Cambios'}
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="btn-danger"
                   onClick={() => setShowModal(false)}
                 >
@@ -904,10 +911,10 @@ const CoordinadorPacientes = () => {
               </div>
               <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
             </div>
-            
+
             <div className="modal-content">
               {/* Estadísticas rápidas (expandido) */}
-              <div className="grid-4 gap-20 mb-25" style={{   }}>
+              <div className="grid-4 gap-20 mb-25" style={{}}>
                 <div className="card" style={{ padding: '22px', background: 'var(--blub)', minHeight: '120px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '8px' }}>Sesiones Totales</div>
                   <div className="stat-value" style={{ fontSize: '36px', lineHeight: '1' }}>{selectedPaciente.sesiones_completadas || 0}</div>
@@ -965,7 +972,7 @@ const CoordinadorPacientes = () => {
                     </>
                   )}
                 </div>
-                
+
                 <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
                   <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Información Clínica</h4>
                   <div className="detail-row">
@@ -975,7 +982,7 @@ const CoordinadorPacientes = () => {
                     </div>
                   </div>
                   <div className="detail-row">
-                    <strong>Contacto de emergencia:</strong> 
+                    <strong>Contacto de emergencia:</strong>
                     <div style={{ marginTop: '5px' }}>
                       {selectedPaciente.contacto_emergencia_nombre || 'N/A'}
                       {selectedPaciente.contacto_emergencia_telefono && (
@@ -987,7 +994,7 @@ const CoordinadorPacientes = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Historial de sesiones */}
               <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
                 <div className="flex-row justify-between align-center mb-15">
@@ -1014,7 +1021,7 @@ const CoordinadorPacientes = () => {
                                 {s.tipo_sesion || s.tipo_consulta || (s.Cita && s.Cita.tipo_consulta) || 'terapia'}
                               </span>
                             </td>
-                            <td style={{ fontSize: '13px' }}>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio.slice(0,5)} - ${s.hora_fin.slice(0,5)}` : (s.hora_inicio ? s.hora_inicio.slice(0,5) : 'N/A')}</td>
+                            <td style={{ fontSize: '13px' }}>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio.slice(0, 5)} - ${s.hora_fin.slice(0, 5)}` : (s.hora_inicio ? s.hora_inicio.slice(0, 5) : 'N/A')}</td>
                             <td style={{ maxWidth: '300px' }}>
                               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {s.desarrollo || s.conclusion || 'Sin notas'}
@@ -1036,7 +1043,7 @@ const CoordinadorPacientes = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="modal-footer">
               <button className="btn-primary" onClick={() => {
                 setShowDetalles(false);

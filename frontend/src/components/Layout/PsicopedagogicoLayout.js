@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
-  FiMenu, FiChevronLeft, FiHome, FiUsers, FiLogOut
+  FiMenu, FiChevronLeft, FiHome, FiUsers, FiCalendar,
+  FiLogOut, FiLock
 } from 'react-icons/fi';
 
 const PsicopedagogicoLayout = () => {
@@ -21,8 +22,10 @@ const PsicopedagogicoLayout = () => {
   };
 
   const navItems = [
-    { path: '/psicopedagogico/dashboard', icon: <FiHome />, label: 'Panel Principal' },
-    { path: '/psicopedagogico/pacientes', icon: <FiUsers />, label: 'Pacientes' }
+    { path: '/psicopedagogico/dashboard', icon: <FiHome />, label: 'Inicio' },
+    { path: '/psicopedagogico/citas', icon: <FiCalendar />, label: 'Mis Citas' },
+    { path: '/psicopedagogico/pacientes', icon: <FiUsers />, label: 'Mis Pacientes' },
+    { path: '/psicopedagogico/configuracion', icon: <FiLock />, label: 'Configuración' }
   ];
 
   return (

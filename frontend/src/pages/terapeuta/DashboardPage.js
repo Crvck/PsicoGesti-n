@@ -5,6 +5,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import notifications from '../../utils/notifications';
+import { createTherapistTour } from '../../utils/therapistTour';
 
 const terapeutaDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
@@ -18,6 +19,7 @@ const terapeutaDashboard = () => {
   const [citasSemanaList, setCitasSemanaList] = useState([]);
   const [pacientesAsignados, setPacientesAsignados] = useState([]);
   const [loading, setLoading] = useState(true);
+  const tour = createTherapistTour('dashboard');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -187,9 +189,14 @@ const terapeutaDashboard = () => {
           <h1>Panel del Terapeuta</h1>
           <p>Bienvenido a tu centro de gestión de citas y pacientes</p>
         </div>
-        <button className="btn-secondary" onClick={fetchDashboardData}>
-          <FiRefreshCw /> Actualizar
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
+          <button className="btn-secondary" onClick={fetchDashboardData}>
+            <FiRefreshCw /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -217,7 +224,7 @@ const terapeutaDashboard = () => {
             <h3>Citas de Hoy</h3>
             <button className="btn-text" onClick={() => navigate('/terapeuta/citas')}>Ver Calendario</button>
           </div>
-          
+
           <div className="citas-list">
             {citasHoy.length > 0 ? (
               citasHoy.slice(0, 5).map((cita) => (
@@ -226,11 +233,10 @@ const terapeutaDashboard = () => {
                     <div className="cita-paciente">{cita.paciente_nombre}</div>
                     <div className="cita-hora">{cita.hora}</div>
                   </div>
-                  <div className={`cita-estado badge ${
-                    cita.estado === 'confirmada' ? 'badge-success' :
-                    cita.estado === 'programada' ? 'badge-warning' :
-                    'badge-danger'
-                  }`}>
+                  <div className={`cita-estado badge ${cita.estado === 'confirmada' ? 'badge-success' :
+                      cita.estado === 'programada' ? 'badge-warning' :
+                        'badge-danger'
+                    }`}>
                     {cita.estado}
                   </div>
                 </div>
@@ -250,7 +256,7 @@ const terapeutaDashboard = () => {
             <h3>Mis Pacientes</h3>
             <button className="btn-text" onClick={() => navigate('/terapeuta/pacientes')}>Ver todos</button>
           </div>
-          
+
           <div className="pacientes-list">
             {pacientesAsignados.length > 0 ? (
               pacientesAsignados.slice(0, 6).map((paciente, idx) => (
@@ -273,7 +279,7 @@ const terapeutaDashboard = () => {
           </div>
         </div>
 
-        
+
       </div>
     </div>
   );

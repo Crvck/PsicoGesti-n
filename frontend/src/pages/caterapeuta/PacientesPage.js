@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUser, FiFileText } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
+import { createCoterapeutaTour } from '../../utils/coterapeutaTour';
 
 const BecarioPacientes = () => {
   const [pacientes, setPacientes] = useState([]);
@@ -9,6 +10,7 @@ const BecarioPacientes = () => {
   const [selectedPaciente, setSelectedPaciente] = useState(null);
   const [showDetalles, setShowDetalles] = useState(false);
   const [filterEstado, setFilterEstado] = useState('');
+  const tour = createCoterapeutaTour('pacientes');
 
   // Estados para expediente y sesiones
   const [expediente, setExpediente] = useState(null);
@@ -23,7 +25,7 @@ const BecarioPacientes = () => {
       try {
         console.log('Evento citaCreada recibido (becario):', e.detail);
         fetchPacientes();
-      } catch(e) { console.warn(e); }
+      } catch (e) { console.warn(e); }
     };
 
     const onCitaActualizada = (e) => {
@@ -80,15 +82,15 @@ const BecarioPacientes = () => {
       setLoading(true);
       const token = localStorage.getItem('token');
       const apiUrl = process.env.REACT_APP_API_URL;
-      
+
       if (!token) {
         console.error('No hay token de autenticación');
         notifications.error('Sesión expirada. Por favor, inicia sesión nuevamente.');
         return;
       }
-      
+
       console.log('Token encontrado, haciendo petición...');
-      
+
       const res = await fetch(`${apiUrl}/api/asignaciones/mis-pacientes`, {
         headers: {
           'Content-Type': 'application/json',
@@ -134,13 +136,13 @@ const BecarioPacientes = () => {
 
 
   const filteredPacientes = pacientes.filter(paciente => {
-    const matchesSearch = 
+    const matchesSearch =
       paciente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       paciente.diagnostico.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesEstado = !filterEstado || paciente.estado === filterEstado;
-    
+
     return matchesSearch && matchesEstado;
   });
 
@@ -180,6 +182,9 @@ const BecarioPacientes = () => {
           <h1>Mis Pacientes</h1>
           <p>Pacientes asignados a tu supervisión</p>
         </div>
+        <button className="btn-secondary" onClick={() => tour.drive()}>
+          Tour
+        </button>
       </div>
 
       {/* Filtros y Búsqueda */}
@@ -194,10 +199,10 @@ const BecarioPacientes = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <div className="filter-buttons">
-          <select 
-            value={filterEstado} 
+          <select
+            value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
             className="select-field"
             style={{ width: '200px' }}
@@ -227,7 +232,7 @@ const BecarioPacientes = () => {
           <tbody>
             {filteredPacientes.map((paciente) => {
               const estadoInfo = getEstadoLabel(paciente.estado);
-              
+
               return (
                 <tr key={paciente.id}>
                   <td>
@@ -269,14 +274,14 @@ const BecarioPacientes = () => {
                   </td>
                   <td>
                     <div className="flex-row gap-5">
-                      <button 
+                      <button
                         className="btn-text"
                         onClick={() => showPacienteDetalles(paciente)}
                         title="Ver detalles"
                       >
                         <FiFileText />
                       </button>
-                      
+
                     </div>
                   </td>
                 </tr>
@@ -296,7 +301,7 @@ const BecarioPacientes = () => {
             <p>Con psicólogo: {pacientes.filter(p => p.psicologo).length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Sesiones Totales</h4>
           <div className="mt-10">
@@ -304,7 +309,7 @@ const BecarioPacientes = () => {
             <p>sesiones completadas</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Próximas Citas</h4>
           <div className="mt-10">
@@ -322,7 +327,7 @@ const BecarioPacientes = () => {
               <h3>Detalles del Paciente</h3>
               <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
             </div>
-            
+
             <div className="modal-content">
               <div className="grid-2 gap-20">
                 <div>
@@ -340,7 +345,7 @@ const BecarioPacientes = () => {
                     <strong>Estado:</strong> <span className={`badge badge-${getEstadoLabel(selectedPaciente.estado).color}`}>{getEstadoLabel(selectedPaciente.estado).text}</span>
                   </div>
                 </div>
-                
+
                 <div>
                   <h4>Información Clínica</h4>
                   <div className="detail-row">
@@ -360,7 +365,7 @@ const BecarioPacientes = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Expediente */}
               {expediente && (
                 <div className="mt-20">
@@ -387,7 +392,7 @@ const BecarioPacientes = () => {
                   </div>
                 </div>
               )}
-              
+
               {/* Historial de Sesiones */}
               <div className="mt-20">
                 <h4>Historial de Sesiones</h4>
@@ -415,7 +420,7 @@ const BecarioPacientes = () => {
                             </td>
                             <td>{sesion.tipo_sesion || 'Regular'}</td>
                             <td>
-                              <div className="text-truncate" style={{maxWidth: '200px'}} title={sesion.desarrollo}>
+                              <div className="text-truncate" style={{ maxWidth: '200px' }} title={sesion.desarrollo}>
                                 {sesion.desarrollo || 'Sin descripción'}
                               </div>
                             </td>
@@ -431,7 +436,7 @@ const BecarioPacientes = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
                 Cerrar

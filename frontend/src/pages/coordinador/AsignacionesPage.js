@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FiUsers, FiUserPlus, FiCheckCircle, FiXCircle, 
+import {
+  FiUsers, FiUserPlus, FiCheckCircle, FiXCircle,
   FiRefreshCw, FiSearch, FiFilter, FiEdit2
 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { createCoordinatorTour } from '../../utils/coordinatorTour';
 
 const CoordinadorAsignaciones = () => {
   const [becarios, setBecarios] = useState([]);
@@ -24,6 +25,7 @@ const CoordinadorAsignaciones = () => {
   const [psicologoQuery, setPsicologoQuery] = useState('');
   const [listaPacienteQuery, setListaPacienteQuery] = useState('');
   const [listaPsicologoQuery, setListaPsicologoQuery] = useState('');
+  const [tour] = useState(() => createCoordinatorTour('asignaciones'));
   const [showPatientList, setShowPatientList] = useState(false);
   const [showBecarioList, setShowBecarioList] = useState(false);
   const [showPsicologoList, setShowPsicologoList] = useState(false);
@@ -72,7 +74,7 @@ const CoordinadorAsignaciones = () => {
         ...b,
         activo: typeof b.activo === 'boolean' ? b.activo : true,
         pacientes_asignados: typeof b.pacientes_asignados === 'number' ? b.pacientes_asignados : (b.pacientes_asignados || 0),
-        capacidad: typeof b.capacidad === 'number' ? b.capacidad : (b.capacidad || 4)
+        capacidad: typeof b.capacidad === 'number' ? b.capacidad : (b.capacidad || null)
       }));
       setBecarios(normalizedBecarios);
 
@@ -232,7 +234,7 @@ const CoordinadorAsignaciones = () => {
   const handleFinalizarAsignacion = async (asignacionId) => {
     try {
       const confirmado = await confirmations.warning('¿Estás seguro de finalizar esta asignación?');
-      
+
       if (confirmado) {
         const token = localStorage.getItem('token');
         const apiUrl = process.env.REACT_APP_API_URL;
@@ -273,17 +275,17 @@ const CoordinadorAsignaciones = () => {
 
   const filteredPacientesSinAsignar = listaPacienteQueryLower
     ? pacientesSinAsignar.filter(p => (
-        (p.nombre || '').toLowerCase().includes(listaPacienteQueryLower) ||
-        (p.email || '').toLowerCase().includes(listaPacienteQueryLower)
-      ))
+      (p.nombre || '').toLowerCase().includes(listaPacienteQueryLower) ||
+      (p.email || '').toLowerCase().includes(listaPacienteQueryLower)
+    ))
     : pacientesSinAsignar;
 
   const filteredPsicologosList = listaPsicologoQueryLower
     ? psicologos.filter(p => (
-        `${p.nombre || ''} ${p.apellido || ''}`.toLowerCase().includes(listaPsicologoQueryLower) ||
-        (p.especialidad || '').toLowerCase().includes(listaPsicologoQueryLower) ||
-        (p.email || '').toLowerCase().includes(listaPsicologoQueryLower)
-      ))
+      `${p.nombre || ''} ${p.apellido || ''}`.toLowerCase().includes(listaPsicologoQueryLower) ||
+      (p.especialidad || '').toLowerCase().includes(listaPsicologoQueryLower) ||
+      (p.email || '').toLowerCase().includes(listaPsicologoQueryLower)
+    ))
     : psicologos;
 
   const visiblePacientesSinAsignar = filteredPacientesSinAsignar.slice(0, PACIENTES_LIMIT);
@@ -296,9 +298,14 @@ const CoordinadorAsignaciones = () => {
           <h1>Gestión de Asignaciones</h1>
           <p>Asignación de pacientes a terapeutas</p>
         </div>
-        <button className="btn-secondary" onClick={fetchData}>
-          <FiRefreshCw /> Actualizar
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
+          <button className="btn-secondary" onClick={fetchData}>
+            <FiRefreshCw /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Estadísticas Rápidas */}
@@ -308,13 +315,13 @@ const CoordinadorAsignaciones = () => {
           <div className="stat-value">{psicologos.filter(p => p.activo).length}</div>
           <div className="text-small">de {psicologos.length} total</div>
         </div>
-        
+
         <div className="card">
           <h4>Pacientes Sin Asignar</h4>
           <div className="stat-value">{pacientesSinAsignar.length}</div>
           <div className="text-small">esperando asignación</div>
         </div>
-        
+
         <div className="card">
           <h4>Asignaciones Activas</h4>
           <div className="stat-value">{asignaciones.filter(a => a.estado === 'activa').length}</div>
@@ -337,7 +344,7 @@ const CoordinadorAsignaciones = () => {
                 onChange={(e) => setListaPsicologoQuery(e.target.value)}
               />
             </div>
-            <button 
+            <button
               className="btn-primary"
               onClick={() => setShowModal(true)}
             >
@@ -349,7 +356,7 @@ const CoordinadorAsignaciones = () => {
         <div className="text-small" style={{ color: 'var(--gray)', marginBottom: '10px' }}>
           Mostrando {visiblePsicologos.length} de {filteredPsicologosList.length} terapeutas
         </div>
-        
+
         <div className="table-container">
           <table className="data-table">
             <thead>
@@ -418,7 +425,7 @@ const CoordinadorAsignaciones = () => {
             </span>
           </div>
         </div>
-        
+
         {filteredPacientesSinAsignar.length > 0 ? (
           <div className="table-container">
             <table className="data-table">
@@ -447,7 +454,7 @@ const CoordinadorAsignaciones = () => {
                     <td>{new Date(paciente.fecha_ingreso).toLocaleDateString()}</td>
                     <td>
                       <div className="flex-row gap-5">
-                        <button 
+                        <button
                           className="btn-text"
                           onClick={() => {
                             setSelectedPaciente(paciente);
@@ -483,7 +490,7 @@ const CoordinadorAsignaciones = () => {
             </select>
           </div>
         </div>
-        
+
         <div className="table-container">
           <table className="data-table">
             <thead>
@@ -517,14 +524,14 @@ const CoordinadorAsignaciones = () => {
                   </td>
                   <td>
                     <div className="flex-row gap-5">
-                      <button 
+                      <button
                         className="btn-text"
                         onClick={() => handleReasignar(asignacion.id, 1)}
                       >
                         <FiEdit2 /> Reasignar
                       </button>
                       {asignacion.estado === 'activa' && (
-                        <button 
+                        <button
                           className="btn-text text-danger"
                           onClick={() => handleFinalizarAsignacion(asignacion.id)}
                         >
@@ -548,7 +555,7 @@ const CoordinadorAsignaciones = () => {
               <h3>Asignar Paciente</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
             </div>
-            
+
             <div className="modal-content">
               <div className="form-grid">
                 <div className="form-group" style={{ position: 'relative' }}>
@@ -564,7 +571,7 @@ const CoordinadorAsignaciones = () => {
                   />
                   {showPatientList && (
                     <div className="autocomplete-panel">
-                      {pacientesSinAsignar.filter(p => (`${p.nombre}`.toLowerCase().includes(patientQuery.toLowerCase()) || (`${p.nombre} ${p.motivo}` || '').toLowerCase().includes(patientQuery.toLowerCase()))).slice(0,50).map(p => (
+                      {pacientesSinAsignar.filter(p => (`${p.nombre}`.toLowerCase().includes(patientQuery.toLowerCase()) || (`${p.nombre} ${p.motivo}` || '').toLowerCase().includes(patientQuery.toLowerCase()))).slice(0, 50).map(p => (
                         <div
                           key={p.id}
                           className="autocomplete-option"
@@ -580,7 +587,7 @@ const CoordinadorAsignaciones = () => {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="form-group" style={{ position: 'relative' }}>
                   <label>Seleccionar Coterapeuta</label>
                   <input
@@ -594,7 +601,7 @@ const CoordinadorAsignaciones = () => {
                   />
                   {showBecarioList && (
                     <div className="autocomplete-panel">
-                      {becarios.filter(b => (`${b.nombre}`.toLowerCase().includes(becarioQuery.toLowerCase()) || (b.especialidad || '').toLowerCase().includes(becarioQuery.toLowerCase()))).slice(0,50).map(b => (
+                      {becarios.filter(b => (`${b.nombre}`.toLowerCase().includes(becarioQuery.toLowerCase()) || (b.especialidad || '').toLowerCase().includes(becarioQuery.toLowerCase()))).slice(0, 50).map(b => (
                         <div
                           key={b.id}
                           className="autocomplete-option"
@@ -610,7 +617,7 @@ const CoordinadorAsignaciones = () => {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="form-group" style={{ position: 'relative' }}>
                   <label>Terapeuta Supervisor</label>
                   <input
@@ -624,7 +631,7 @@ const CoordinadorAsignaciones = () => {
                   />
                   {showPsicologoList && (
                     <div className="autocomplete-panel">
-                      {psicologos.filter(p => (`${p.nombre}`.toLowerCase().includes(psicologoQuery.toLowerCase()) || (p.especialidad || '').toLowerCase().includes(psicologoQuery.toLowerCase()))).slice(0,50).map(p => (
+                      {psicologos.filter(p => (`${p.nombre}`.toLowerCase().includes(psicologoQuery.toLowerCase()) || (p.especialidad || '').toLowerCase().includes(psicologoQuery.toLowerCase()))).slice(0, 50).map(p => (
                         <div
                           key={p.id}
                           className="autocomplete-option"
@@ -640,11 +647,11 @@ const CoordinadorAsignaciones = () => {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Notas de Asignación</label>
-                  <textarea 
-                    className="textarea-field" 
+                  <textarea
+                    className="textarea-field"
                     placeholder="Observaciones especiales para esta asignación..."
                     rows="3"
                     value={assignNotes}
@@ -653,7 +660,7 @@ const CoordinadorAsignaciones = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="modal-footer">
               <button className="btn-primary" onClick={handleAsignarPaciente} disabled={assigning}>
                 <FiCheckCircle /> {assigning ? 'Asignando...' : 'Confirmar Asignación'}

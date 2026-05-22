@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FiUser, FiFileText, FiCalendar, FiMessageSquare, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { createTherapistTour } from '../../utils/therapistTour';
 
 const PsicologoSupervision = () => {
   const [becarios, setBecarios] = useState([]);
@@ -13,8 +14,9 @@ const PsicologoSupervision = () => {
   const [showPacienteObservaciones, setShowPacienteObservaciones] = useState(false);
   const [observacionesPaciente, setObservacionesPaciente] = useState([]);
   const [selectedPaciente, setSelectedPaciente] = useState(null);
-  
+
   const [horasInputs, setHorasInputs] = useState({});
+  const tour = createTherapistTour('supervision');
 
   useEffect(() => {
     fetchData();
@@ -32,14 +34,14 @@ const PsicologoSupervision = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      
+
       // Obtener becarios asignados al psicólogo actual
-        const apiUrl = process.env.REACT_APP_API_URL;
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const becariosRes = await fetch(`${apiUrl}/api/asignaciones/mis-becarios`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+      const becariosRes = await fetch(`${apiUrl}/api/asignaciones/mis-becarios`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
-      
+
       if (becariosRes.ok) {
         const becariosData = await becariosRes.json();
         const raw = Array.isArray(becariosData) ? becariosData : (becariosData.data || []);
@@ -53,7 +55,7 @@ const PsicologoSupervision = () => {
         // Obtener observaciones recientes para los becarios asignados
         const observacionesPromises = becariosAsignados.map(async (becario) => {
           try {
-              const obsRes = await fetch(`${apiUrl}/api/observaciones/becario/${becario.id}`, {
+            const obsRes = await fetch(`${apiUrl}/api/observaciones/becario/${becario.id}`, {
               headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
             });
             if (!obsRes.ok) return [];
@@ -80,9 +82,9 @@ const PsicologoSupervision = () => {
         setObservaciones(todasObservaciones);
 
         // Nota: Se removió todo lo relacionado con citas de becarios en esta vista
-        
+
       }
-      
+
     } catch (error) {
       console.error('Error al cargar datos:', error);
       notifications.error('Error al cargar datos de supervisión');
@@ -96,7 +98,7 @@ const PsicologoSupervision = () => {
       notifications.error('Por favor, escribe algún feedback');
       return;
     }
-    
+
     try {
       const token = localStorage.getItem('token');
       const apiUrl = process.env.REACT_APP_API_URL;
@@ -226,17 +228,20 @@ const PsicologoSupervision = () => {
           <h1>Supervisión de Becarios</h1>
           <p>Gestión y seguimiento de becarios en formación</p>
         </div>
+        <button className="btn-secondary" onClick={() => tour.drive()}>
+          Tour
+        </button>
       </div>
 
       {/* Lista de Becarios */}
       <div className="config-content">
         <h3>Becarios en Supervisión</h3>
-        
+
         <div className="grid-2 gap-20 mt-20">
           {becarios.map((becario) => {
             const becarioObservaciones = getBecarioObservaciones(becario.id);
             const observacionesPendientes = becarioObservaciones.filter(o => o.tipo_observacion !== 'retroalimentacion').length;
-            
+
             return (
               <div key={becario.id} className="card">
                 <div className="flex-row align-center justify-between mb-10">
@@ -271,7 +276,7 @@ const PsicologoSupervision = () => {
                 </div>
 
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-primary flex-1"
                     onClick={() => {
                       setSelectedBecario(becario);
@@ -280,7 +285,7 @@ const PsicologoSupervision = () => {
                   >
                     <FiMessageSquare /> Dar Feedback
                   </button>
-                  
+
                 </div>
 
                 <div className="mt-10">
@@ -306,7 +311,7 @@ const PsicologoSupervision = () => {
           })}
         </div>
 
-        
+
 
         {/* Estadísticas */}
         <div className="grid-2 mt-30 gap-20">
@@ -319,7 +324,7 @@ const PsicologoSupervision = () => {
               <p>Sesiones supervisadas: {becarios.reduce((sum, b) => sum + (b.sesiones_supervisadas || 0), 0)}</p>
             </div>
           </div>
-          
+
           {/* <div className="card">
             <h4>Acciones</h4>
             <div className="mt-10 flex-col gap-10">
@@ -339,7 +344,7 @@ const PsicologoSupervision = () => {
               <h3>Feedback para {selectedBecario.nombre}</h3>
               <button className="modal-close" onClick={() => setShowFeedback(false)}>×</button>
             </div>
-            
+
             <div className="modal-content">
               <div className="form-group">
                 <label>Escribe tu feedback</label>
@@ -351,22 +356,22 @@ const PsicologoSupervision = () => {
                   placeholder="Comparte tus observaciones, sugerencias y áreas de mejora..."
                 />
               </div>
-              
+
               <div className="mt-10">
                 <p className="text-small">
                   <FiAlertCircle /> El feedback debe ser constructivo y específico.
                 </p>
               </div>
             </div>
-            
+
             <div className="modal-footer">
-              <button 
+              <button
                 className="btn-secondary"
                 onClick={() => setShowFeedback(false)}
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 className="btn-primary"
                 onClick={() => enviarFeedback(selectedBecario.id)}
               >
@@ -385,7 +390,7 @@ const PsicologoSupervision = () => {
               <h3>Observaciones de {selectedPaciente.nombre}</h3>
               <button className="modal-close" onClick={() => setShowPacienteObservaciones(false)}>×</button>
             </div>
-            
+
             <div className="modal-content">
               <div className="observaciones-list">
                 {observacionesPaciente.length > 0 ? (
@@ -404,17 +409,17 @@ const PsicologoSupervision = () => {
                           {obs.tipo_observacion === 'retroalimentacion' ? 'Feedback' : 'Observación'}
                         </div>
                       </div>
-                      
+
                       <div className="observacion-content">
                         <div className="grid-2 gap-20">
                           <div>
                             <h5>Observaciones</h5>
                             <p>{obs.contenido || obs.fortalezas || 'Sin observaciones detalladas'}</p>
-                            
+
                             <h5 className="mt-10">Áreas de mejora</h5>
                             <p>{obs.areas_mejora || 'Sin áreas específicas'}</p>
                           </div>
-                          
+
                           <div>
                             <h5>Feedback del supervisor</h5>
                             {obs.recomendaciones || obs.feedback ? (
@@ -434,9 +439,9 @@ const PsicologoSupervision = () => {
                 )}
               </div>
             </div>
-            
+
             <div className="modal-footer">
-              <button 
+              <button
                 className="btn-secondary"
                 onClick={() => setShowPacienteObservaciones(false)}
               >

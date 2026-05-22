@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FiCalendar, FiUsers, FiClock, 
-  FiAlertCircle, FiRefreshCw 
+import {
+  FiCalendar, FiUsers, FiClock,
+  FiAlertCircle, FiRefreshCw
 } from 'react-icons/fi';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import notifications from '../../utils/notifications';
+import { createCoterapeutaTour } from '../../utils/coterapeutaTour';
 
 const BecarioDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
@@ -18,6 +19,7 @@ const BecarioDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
   const [misPacientes, setMisPacientes] = useState([]);
+  const tour = createCoterapeutaTour('dashboard');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -42,14 +44,14 @@ const BecarioDashboard = () => {
 
       // Optimización: Ejecutar todas las llamadas en paralelo
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      
+
       // Preparar todas las fechas que necesitamos
       const fechasProximas = Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
         d.setDate(d.getDate() + i + 1);
         return format(d, 'yyyy-MM-dd');
       });
-      
+
       const fechasCompletadas = Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
         d.setDate(d.getDate() - i);
@@ -152,9 +154,14 @@ const BecarioDashboard = () => {
           <h1>Panel del Becario</h1>
           <p>Bienvenido a tu centro de gestión de citas y pacientes</p>
         </div>
-        <button className="btn-secondary" onClick={fetchDashboardData}>
-          <FiRefreshCw /> Actualizar
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
+          <button className="btn-secondary" onClick={fetchDashboardData}>
+            <FiRefreshCw /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -181,7 +188,7 @@ const BecarioDashboard = () => {
             <h3>Citas de Hoy</h3>
             <button className="btn-text" onClick={() => navigate('/becario/citas')}>Ver Calendario</button>
           </div>
-          
+
           <div className="citas-list">
             {citasHoy.length > 0 ? (
               citasHoy.slice(0, 5).map((cita) => (
@@ -190,11 +197,10 @@ const BecarioDashboard = () => {
                     <div className="cita-paciente">{cita.paciente_nombre}</div>
                     <div className="cita-hora">{cita.hora}</div>
                   </div>
-                  <div className={`cita-estado badge ${
-                    cita.estado === 'confirmada' ? 'badge-success' :
-                    cita.estado === 'programada' ? 'badge-warning' :
-                    'badge-danger'
-                  }`}>
+                  <div className={`cita-estado badge ${cita.estado === 'confirmada' ? 'badge-success' :
+                      cita.estado === 'programada' ? 'badge-warning' :
+                        'badge-danger'
+                    }`}>
                     {cita.estado}
                   </div>
                 </div>
@@ -214,7 +220,7 @@ const BecarioDashboard = () => {
             <h3>Mis Pacientes</h3>
             <button className="btn-text">Ver todos</button>
           </div>
-          
+
           <div className="pacientes-list">
             {misPacientes.length > 0 ? (
               misPacientes.slice(0, 6).map((p) => (
@@ -237,7 +243,7 @@ const BecarioDashboard = () => {
           </div>
         </div>
 
-        
+
       </div>
     </div>
   );

@@ -26,6 +26,7 @@
     "concurrently": "^8.0.0"
   },
   "dependencies": {
+    "driver.js": "^1.4.0",
     "sequelize": "^6.37.7"
   },
   "keywords": [

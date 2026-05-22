@@ -27,7 +27,9 @@ const TerapeutaConfiguracion = lazy(() => import('./pages/terapeuta/Configuracio
 
 // Psicopedagógico
 const PsicopedagogicoDashboard = lazy(() => import('./pages/psicopedagogico/DashboardPage'));
+const PsicopedagogicoCitas = lazy(() => import('./pages/psicopedagogico/CitasPage'));
 const PsicopedagogicoPacientes = lazy(() => import('./pages/psicopedagogico/PacientesPage'));
+const PsicopedagogicoConfiguracion = lazy(() => import('./pages/psicopedagogico/ConfiguracionPage'));
 
 // Coordinadores
 const CoordinadorDashboard = lazy(() => import('./pages/coordinador/DashboardPage'));
@@ -77,17 +79,17 @@ function App() {
         {/* Agrega los modales aquí */}
         <ConfirmModal />
         <NotificationModal />
-        
+
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
             {/* Rutas Públicas */}
             <Route path="/login" element={<Login />} />
             <Route path="/preregistro" element={<PreRegistro />} /> {/* <--- Ruta agregada */}
-            
+
             {/* Rutas Protegidas por Rol */}
             <Route path="/" element={<RoleRouter />}>
               <Route index element={<CoterapeutaDashboard />} />
-              
+
               {/* Coterapeuta */}
               <Route path="coterapeuta/dashboard" element={<CoterapeutaDashboard />} />
               <Route path="coterapeuta/citas" element={<CoterapeutaCitas />} />
@@ -100,7 +102,7 @@ function App() {
               <Route path="terapeuta/citas" element={<TerapeutaCitas />} />
               <Route path="terapeuta/sesiones" element={<TerapeutaSesiones />} />
               <Route path="terapeuta/configuracion" element={<TerapeutaConfiguracion />} />
-              
+
               {/* Coordinador */}
               <Route path="coordinador/dashboard" element={<CoordinadorDashboard />} />
               <Route path="coordinador/usuarios" element={<CoordinadorUsuarios />} />
@@ -113,9 +115,11 @@ function App() {
 
               {/* Psicopedagógico */}
               <Route path="psicopedagogico/dashboard" element={<PsicopedagogicoDashboard />} />
+              <Route path="psicopedagogico/citas" element={<PsicopedagogicoCitas />} />
               <Route path="psicopedagogico/pacientes" element={<PsicopedagogicoPacientes />} />
+              <Route path="psicopedagogico/configuracion" element={<PsicopedagogicoConfiguracion />} />
             </Route>
-            
+
             {/* Redirección por defecto */}
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   FiUsers, FiCalendar, FiTrendingUp, FiBarChart2,
   FiUserCheck, FiClock, FiRefreshCw
 } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
+import { createPsychopedagogicoTour } from '../../utils/psychopedagogicoTour';
 
 const TerapeutaDashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
@@ -17,6 +18,7 @@ const TerapeutaDashboard = () => {
   const [citasHoy, setCitasHoy] = useState([]);
   const [becarios, setBecarios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const tour = createPsychopedagogicoTour('dashboard');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -126,9 +128,14 @@ const TerapeutaDashboard = () => {
           <h1>Panel del Psicólogo</h1>
           <p>Supervisión y gestión de pacientes</p>
         </div>
-        <button className="btn-secondary" onClick={fetchDashboardData}>
-          <FiRefreshCw /> Actualizar
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
+          <button className="btn-secondary" onClick={fetchDashboardData}>
+            <FiRefreshCw /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -146,7 +153,7 @@ const TerapeutaDashboard = () => {
           </div>
         ))}
       </div>
-      
+
       <div className="citas-list">
         {citasHoy.map((cita) => (
           <div key={cita.id} className="cita-item">
@@ -158,7 +165,7 @@ const TerapeutaDashboard = () => {
           </div>
         ))}
       </div>
-      
+
       <div className="pacientes-list">
         {becarios.map((becario) => (
           <div key={becario.id} className="paciente-item">

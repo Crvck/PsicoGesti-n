@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiUser, FiCalendar, FiPhone, FiMail, FiFileText, FiFilter } from 'react-icons/fi';
+import { useLocation } from 'react-router-dom';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } from 'docx';
 import { saveAs } from 'file-saver';
+import { createPsychopedagogicoTour } from '../../utils/psychopedagogicoTour';
 
 const PsicologoPacientes = () => {
+  const location = useLocation();
   const [pacientes, setPacientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,7 +21,7 @@ const PsicologoPacientes = () => {
   const [tipoCitaAgendar, setTipoCitaAgendar] = useState('psicologo'); // 'psicologo' o 'becario'
   const [becarios, setBecarios] = useState([]);
   const [scheduleForm, setScheduleForm] = useState({
-    fecha: new Date().toISOString().slice(0,10),
+    fecha: new Date().toISOString().slice(0, 10),
     hora: '10:00',
     tipo_consulta: 'presencial',
     duracion: 50,
@@ -33,14 +36,15 @@ const PsicologoPacientes = () => {
   const [evolucionesCaso, setEvolucionesCaso] = useState([]);
   const [diagnosticoInput, setDiagnosticoInput] = useState('');
   const [evolucionForm, setEvolucionForm] = useState({
-    fecha: new Date().toISOString().slice(0,10),
+    fecha: new Date().toISOString().slice(0, 10),
     descripcion: ''
   });
   const [guardandoDiagnostico, setGuardandoDiagnostico] = useState(false);
   const [guardandoEvolucion, setGuardandoEvolucion] = useState(false);
   const [showRegistrarSesionModal, setShowRegistrarSesionModal] = useState(false);
+  const [registroDesdeCitaAplicado, setRegistroDesdeCitaAplicado] = useState(false);
   const [registroSesionForm, setRegistroSesionForm] = useState({
-    fecha: new Date().toISOString().slice(0,10),
+    fecha: new Date().toISOString().slice(0, 10),
     hora_inicio: '10:00',
     hora_fin: '10:50',
     desarrollo: '',
@@ -49,13 +53,14 @@ const PsicologoPacientes = () => {
     siguiente_cita: '',
     privado: false
   });
+  const tour = createPsychopedagogicoTour('pacientes');
 
   const fetchExpediente = async (pacienteId) => {
     try {
       const token = localStorage.getItem('token');
-        const apiUrl = process.env.REACT_APP_API_URL;
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const res = await fetch(`${apiUrl}/api/expedientes/paciente/${pacienteId}/completo`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+      const res = await fetch(`${apiUrl}/api/expedientes/paciente/${pacienteId}/completo`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 
@@ -68,7 +73,9 @@ const PsicologoPacientes = () => {
 
       if (!res.ok) {
         console.error('Error fetching expediente:', res.status, json);
-        notifications.error((json && (json.message || json.error)) || 'Error al obtener expediente');
+        if (res.status !== 403) {
+          notifications.error((json && (json.message || json.error)) || 'Error al obtener expediente');
+        }
         setExpediente(null);
         setSesionesPaciente([]);
         return;
@@ -88,9 +95,9 @@ const PsicologoPacientes = () => {
   const fetchPerfilPsicopedagogico = async (pacienteId) => {
     try {
       const token = localStorage.getItem('token');
-        const apiUrl = process.env.REACT_APP_API_URL;
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const res = await fetch(`${apiUrl}/api/psicopedagogico/paciente/${pacienteId}`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+      const res = await fetch(`${apiUrl}/api/psicopedagogico/paciente/${pacienteId}`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 
@@ -127,7 +134,7 @@ const PsicologoPacientes = () => {
       try {
         console.log('Evento citaCreada recibido (psicologo):', e.detail);
         fetchPacientes();
-      } catch(e) { console.warn(e); }
+      } catch (e) { console.warn(e); }
     };
 
     const onCitaActualizada = (e) => {
@@ -145,12 +152,75 @@ const PsicologoPacientes = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (registroDesdeCitaAplicado) return;
+
+    const params = new URLSearchParams(location.search);
+    const openRegistro = params.get('openRegistro');
+    const pacienteId = Number(params.get('paciente_id') || 0);
+    const pacienteNombre = (params.get('paciente_nombre') || '').trim();
+
+    if (openRegistro !== '1' || !pacienteId) return;
+
+    const paciente = pacientes.find((p) => Number(p.id) === pacienteId);
+    const pacienteTarget = paciente || {
+      id: pacienteId,
+      nombre: pacienteNombre,
+      apellido: '',
+      nombre_completo: pacienteNombre || `Paciente #${pacienteId}`,
+      edad: '',
+      telefono: '',
+      email: '',
+      motivo_consulta: '',
+      diagnostico: '',
+      becario_id: null,
+      ultima_sesion: null,
+      proxima_cita: null,
+      sesiones_completadas: 0,
+      estado: 'activo',
+      becario: null,
+      activo: true
+    };
+
+    const fecha = params.get('fecha') || new Date().toISOString().slice(0, 10);
+    const hora = (params.get('hora') || '10:00').slice(0, 5);
+    const motivo = (params.get('motivo') || '').trim();
+    const openRegistroFromCita = openRegistro === '1';
+
+    const sumarMinutos = (horaBase, minutos) => {
+      const [h, m] = (horaBase || '10:00').split(':').map(Number);
+      const d = new Date();
+      d.setHours(Number.isNaN(h) ? 10 : h, Number.isNaN(m) ? 0 : m, 0, 0);
+      d.setMinutes(d.getMinutes() + minutos);
+      return d.toTimeString().slice(0, 5);
+    };
+
+    setSelectedPaciente(pacienteTarget);
+    setShowDetalles(true);
+    if (!openRegistroFromCita) {
+      fetchExpediente(pacienteId);
+      fetchPerfilPsicopedagogico(pacienteId);
+    }
+    setRegistroSesionForm((prev) => ({
+      ...prev,
+      fecha,
+      hora_inicio: hora,
+      hora_fin: sumarMinutos(hora, 50),
+      desarrollo: motivo ? `Seguimiento de cita completada.\nMotivo/nota: ${motivo}` : prev.desarrollo
+    }));
+    setShowRegistrarSesionModal(true);
+    setRegistroDesdeCitaAplicado(true);
+
+    const cleanUrl = `${window.location.pathname}`;
+    window.history.replaceState({}, '', cleanUrl);
+  }, [location.search, pacientes, registroDesdeCitaAplicado]);
+
   const fetchBecarios = async () => {
     try {
       const token = localStorage.getItem('token');
-        const apiUrl = process.env.REACT_APP_API_URL;
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const res = await fetch(`${apiUrl}/api/users/becarios`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+      const res = await fetch(`${apiUrl}/api/users/becarios`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const data = await res.json();
@@ -165,9 +235,9 @@ const PsicologoPacientes = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-        const apiUrl = process.env.REACT_APP_API_URL;
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const res = await fetch(`${apiUrl}/api/pacientes/activos`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+      const res = await fetch(`${apiUrl}/api/pacientes/activos`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
@@ -193,6 +263,7 @@ const PsicologoPacientes = () => {
         email: p.email,
         motivo_consulta: p.motivo_consulta || p.motivo || '',
         diagnostico: p.diagnostico_presuntivo || p.diagnostico || '',
+        becario_id: p.becario_id || p.becarioId || null,
         ultima_sesion: p.ultima_sesion || null,
         proxima_cita: p.proxima_cita || null,
         sesiones_completadas: p.sesiones_completadas || 0,
@@ -210,13 +281,13 @@ const PsicologoPacientes = () => {
   };
 
   const filteredPacientes = pacientes.filter(paciente => {
-    const matchesSearch = 
+    const matchesSearch =
       paciente.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       paciente.diagnostico.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesEstado = !filterEstado || paciente.estado === filterEstado;
-    
+
     return matchesSearch && matchesEstado;
   });
 
@@ -283,7 +354,7 @@ const PsicologoPacientes = () => {
       }
 
       notifications.success('Evolución registrada');
-      setEvolucionForm({ fecha: new Date().toISOString().slice(0,10), descripcion: '' });
+      setEvolucionForm({ fecha: new Date().toISOString().slice(0, 10), descripcion: '' });
       fetchPerfilPsicopedagogico(selectedPaciente.id);
     } catch (error) {
       console.error('Error al registrar evolución:', error);
@@ -353,7 +424,7 @@ const PsicologoPacientes = () => {
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.docx`);
+      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`);
       notifications.success('Descarga iniciada');
     } catch (err) {
       console.error('Error exportando listado de pacientes:', err);
@@ -377,6 +448,9 @@ const PsicologoPacientes = () => {
           <h1>Mis Pacientes</h1>
           <p>Gestión de pacientes en tratamiento</p>
         </div>
+        <button className="btn-secondary" onClick={() => tour.drive()}>
+          Tour
+        </button>
       </div>
 
       {/* Filtros y Búsqueda */}
@@ -391,10 +465,10 @@ const PsicologoPacientes = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <div className="filter-buttons">
-          <select 
-            value={filterEstado} 
+          <select
+            value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
             className="select-field"
             style={{ width: '200px' }}
@@ -425,7 +499,7 @@ const PsicologoPacientes = () => {
           <tbody>
             {filteredPacientes.map((paciente) => {
               const estadoInfo = getEstadoLabel(paciente.estado);
-              
+
               return (
                 <tr key={paciente.id}>
                   <td>
@@ -471,25 +545,25 @@ const PsicologoPacientes = () => {
                   </td>
                   <td>
                     <div className="flex-row gap-5">
-                      <button 
+                      <button
                         className="btn-text"
                         onClick={() => showPacienteDetalles(paciente)}
                         title="Ver detalles"
                       >
                         <FiFileText />
                       </button>
-                      <button 
+                      <button
                         className="btn-text btn-success"
                         title="Agendar cita con psicólogo"
                         onClick={() => {
                           setSelectedPaciente(paciente);
                           setTipoCitaAgendar('psicologo');
-                          setScheduleForm(prev => ({ 
-                            ...prev, 
-                            fecha: new Date().toISOString().slice(0,10), 
-                            hora: '10:00', 
-                            notas: '', 
-                            becario_id: null 
+                          setScheduleForm(prev => ({
+                            ...prev,
+                            fecha: new Date().toISOString().slice(0, 10),
+                            hora: '10:00',
+                            notas: '',
+                            becario_id: null
                           }));
                           setShowAgendarModal(true);
                         }}
@@ -497,16 +571,16 @@ const PsicologoPacientes = () => {
                         <FiCalendar />
                       </button>
                       {/* Opción para agendar cita solo para becario - comentar si no se necesita */}
-                      <button 
+                      <button
                         className="btn-text btn-info"
                         title="Agendar cita para becario"
                         onClick={() => {
                           setSelectedPaciente(paciente);
                           setTipoCitaAgendar('becario');
-                          setScheduleForm(prev => ({ 
-                            ...prev, 
-                            fecha: new Date().toISOString().slice(0,10), 
-                            hora: '10:00', 
+                          setScheduleForm(prev => ({
+                            ...prev,
+                            fecha: new Date().toISOString().slice(0, 10),
+                            hora: '10:00',
                             notas: '',
                             becario_id: paciente.becario_id || null
                           }));
@@ -534,7 +608,7 @@ const PsicologoPacientes = () => {
             <p>Con becario: {pacientes.filter(p => p.becario).length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Sesiones Totales</h4>
           <div className="mt-10">
@@ -542,7 +616,7 @@ const PsicologoPacientes = () => {
             <p className="text-small">sesiones realizadas</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">
@@ -572,7 +646,7 @@ const PsicologoPacientes = () => {
               </div>
               <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
             </div>
-            
+
             <div className="modal-content" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
               {/* Estadísticas rápidas (expandido) */}
               <div className="grid-3 gap-20 mb-25">
@@ -611,11 +685,11 @@ const PsicologoPacientes = () => {
                     <strong>Teléfono:</strong> {selectedPaciente.telefono || 'No registrado'}
                   </div>
                 </div>
-                
+
                 <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
                   <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Información Clínica</h4>
                   <div className="detail-row">
-                    <strong>Motivo de consulta:</strong> 
+                    <strong>Motivo de consulta:</strong>
                     <div style={{ marginTop: '5px', padding: '8px', background: 'var(--blud)', borderRadius: '6px' }}>
                       {selectedPaciente.motivo_consulta || 'No especificado'}
                     </div>
@@ -710,7 +784,7 @@ const PsicologoPacientes = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Historial de sesiones */}
               <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
                 <div className="flex-row justify-between align-center mb-15">
@@ -737,7 +811,7 @@ const PsicologoPacientes = () => {
                                 {s.tipo_sesion || s.tipo_consulta || (s.Cita && s.Cita.tipo_consulta) || 'terapia'}
                               </span>
                             </td>
-                            <td style={{ fontSize: '13px' }}>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio.slice(0,5)} - ${s.hora_fin.slice(0,5)}` : (s.hora_inicio ? s.hora_inicio.slice(0,5) : 'N/A')}</td>
+                            <td style={{ fontSize: '13px' }}>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio.slice(0, 5)} - ${s.hora_fin.slice(0, 5)}` : (s.hora_inicio ? s.hora_inicio.slice(0, 5) : 'N/A')}</td>
                             <td style={{ maxWidth: '300px' }}>
                               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {s.desarrollo || s.conclusion || 'Sin notas'}
@@ -759,18 +833,24 @@ const PsicologoPacientes = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="modal-footer">
+              <button
+                className="btn-primary"
+                onClick={() => setShowRegistrarSesionModal(true)}
+              >
+                <FiFileText /> Registrar Sesión
+              </button>
               <button className="btn-primary" onClick={() => {
                 setShowDetalles(false);
                 setSelectedPaciente(selectedPaciente);
                 setTipoCitaAgendar('psicologo');
-                setScheduleForm(prev => ({ 
-                  ...prev, 
-                  fecha: new Date().toISOString().slice(0,10), 
-                  hora: '10:00', 
-                  notas: '', 
-                  becario_id: null 
+                setScheduleForm(prev => ({
+                  ...prev,
+                  fecha: new Date().toISOString().slice(0, 10),
+                  hora: '10:00',
+                  notas: '',
+                  becario_id: null
                 }));
                 setShowAgendarModal(true);
               }}>
@@ -781,10 +861,10 @@ const PsicologoPacientes = () => {
                 setShowDetalles(false);
                 setSelectedPaciente(selectedPaciente);
                 setTipoCitaAgendar('becario');
-                setScheduleForm(prev => ({ 
-                  ...prev, 
-                  fecha: new Date().toISOString().slice(0,10), 
-                  hora: '10:00', 
+                setScheduleForm(prev => ({
+                  ...prev,
+                  fecha: new Date().toISOString().slice(0, 10),
+                  hora: '10:00',
                   notas: '',
                   becario_id: selectedPaciente.becario_id || null
                 }));
@@ -806,7 +886,7 @@ const PsicologoPacientes = () => {
           <div className="modal-container modal-medium">
             <div className="modal-header">
               <h3>
-                {tipoCitaAgendar === 'psicologo' 
+                {tipoCitaAgendar === 'psicologo'
                   ? `Agendar cita (Psicólogo) para ${selectedPaciente.nombre_completo}`
                   : `Agendar cita (Becario) para ${selectedPaciente.nombre_completo}`
                 }
@@ -818,17 +898,17 @@ const PsicologoPacientes = () => {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Fecha</label>
-                  <input type="date" className="input-field" value={scheduleForm.fecha} onChange={(e) => setScheduleForm({...scheduleForm, fecha: e.target.value})} />
+                  <input type="date" className="input-field" value={scheduleForm.fecha} onChange={(e) => setScheduleForm({ ...scheduleForm, fecha: e.target.value })} />
                 </div>
 
                 <div className="form-group">
                   <label>Hora</label>
-                  <input type="time" className="input-field" value={scheduleForm.hora} onChange={(e) => setScheduleForm({...scheduleForm, hora: e.target.value})} />
+                  <input type="time" className="input-field" value={scheduleForm.hora} onChange={(e) => setScheduleForm({ ...scheduleForm, hora: e.target.value })} />
                 </div>
 
                 <div className="form-group">
                   <label>Tipo</label>
-                  <select className="select-field" value={scheduleForm.tipo_consulta} onChange={(e) => setScheduleForm({...scheduleForm, tipo_consulta: e.target.value})}>
+                  <select className="select-field" value={scheduleForm.tipo_consulta} onChange={(e) => setScheduleForm({ ...scheduleForm, tipo_consulta: e.target.value })}>
                     <option value="presencial">Presencial</option>
                     <option value="virtual">Virtual</option>
                   </select>
@@ -836,17 +916,17 @@ const PsicologoPacientes = () => {
 
                 <div className="form-group">
                   <label>Duración (min)</label>
-                  <input type="number" className="input-field" value={scheduleForm.duracion} onChange={(e) => setScheduleForm({...scheduleForm, duracion: Number(e.target.value)})} />
+                  <input type="number" className="input-field" value={scheduleForm.duracion} onChange={(e) => setScheduleForm({ ...scheduleForm, duracion: Number(e.target.value) })} />
                 </div>
 
                 {/* Mostrar selector de becario solo si es cita de psicólogo (opcional) o si es cita de becario (obligatorio) */}
                 {tipoCitaAgendar === 'becario' && (
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
                     <label>Becario *</label>
-                    <select 
-                      className="select-field" 
-                      value={scheduleForm.becario_id || ''} 
-                      onChange={(e) => setScheduleForm({...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null})}
+                    <select
+                      className="select-field"
+                      value={scheduleForm.becario_id || ''}
+                      onChange={(e) => setScheduleForm({ ...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null })}
                       required
                     >
                       <option value="">Seleccionar becario</option>
@@ -860,10 +940,10 @@ const PsicologoPacientes = () => {
                 {tipoCitaAgendar === 'psicologo' && (
                   <div className="form-group" style={{ gridColumn: 'span 2' }}>
                     <label>Becario observador (opcional)</label>
-                    <select 
-                      className="select-field" 
-                      value={scheduleForm.becario_id || ''} 
-                      onChange={(e) => setScheduleForm({...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null})}
+                    <select
+                      className="select-field"
+                      value={scheduleForm.becario_id || ''}
+                      onChange={(e) => setScheduleForm({ ...scheduleForm, becario_id: e.target.value ? Number(e.target.value) : null })}
                     >
                       <option value="">Sin becario</option>
                       {becarios.map(b => (
@@ -878,7 +958,7 @@ const PsicologoPacientes = () => {
 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Notas</label>
-                  <textarea rows="3" className="textarea-field" value={scheduleForm.notas} onChange={(e) => setScheduleForm({...scheduleForm, notas: e.target.value})} />
+                  <textarea rows="3" className="textarea-field" value={scheduleForm.notas} onChange={(e) => setScheduleForm({ ...scheduleForm, notas: e.target.value })} />
                 </div>
               </div>
             </div>
@@ -937,7 +1017,7 @@ const PsicologoPacientes = () => {
                   setShowAgendarModal(false);
 
                   // Emitir evento para que calendario y otras vistas sincronicen
-                  try { window.dispatchEvent(new CustomEvent('citaCreada', { detail: { cita: json.data } })); } catch(e) { console.warn(e); }
+                  try { window.dispatchEvent(new CustomEvent('citaCreada', { detail: { cita: json.data } })); } catch (e) { console.warn(e); }
 
                 } catch (err) {
                   console.error('Error creando cita:', err);
@@ -968,43 +1048,43 @@ const PsicologoPacientes = () => {
               <div className="form-grid">
                 <div className="form-group">
                   <label>Fecha</label>
-                  <input type="date" className="input-field" value={registroSesionForm.fecha} onChange={(e) => setRegistroSesionForm({...registroSesionForm, fecha: e.target.value})} />
+                  <input type="date" className="input-field" value={registroSesionForm.fecha} onChange={(e) => setRegistroSesionForm({ ...registroSesionForm, fecha: e.target.value })} />
                 </div>
 
                 <div className="form-group">
                   <label>Hora inicio</label>
-                  <input type="time" className="input-field" value={registroSesionForm.hora_inicio} onChange={(e) => setRegistroSesionForm({...registroSesionForm, hora_inicio: e.target.value})} />
+                  <input type="time" className="input-field" value={registroSesionForm.hora_inicio} onChange={(e) => setRegistroSesionForm({ ...registroSesionForm, hora_inicio: e.target.value })} />
                 </div>
 
                 <div className="form-group">
                   <label>Hora fin</label>
-                  <input type="time" className="input-field" value={registroSesionForm.hora_fin} onChange={(e) => setRegistroSesionForm({...registroSesionForm, hora_fin: e.target.value})} />
+                  <input type="time" className="input-field" value={registroSesionForm.hora_fin} onChange={(e) => setRegistroSesionForm({ ...registroSesionForm, hora_fin: e.target.value })} />
                 </div>
 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Desarrollo</label>
-                  <textarea rows="4" className="textarea-field" value={registroSesionForm.desarrollo} onChange={(e) => setRegistroSesionForm({...registroSesionForm, desarrollo: e.target.value})} />
+                  <textarea rows="4" className="textarea-field" value={registroSesionForm.desarrollo} onChange={(e) => setRegistroSesionForm({ ...registroSesionForm, desarrollo: e.target.value })} />
                 </div>
 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Conclusión</label>
-                  <textarea rows="3" className="textarea-field" value={registroSesionForm.conclusion} onChange={(e) => setRegistroSesionForm({...registroSesionForm, conclusion: e.target.value})} />
+                  <textarea rows="3" className="textarea-field" value={registroSesionForm.conclusion} onChange={(e) => setRegistroSesionForm({ ...registroSesionForm, conclusion: e.target.value })} />
                 </div>
 
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label>Tareas asignadas</label>
-                  <textarea rows="3" className="textarea-field" value={registroSesionForm.tareas_asignadas} onChange={(e) => setRegistroSesionForm({...registroSesionForm, tareas_asignadas: e.target.value})} />
+                  <textarea rows="3" className="textarea-field" value={registroSesionForm.tareas_asignadas} onChange={(e) => setRegistroSesionForm({ ...registroSesionForm, tareas_asignadas: e.target.value })} />
                 </div>
 
                 <div className="form-group">
                   <label>Próxima sesión</label>
-                  <input type="date" className="input-field" value={registroSesionForm.siguiente_cita || ''} onChange={(e) => setRegistroSesionForm({...registroSesionForm, siguiente_cita: e.target.value})} />
+                  <input type="date" className="input-field" value={registroSesionForm.siguiente_cita || ''} onChange={(e) => setRegistroSesionForm({ ...registroSesionForm, siguiente_cita: e.target.value })} />
                 </div>
 
                 <div className="form-group">
                   <label>Privado</label>
                   <div>
-                    <input type="checkbox" checked={registroSesionForm.privado} onChange={(e) => setRegistroSesionForm({...registroSesionForm, privado: e.target.checked})} /> Privado
+                    <input type="checkbox" checked={registroSesionForm.privado} onChange={(e) => setRegistroSesionForm({ ...registroSesionForm, privado: e.target.checked })} /> Privado
                   </div>
                 </div>
               </div>
@@ -1015,10 +1095,26 @@ const PsicologoPacientes = () => {
                 try {
                   notifications.info('Registrando sesión...');
                   const token = localStorage.getItem('token');
+                  const apiUrl = process.env.REACT_APP_API_URL;
+
+                  const nombreCompleto = (selectedPaciente?.nombre_completo || `${selectedPaciente?.nombre || ''} ${selectedPaciente?.apellido || ''}`).trim();
+                  const [nombrePaciente, ...restoNombre] = nombreCompleto.split(' ').filter(Boolean);
+                  const apellidoPaciente = selectedPaciente?.apellido || restoNombre.join(' ') || '';
+                  const nombrePacienteFinal = selectedPaciente?.nombre || nombrePaciente || '';
+
+                  if (!nombrePacienteFinal || !apellidoPaciente) {
+                    notifications.error('No se pudo identificar el nombre del paciente para registrar la cita');
+                    return;
+                  }
 
                   // 1) Crear una cita temporal (si no existe) y marcarla completada
                   const citaBody = {
-                    paciente: { nombre: selectedPaciente.nombre, apellido: selectedPaciente.apellido, email: selectedPaciente.email || null, telefono: selectedPaciente.telefono || null },
+                    paciente: {
+                      nombre: nombrePacienteFinal,
+                      apellido: apellidoPaciente,
+                      email: selectedPaciente.email || null,
+                      telefono: selectedPaciente.telefono || null
+                    },
                     fecha: registroSesionForm.fecha,
                     hora: registroSesionForm.hora_inicio,
                     tipo_consulta: 'presencial',
@@ -1033,7 +1129,7 @@ const PsicologoPacientes = () => {
                   });
 
                   let jsonCita = null;
-                  try { jsonCita = await resCita.json(); } catch(e) { console.warn('No JSON in create-cita response', e); }
+                  try { jsonCita = await resCita.json(); } catch (e) { console.warn('No JSON in create-cita response', e); }
                   if (!resCita.ok) {
                     console.error('Error creando cita temporal:', resCita.status, jsonCita);
                     notifications.error((jsonCita && (jsonCita.message || jsonCita.error)) || 'Error creando cita temporal');
@@ -1056,7 +1152,7 @@ const PsicologoPacientes = () => {
                   });
 
                   let jsonPut = null;
-                  try { jsonPut = await resPut.json(); } catch(e) { console.warn('No JSON in put-cita response', e); }
+                  try { jsonPut = await resPut.json(); } catch (e) { console.warn('No JSON in put-cita response', e); }
                   console.log('PUT /api/citas/cita/:id ->', resPut.status, jsonPut);
                   if (!resPut.ok) {
                     console.error('Error marcando cita como completada:', resPut.status, jsonPut);
@@ -1094,7 +1190,7 @@ const PsicologoPacientes = () => {
                   });
 
                   let jsonSesion = null;
-                  try { jsonSesion = await resSesion.json(); } catch(e) { console.warn('No JSON in sesiones response', e); }
+                  try { jsonSesion = await resSesion.json(); } catch (e) { console.warn('No JSON in sesiones response', e); }
                   console.log('POST /api/sesiones ->', resSesion.status, jsonSesion);
 
                   if (!resSesion.ok) {
@@ -1116,7 +1212,7 @@ const PsicologoPacientes = () => {
                   fetchExpediente(selectedPaciente.id);
 
                   // Emitir evento para sincronizar con la vista de Sesiones
-                  try { window.dispatchEvent(new CustomEvent('sesionRegistrada', { detail: { sesion: jsonSesion.data } })); } catch(e) { console.warn(e); }
+                  try { window.dispatchEvent(new CustomEvent('sesionRegistrada', { detail: { sesion: jsonSesion.data } })); } catch (e) { console.warn(e); }
 
                 } catch (err) {
                   console.error('Error registrando sesión:', err);

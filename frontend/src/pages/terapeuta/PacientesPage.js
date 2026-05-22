@@ -5,6 +5,7 @@ import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } from 'docx';
 import { saveAs } from 'file-saver';
+import { createTherapistTour } from '../../utils/therapistTour';
 
 const PsicologoPacientes = () => {
   const navigate = useNavigate();
@@ -21,13 +22,14 @@ const PsicologoPacientes = () => {
   const [estadisticas, setEstadisticas] = useState(null);
   const [selectedSesion, setSelectedSesion] = useState(null);
   const [showSesionModal, setShowSesionModal] = useState(false);
+  const tour = createTherapistTour('pacientes');
 
   const fetchExpediente = async (pacienteId) => {
     try {
       const token = localStorage.getItem('token');
-        const apiUrl = process.env.REACT_APP_API_URL;
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const res = await fetch(`${apiUrl}/api/expedientes/paciente/${pacienteId}/completo`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+      const res = await fetch(`${apiUrl}/api/expedientes/paciente/${pacienteId}/completo`, {
         headers: { 'Content-Type': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' }
       });
 
@@ -73,9 +75,9 @@ const PsicologoPacientes = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-        const apiUrl = process.env.REACT_APP_API_URL;
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const res = await fetch(`${apiUrl}/api/pacientes/activos`, {
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+      const res = await fetch(`${apiUrl}/api/pacientes/activos`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : ''
@@ -118,13 +120,13 @@ const PsicologoPacientes = () => {
   };
 
   const filteredPacientes = pacientes.filter(paciente => {
-    const matchesSearch = 
+    const matchesSearch =
       paciente.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       paciente.diagnostico.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesEstado = !filterEstado || paciente.estado === filterEstado;
-    
+
     return matchesSearch && matchesEstado;
   });
 
@@ -195,7 +197,7 @@ const PsicologoPacientes = () => {
       });
 
       const blob = await Packer.toBlob(doc);
-      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.docx`);
+      saveAs(blob, `${titulo.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.docx`);
       notifications.success('Descarga iniciada');
     } catch (err) {
       console.error('Error exportando listado de pacientes:', err);
@@ -219,6 +221,9 @@ const PsicologoPacientes = () => {
           <h1>Mis Pacientes</h1>
           <p>Gestión de pacientes en tratamiento</p>
         </div>
+        <button className="btn-secondary" onClick={() => tour.drive()}>
+          Tour
+        </button>
       </div>
 
       {/* Filtros y Búsqueda */}
@@ -233,10 +238,10 @@ const PsicologoPacientes = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <div className="filter-buttons">
-          <select 
-            value={filterEstado} 
+          <select
+            value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
             className="select-field"
             style={{ width: '200px' }}
@@ -267,7 +272,7 @@ const PsicologoPacientes = () => {
           <tbody>
             {filteredPacientes.map((paciente) => {
               const estadoInfo = getEstadoLabel(paciente.estado);
-              
+
               return (
                 <tr key={paciente.id}>
                   <td>
@@ -313,7 +318,7 @@ const PsicologoPacientes = () => {
                   </td>
                   <td>
                     <div className="flex-row gap-5">
-                      <button 
+                      <button
                         className="btn-text"
                         onClick={() => showPacienteDetalles(paciente)}
                         title="Ver detalles"
@@ -339,7 +344,7 @@ const PsicologoPacientes = () => {
             <p>Con coterapeuta: {pacientes.filter(p => p.becario).length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Sesiones Totales</h4>
           <div className="mt-10">
@@ -347,7 +352,7 @@ const PsicologoPacientes = () => {
             <p className="text-small">sesiones realizadas</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">
@@ -377,7 +382,7 @@ const PsicologoPacientes = () => {
               </div>
               <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
             </div>
-            
+
             <div className="modal-content" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
               {/* Estadísticas rápidas (expandido) */}
               <div className="grid-3 gap-20 mb-25">
@@ -421,11 +426,11 @@ const PsicologoPacientes = () => {
                     <strong>Teléfono:</strong> {selectedPaciente.telefono || 'No registrado'}
                   </div>
                 </div>
-                
+
                 <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
                   <h4 style={{ marginBottom: '15px', color: 'var(--blu)' }}>Información Clínica</h4>
                   <div className="detail-row">
-                    <strong>Motivo de consulta:</strong> 
+                    <strong>Motivo de consulta:</strong>
                     <div style={{ marginTop: '5px', padding: '8px', background: 'var(--blud)', borderRadius: '6px' }}>
                       {selectedPaciente.motivo_consulta || 'No especificado'}
                     </div>
@@ -441,7 +446,7 @@ const PsicologoPacientes = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Historial de sesiones */}
               <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
                 <div className="flex-row justify-between align-center mb-15">
@@ -469,7 +474,7 @@ const PsicologoPacientes = () => {
                                 {s.tipo_sesion || s.tipo_consulta || (s.Cita && s.Cita.tipo_consulta) || 'terapia'}
                               </span>
                             </td>
-                            <td style={{ fontSize: '13px' }}>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio.slice(0,5)} - ${s.hora_fin.slice(0,5)}` : (s.hora_inicio ? s.hora_inicio.slice(0,5) : 'N/A')}</td>
+                            <td style={{ fontSize: '13px' }}>{s.hora_inicio && s.hora_fin ? `${s.hora_inicio.slice(0, 5)} - ${s.hora_fin.slice(0, 5)}` : (s.hora_inicio ? s.hora_inicio.slice(0, 5) : 'N/A')}</td>
                             <td style={{ maxWidth: '300px' }}>
                               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {s.desarrollo || s.conclusion || 'Sin notas'}
@@ -477,7 +482,7 @@ const PsicologoPacientes = () => {
                             </td>
                             <td>{(s.terapeuta_nombre || s.psicologo_nombre || (s.Terapeuta && `${s.Terapeuta.nombre} ${s.Terapeuta.apellido}`) || (s.Psicologo && `${s.Psicologo.nombre} ${s.Psicologo.apellido}`) || 'N/A')}</td>
                             <td>
-                              <button 
+                              <button
                                 className="btn-text"
                                 onClick={() => {
                                   setSelectedSesion(s);
@@ -504,7 +509,7 @@ const PsicologoPacientes = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowDetalles(false)}>
                 Cerrar
@@ -522,7 +527,7 @@ const PsicologoPacientes = () => {
               <h3>Detalles de la Sesión</h3>
               <button className="modal-close" onClick={() => setShowSesionModal(false)}>×</button>
             </div>
-            
+
             <div className="modal-content">
               <div className="grid-2 gap-20 mb-20">
                 <div className="card" style={{ padding: '20px', background: 'var(--blub)' }}>
@@ -531,7 +536,7 @@ const PsicologoPacientes = () => {
                     <strong>Fecha:</strong> {selectedSesion.fecha ? new Date(selectedSesion.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}
                   </div>
                   <div className="detail-row">
-                    <strong>Horario:</strong> {selectedSesion.hora_inicio && selectedSesion.hora_fin ? `${selectedSesion.hora_inicio.slice(0,5)} - ${selectedSesion.hora_fin.slice(0,5)}` : (selectedSesion.hora_inicio ? selectedSesion.hora_inicio.slice(0,5) : 'N/A')}
+                    <strong>Horario:</strong> {selectedSesion.hora_inicio && selectedSesion.hora_fin ? `${selectedSesion.hora_inicio.slice(0, 5)} - ${selectedSesion.hora_fin.slice(0, 5)}` : (selectedSesion.hora_inicio ? selectedSesion.hora_inicio.slice(0, 5) : 'N/A')}
                   </div>
                   <div className="detail-row">
                     <strong>Tipo:</strong> <span className="badge badge-info">{selectedSesion.tipo_sesion || selectedSesion.tipo_consulta || 'terapia'}</span>
@@ -600,7 +605,7 @@ const PsicologoPacientes = () => {
                 </div>
               )}
             </div>
-            
+
             <div className="modal-footer">
               <button className="btn-secondary" onClick={() => setShowSesionModal(false)}>
                 Cerrar

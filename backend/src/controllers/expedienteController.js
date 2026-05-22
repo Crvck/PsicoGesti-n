@@ -9,7 +9,7 @@ const Alta = require('../models/altaModel');
 const LogSistema = require('../models/logSistemaModel');
 
 class ExpedienteController {
-    
+
     static async obtenerExpedienteCompleto(req, res) {
         try {
             const { paciente_id } = req.params;
@@ -48,20 +48,20 @@ class ExpedienteController {
                     message: 'No tiene permisos para acceder a este expediente'
                 });
             }
-            
+
             // Obtener información básica del paciente
             const paciente = await Paciente.findByPk(paciente_id, {
                 attributes: { exclude: ['password'] }
             });
             console.log('Paciente lookup result:', paciente ? `id=${paciente.id}` : 'NOT FOUND');
-            
+
             if (!paciente) {
                 return res.status(404).json({
                     success: false,
                     message: 'Paciente no encontrado'
                 });
             }
-            
+
             // Obtener expediente clínico
             const expediente = await Expediente.findOne({
                 where: { paciente_id },
@@ -74,7 +74,7 @@ class ExpedienteController {
                 ]
             });
             console.log('Expediente found:', !!expediente);
-            
+
             // Obtener asignación actual
             const asignacion = await Asignacion.findOne({
                 where: {
@@ -94,7 +94,7 @@ class ExpedienteController {
                     }
                 ]
             });
-            
+
             // Obtener historial de sesiones: primero obtener IDs de citas del paciente y luego sesiones por cita_id
             const citasPaciente = await Cita.findAll({ where: { paciente_id }, attributes: ['id'] });
             const citaIds = (citasPaciente || []).map(c => c.id);
@@ -113,7 +113,7 @@ class ExpedienteController {
             }
 
             console.log('Citas encontradas para paciente:', citaIds.length, 'Sesiones encontradas:', sesiones.length);
-            
+
             // Obtener citas futuras
             const citasFuturas = await Cita.findAll({
                 where: {
@@ -136,7 +136,7 @@ class ExpedienteController {
                 order: [['fecha', 'ASC'], ['hora', 'ASC']]
             });
             console.log('Citas futuras encontradas:', citasFuturas.length);
-            
+
             // Obtener estadísticas
             const [totalSesiones, sesionesCompletadas, sesionesCanceladas, primeraSesion, ultimaSesion] = await Promise.all([
                 Cita.count({ where: { paciente_id } }),
@@ -174,7 +174,7 @@ class ExpedienteController {
                 ultima_sesion: ultimaSesion,
                 duracion_promedio: duracionPromedio
             };
-            
+
             // Obtener historial de asignaciones
             const historialAsignaciones = await Asignacion.findAll({
                 where: { paciente_id },
@@ -192,13 +192,13 @@ class ExpedienteController {
                 ],
                 order: [['fecha_inicio', 'DESC']]
             });
-            
+
             // Obtener altas si las hay
             const alta = await Alta.findOne({
                 where: { paciente_id },
                 order: [['fecha_alta', 'DESC']]
             });
-            
+
             res.json({
                 success: true,
                 data: {
@@ -212,7 +212,7 @@ class ExpedienteController {
                     alta: alta || null
                 }
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerExpedienteCompleto:', error);
             res.status(500).json({
@@ -221,37 +221,37 @@ class ExpedienteController {
             });
         }
     }
-    
+
     static async crearExpediente(req, res) {
         try {
             const { paciente_id } = req.params;
             const expedienteData = req.body;
             const usuarioId = req.user.id;
-            
+
             console.log(`📝 Creando expediente para paciente_id: ${paciente_id}`);
             console.log(`📝 Datos recibidos:`, expedienteData);
-            
+
             // Verificar que no exista ya un expediente
             const expedienteExistente = await Expediente.findOne({
                 where: { paciente_id }
             });
-            
+
             if (expedienteExistente) {
                 return res.status(400).json({
                     success: false,
                     message: 'Ya existe un expediente para este paciente'
                 });
             }
-            
+
             // Crear expediente (sin validar que paciente existe)
             console.log(`📝 Intentando crear expediente con datos:`, { paciente_id, ...expedienteData });
             const expediente = await Expediente.create({
                 paciente_id,
                 ...expedienteData
             });
-            
+
             console.log(`✅ Expediente creado exitosamente: ${expediente.id}`);
-            
+
             // Log
             await LogSistema.create({
                 usuario_id: usuarioId,
@@ -260,13 +260,13 @@ class ExpedienteController {
                 accion: 'Crear expediente',
                 descripcion: `Expediente creado para paciente ${paciente_id}`
             });
-            
+
             res.json({
                 success: true,
                 message: 'Expediente creado exitosamente',
                 data: expediente
             });
-            
+
         } catch (error) {
             console.error('❌ Error en crearExpediente:', error);
             console.error('❌ Stack:', error.stack);
@@ -277,40 +277,40 @@ class ExpedienteController {
             });
         }
     }
-    
+
     static async actualizarExpediente(req, res) {
         try {
             const { paciente_id } = req.params;
             const updates = req.body;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
+
             // Verificar permisos
             const puedeActualizar = await ExpedienteController.verificarPermisoActualizarExpediente(usuarioId, usuarioRol, paciente_id);
-            
+
             if (!puedeActualizar) {
                 return res.status(403).json({
                     success: false,
                     message: 'No tiene permisos para actualizar este expediente'
                 });
             }
-            
+
             const expediente = await Expediente.findOne({
                 where: { paciente_id }
             });
-            
+
             if (!expediente) {
                 return res.status(404).json({
                     success: false,
                     message: 'Expediente no encontrado'
                 });
             }
-            
+
             // Obtener datos antes para log
             const datosAntes = { ...expediente.toJSON() };
-            
+
             await expediente.update(updates);
-            
+
             // Log
             await LogSistema.create({
                 usuario_id: usuarioId,
@@ -321,13 +321,13 @@ class ExpedienteController {
                 datos_antes: datosAntes,
                 datos_despues: expediente.toJSON()
             });
-            
+
             res.json({
                 success: true,
                 message: 'Expediente actualizado exitosamente',
                 data: expediente
             });
-            
+
         } catch (error) {
             console.error('Error en actualizarExpediente:', error);
             res.status(500).json({
@@ -336,13 +336,13 @@ class ExpedienteController {
             });
         }
     }
-    
+
     static async agregarNotaConfidencial(req, res) {
         try {
             const { paciente_id } = req.params;
             const { nota } = req.body;
             const usuarioId = req.user.id;
-            
+
             // Verificar que el usuario es psicólogo asignado
             const asignacion = await Asignacion.findOne({
                 where: {
@@ -352,34 +352,34 @@ class ExpedienteController {
                 },
                 attributes: ['id']
             });
-            
+
             if (!asignacion && req.user.rol !== 'coordinador') {
                 return res.status(403).json({
                     success: false,
                     message: 'Solo el psicólogo asignado puede agregar notas confidenciales'
                 });
             }
-            
+
             const expediente = await Expediente.findOne({
                 where: { paciente_id }
             });
-            
+
             if (!expediente) {
                 return res.status(404).json({
                     success: false,
                     message: 'Expediente no encontrado'
                 });
             }
-            
+
             // Agregar nota con timestamp
             const fecha = new Date().toLocaleString('es-MX');
             const nuevaNota = `[${fecha}] ${usuarioId}: ${nota}\n\n`;
             const notasActuales = expediente.notas_confidenciales || '';
-            
+
             await expediente.update({
                 notas_confidenciales: nuevaNota + notasActuales
             });
-            
+
             // Log
             await LogSistema.create({
                 usuario_id: usuarioId,
@@ -388,12 +388,12 @@ class ExpedienteController {
                 accion: 'Agregar nota confidencial',
                 descripcion: `Nota confidencial agregada para paciente ${paciente_id}`
             });
-            
+
             res.json({
                 success: true,
                 message: 'Nota confidencial agregada exitosamente'
             });
-            
+
         } catch (error) {
             console.error('Error en agregarNotaConfidencial:', error);
             res.status(500).json({
@@ -402,26 +402,26 @@ class ExpedienteController {
             });
         }
     }
-    
+
     static async obtenerResumenExpediente(req, res) {
         try {
             const { paciente_id } = req.params;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
+
             // Si token no incluye rol, buscarlo
             const effectiveRol = usuarioRol || (await User.findByPk(usuarioId)).rol;
 
             // Verificar permisos básicos
             const tieneAcceso = await ExpedienteController.verificarAccesoExpediente(usuarioId, effectiveRol, paciente_id);
-            
+
             if (!tieneAcceso) {
                 return res.status(403).json({
                     success: false,
                     message: 'No tiene permisos para acceder a este expediente'
                 });
             }
-            
+
             const paciente = await Paciente.findByPk(paciente_id, {
                 attributes: ['id', 'nombre', 'apellido', 'fecha_nacimiento', 'genero', 'telefono', 'email', 'estado']
             });
@@ -478,12 +478,12 @@ class ExpedienteController {
                 citas_pendientes,
                 ultima_sesion
             };
-            
+
             res.json({
                 success: true,
                 data: resumen
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerResumenExpediente:', error);
             res.status(500).json({
@@ -492,17 +492,17 @@ class ExpedienteController {
             });
         }
     }
-    
+
     // Métodos auxiliares
     static async verificarAccesoExpediente(usuarioId, usuarioRol, pacienteId) {
         try {
             console.log(`verificarAccesoExpediente: usuarioId=${usuarioId}, usuarioRol=${usuarioRol}, pacienteId=${pacienteId}`);
-            
+
             if (usuarioRol === 'coordinador') {
                 console.log('Acceso concedido: coordinador');
                 return true;
             }
-            
+
             // Verificar si el usuario está asignado al paciente
             const asignacion = await Asignacion.findOne({
                 where: {
@@ -515,7 +515,7 @@ class ExpedienteController {
                 },
                 attributes: ['id']
             });
-            
+
             const tieneAcceso = !!asignacion;
             console.log(`Acceso verificado: ${tieneAcceso}`);
             return tieneAcceso;
@@ -524,15 +524,15 @@ class ExpedienteController {
             return false;
         }
     }
-    
+
     static async verificarPermisoActualizarExpediente(usuarioId, usuarioRol, pacienteId) {
         // Coordinadores pueden editar cualquier expediente
         if (usuarioRol === 'coordinador') return true;
-        
+
         // Psicólogos pueden editar expedientes de cualquier paciente
         // (normalmente restringido a pacientes asignados, pero ya se valida en obtenerExpedienteCompleto)
         if (usuarioRol === 'psicologo') return true;
-        
+
         return false;
     }
 }

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FiBarChart2, FiDownload, FiCalendar, FiUsers, 
+import {
+  FiBarChart2, FiDownload, FiCalendar, FiUsers,
   FiTrendingUp, FiFilter, FiRefreshCw, FiEye
 } from 'react-icons/fi';
 import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 import ApiService from '../../services/api';
+import { createCoordinatorTour } from '../../utils/coordinatorTour';
 
 // docx + file-saver for Word generation
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel } from 'docx';
@@ -25,6 +26,7 @@ const CoordinadorReportes = () => {
   const [previewReport, setPreviewReport] = useState(null);
   const [motivosModalVisible, setMotivosModalVisible] = useState(false);
   const [motivosCancelacion, setMotivosCancelacion] = useState([]);
+  const [tour] = useState(() => createCoordinatorTour('reportes'));
 
   useEffect(() => {
     fetchReportes();
@@ -44,7 +46,7 @@ const CoordinadorReportes = () => {
       // Map files returned by backend to report objects
       const list = (data || []).map((r, idx) => ({
         id: r.nombre || `${Date.now()}_${idx}`,
-        nombre: r.nombre || r.archivo_url?.split('/').pop() || `Reporte ${idx+1}`,
+        nombre: r.nombre || r.archivo_url?.split('/').pop() || `Reporte ${idx + 1}`,
         tipo: r.tipo || 'importado',
         fecha: r.fecha || new Date().toISOString(),
         generado_por: r.generado_por || 'Sistema',
@@ -66,7 +68,7 @@ const CoordinadorReportes = () => {
         fecha_inicio: fechaInicio || null,
         fecha_fin: fechaFin || null
       });
-      
+
       // Extraer datos correctamente de la respuesta del backend
       const data = resp.data || resp;
 
@@ -128,7 +130,7 @@ const CoordinadorReportes = () => {
         fecha_inicio: fechaInicio || null,
         fecha_fin: fechaFin || null
       });
-      
+
       // Extraer datos correctamente
       const statsData = statsResp.data || statsResp;
       console.log('📊 Stats Response completo:', statsResp);
@@ -142,25 +144,29 @@ const CoordinadorReportes = () => {
 
         // Generar documento Word con la tabla de conflictos
         const rows = [
-          new TableRow({ children: [
-            new TableCell({ children: [new Paragraph('Fecha')] }),
-            new TableCell({ children: [new Paragraph('Hora Inicio')] }),
-            new TableCell({ children: [new Paragraph('Terapeuta 1')] }),
-            new TableCell({ children: [new Paragraph('Paciente 1')] }),
-            new TableCell({ children: [new Paragraph('Terapeuta 2')] }),
-            new TableCell({ children: [new Paragraph('Paciente 2')] })
-          ] })
+          new TableRow({
+            children: [
+              new TableCell({ children: [new Paragraph('Fecha')] }),
+              new TableCell({ children: [new Paragraph('Hora Inicio')] }),
+              new TableCell({ children: [new Paragraph('Terapeuta 1')] }),
+              new TableCell({ children: [new Paragraph('Paciente 1')] }),
+              new TableCell({ children: [new Paragraph('Terapeuta 2')] }),
+              new TableCell({ children: [new Paragraph('Paciente 2')] })
+            ]
+          })
         ];
 
         conflictos.forEach(c => {
-          rows.push(new TableRow({ children: [
-            new TableCell({ children: [new Paragraph(c.fecha || '')] }),
-            new TableCell({ children: [new Paragraph(c.hora_inicio1 || '')] }),
-            new TableCell({ children: [new Paragraph(getNombreCompleto(c, 'terapeuta1', 'psicologo1'))] }),
-            new TableCell({ children: [new Paragraph((c.paciente1_nombre || '') + ' ' + (c.paciente1_apellido || ''))] }),
-            new TableCell({ children: [new Paragraph(getNombreCompleto(c, 'terapeuta2', 'psicologo2'))] }),
-            new TableCell({ children: [new Paragraph((c.paciente2_nombre || '') + ' ' + (c.paciente2_apellido || ''))] })
-          ] }));
+          rows.push(new TableRow({
+            children: [
+              new TableCell({ children: [new Paragraph(c.fecha || '')] }),
+              new TableCell({ children: [new Paragraph(c.hora_inicio1 || '')] }),
+              new TableCell({ children: [new Paragraph(getNombreCompleto(c, 'terapeuta1', 'psicologo1'))] }),
+              new TableCell({ children: [new Paragraph((c.paciente1_nombre || '') + ' ' + (c.paciente1_apellido || ''))] }),
+              new TableCell({ children: [new Paragraph(getNombreCompleto(c, 'terapeuta2', 'psicologo2'))] }),
+              new TableCell({ children: [new Paragraph((c.paciente2_nombre || '') + ' ' + (c.paciente2_apellido || ''))] })
+            ]
+          }));
         });
 
         const doc = new Document({
@@ -479,9 +485,14 @@ const CoordinadorReportes = () => {
           <h1>Reportes y Estadísticas</h1>
           <p>Generación y gestión de reportes del sistema</p>
         </div>
-        <button className="btn-secondary" onClick={fetchReportes}>
-          <FiRefreshCw /> Actualizar
-        </button>
+        <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
+          <button className="btn-secondary" onClick={fetchReportes}>
+            <FiRefreshCw /> Actualizar
+          </button>
+        </div>
       </div>
 
       {/* Panel de Generación de Reportes */}
@@ -494,12 +505,12 @@ const CoordinadorReportes = () => {
             <FiBarChart2 /> Generar Reporte
           </button>
         </div>
-        
+
         <div className="form-grid">
           <div className="form-group">
             <label>Tipo de Reporte</label>
-            <select 
-              value={tipoReporte} 
+            <select
+              value={tipoReporte}
               onChange={(e) => setTipoReporte(e.target.value)}
               className="select-field"
             >
@@ -508,10 +519,10 @@ const CoordinadorReportes = () => {
               <option value="anual">Reporte Anual</option>
               <option value="coterapeutas">Reporte de Coterapeutas</option>
               <option value="clinico">Reporte Clínico</option>
-              
+
             </select>
           </div>
-          
+
           <div className="form-group">
             <label>Fecha Inicio</label>
             <input
@@ -521,7 +532,7 @@ const CoordinadorReportes = () => {
               className="input-field"
             />
           </div>
-          
+
           <div className="form-group">
             <label>Fecha Fin</label>
             <input
@@ -531,14 +542,14 @@ const CoordinadorReportes = () => {
               className="input-field"
             />
           </div>
-          
+
           <div className="form-group">
             <label>Formato (solo Word)</label>
             <select className="select-field" value="docx" disabled>
               <option value="docx">Word (.docx)</option>
             </select>
           </div>
-          
+
           {/* <div className="form-group" style={{ gridColumn: 'span 2' }}>
             <label>Parámetros Adicionales</label>
             <div className="grid-2 gap-10">
@@ -575,7 +586,7 @@ const CoordinadorReportes = () => {
           </div>
           <div className="text-small">+{estadisticas.pacientesNuevosMes || 0} nuevos en el período</div>
         </div>
-        
+
         <div className="card">
           <div className="flex-row align-center gap-10 mb-10">
             <FiCalendar size={24} style={{ color: 'var(--blu)' }} />
@@ -586,9 +597,9 @@ const CoordinadorReportes = () => {
           </div>
           <div className="text-small">de {estadisticas.totalCitas || 0} citas totales</div>
         </div>
-        
-        <div 
-          className="card" 
+
+        <div
+          className="card"
           style={{ cursor: motivosCancelacion.length > 0 ? 'pointer' : 'default' }}
           onClick={() => motivosCancelacion.length > 0 && setMotivosModalVisible(true)}
           title={motivosCancelacion.length > 0 ? 'Click para ver motivos principales' : ''}
@@ -619,15 +630,15 @@ const CoordinadorReportes = () => {
               <option value="coterapeutas">Coterapeutas</option>
               <option value="financiero">Financieros</option>
             </select>
-            <input 
-              type="text" 
-              className="input-field" 
+            <input
+              type="text"
+              className="input-field"
               placeholder="Buscar reporte..."
               style={{ width: '200px' }}
             />
           </div>
         </div>
-        
+
         <div className="table-container">
           <table className="data-table">
             <thead>
@@ -650,7 +661,7 @@ const CoordinadorReportes = () => {
                     </div>
                   </td>
                   <td>
-                    <span className="badge" style={{ 
+                    <span className="badge" style={{
                       background: getColorByTipo(reporte.tipo) + '20',
                       color: getColorByTipo(reporte.tipo),
                       borderColor: getColorByTipo(reporte.tipo)
@@ -663,14 +674,14 @@ const CoordinadorReportes = () => {
                   <td>{reporte.descargas}</td>
                   <td>
                     <div className="flex-row gap-5">
-                      <button 
+                      <button
                         className="btn-text"
                         onClick={() => descargarReporte(reporte.id)}
                         title="Descargar"
                       >
                         <FiDownload />
                       </button>
-                      <button 
+                      <button
                         className="btn-text"
                         onClick={() => abrirVistaPrevia(reporte.id)}
                         title="Vista previa"
@@ -693,7 +704,7 @@ const CoordinadorReportes = () => {
             <h3>📋 Reporte Generado Recientemente</h3>
             <button className="btn-text" onClick={() => setReporteGenerado(null)}>×</button>
           </div>
-          
+
           <div className="grid-2 gap-20">
             <div>
               <strong>Nombre:</strong> {reporteGenerado.nombre}
@@ -708,15 +719,15 @@ const CoordinadorReportes = () => {
               <strong>Generado por:</strong> {reporteGenerado.generado_por}
             </div>
           </div>
-          
+
           <div className="flex-row gap-10 mt-15">
-            <button 
+            <button
               className="btn-primary"
               onClick={() => descargarReporte(reporteGenerado.id)}
             >
               <FiDownload /> Descargar Reporte
             </button>
-            <button 
+            <button
               className="btn-secondary"
               onClick={() => abrirVistaPrevia(reporteGenerado.id)}
             >
@@ -729,7 +740,7 @@ const CoordinadorReportes = () => {
       {/* Vista Previa Modal */}
       {previewVisible && (
         <div className="modal-overlay">
-              <div className="modal-container modal-large">
+          <div className="modal-container modal-large">
             <div className="modal-header">
               <h3>Vista previa: {previewReport ? previewReport.nombre : 'Reporte'}</h3>
               <button className="btn-text" onClick={() => setPreviewVisible(false)}>×</button>
@@ -781,16 +792,16 @@ const CoordinadorReportes = () => {
                             <td>{item.cantidad}</td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{ 
-                                  width: '100px', 
-                                  height: '8px', 
-                                  background: '#e0e0e0', 
+                                <div style={{
+                                  width: '100px',
+                                  height: '8px',
+                                  background: '#e0e0e0',
                                   borderRadius: '4px',
                                   overflow: 'hidden'
                                 }}>
-                                  <div style={{ 
-                                    width: `${porcentaje}%`, 
-                                    height: '100%', 
+                                  <div style={{
+                                    width: `${porcentaje}%`,
+                                    height: '100%',
                                     background: 'var(--rr)',
                                     transition: 'width 0.3s ease'
                                   }}></div>
@@ -825,7 +836,7 @@ const CoordinadorReportes = () => {
             <li>Indicadores clave</li>
           </ul>
         </div>
-        
+
         <div className="card">
           <h4>👨‍⚕️ Reportes Clínicos</h4>
           <p className="text-small mt-10">Análisis de efectividad terapéutica y progreso</p>
@@ -836,7 +847,7 @@ const CoordinadorReportes = () => {
             <li>Satisfacción del paciente</li>
           </ul>
         </div>
-        
+
         <div className="card">
           <h4>👨‍🎓 Reportes de Coterapeutas</h4>
           <p className="text-small mt-10">Seguimiento y evaluación de coterapeutas</p>
@@ -847,8 +858,8 @@ const CoordinadorReportes = () => {
             <li>Áreas de mejora</li>
           </ul>
         </div>
-        
-        
+
+
       </div>
     </div>
   );

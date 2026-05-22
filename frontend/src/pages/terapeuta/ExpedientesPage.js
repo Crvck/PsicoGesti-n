@@ -3,6 +3,7 @@ import { FiSearch, FiFileText, FiCalendar, FiUser, FiPhone, FiMail, FiDownload, 
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 import ApiService from '../../services/api';
+import { createTherapistTour } from '../../utils/therapistTour';
 
 const PsicologoExpedientes = () => {
   const [expedientes, setExpedientes] = useState([]);
@@ -19,6 +20,7 @@ const PsicologoExpedientes = () => {
   const [sesionesPaciente, setSesionesPaciente] = useState([]);
   const [selectedSesion, setSelectedSesion] = useState(null);
   const [showSesionModal, setShowSesionModal] = useState(false);
+  const tour = createTherapistTour('expedientes');
 
   useEffect(() => {
     fetchExpedientes();
@@ -108,11 +110,11 @@ const PsicologoExpedientes = () => {
     try {
       notifications.info('Guardando cambios...');
       const token = localStorage.getItem('token');
-      
+
       const pacienteId = selectedExpediente.paciente_id || selectedExpediente.id;
       console.log('🔧 Guardando expediente para paciente:', pacienteId);
       console.log('🔧 Datos a guardar:', { selectedExpediente });
-      
+
       // Procesar medicamentos si es string JSON
       let medicamentos = editFormData.medicamentos;
       if (medicamentos && typeof medicamentos === 'string') {
@@ -161,7 +163,7 @@ const PsicologoExpedientes = () => {
 
       notifications.success('Cambios guardados exitosamente');
       setEditMode(false);
-      
+
       // Refrescar expediente
       showExpedienteDetalles(selectedExpediente);
     } catch (err) {
@@ -264,6 +266,9 @@ const PsicologoExpedientes = () => {
           <h1>Expedientes Clínicos</h1>
           <p>Historial clínico completo de pacientes</p>
         </div>
+        <button className="btn-secondary" onClick={() => tour.drive()}>
+          Tour
+        </button>
       </div>
 
       {/* Búsqueda */}
@@ -292,7 +297,7 @@ const PsicologoExpedientes = () => {
                   <p className="text-small">{expediente.edad} años</p>
                 </div>
               </div>
-              <button 
+              <button
                 className="btn-text"
                 onClick={() => exportarExpediente(expediente)}
                 title="Exportar expediente"
@@ -306,7 +311,7 @@ const PsicologoExpedientes = () => {
             </div>
 
             <div className="flex-row gap-10">
-              <button 
+              <button
                 className="btn-primary flex-1"
                 onClick={() => showExpedienteDetalles(expediente)}
               >
@@ -325,7 +330,7 @@ const PsicologoExpedientes = () => {
               <h3>Expediente Clínico de {selectedExpediente.paciente_nombre}</h3>
               <button className="modal-close" onClick={() => setShowDetalles(false)}>×</button>
             </div>
-            
+
             <div className="modal-content">
               {!editMode ? (
                 <>
@@ -345,13 +350,13 @@ const PsicologoExpedientes = () => {
                         <strong>Teléfono:</strong> {selectedExpediente.paciente?.telefono || 'No registrado'}
                       </div>
                       <div className="detail-row">
-                        <strong>Motivo de consulta:</strong> 
+                        <strong>Motivo de consulta:</strong>
                         <div style={{ marginTop: '5px', padding: '8px', background: 'var(--blud)', borderRadius: '6px' }}>
                           {selectedExpediente.motivo_consulta || selectedExpediente.paciente?.motivo_consulta || 'No especificado'}
                         </div>
                       </div>
                     </div>
-                    
+
                     <div>
                       <h4>Información Clínica</h4>
                       <div className="detail-row">
@@ -361,34 +366,34 @@ const PsicologoExpedientes = () => {
                         <strong>Diagnóstico definitivo:</strong> {selectedExpediente.diagnostico_definitivo || 'Pendiente'}
                       </div>
                       <div className="detail-row">
-                        <strong>Antecedentes médicos:</strong> 
+                        <strong>Antecedentes médicos:</strong>
                         <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
                           {selectedExpediente.antecedentes_medicos || 'No registrados'}
                         </div>
                       </div>
                       <div className="detail-row">
-                        <strong>Antecedentes psiquiátricos:</strong> 
+                        <strong>Antecedentes psiquiátricos:</strong>
                         <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
                           {selectedExpediente.antecedentes_psiquiatricos || 'No registrados'}
                         </div>
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="mt-20">
                     <h4>Tratamiento</h4>
                     <div className="detail-row">
-                      <strong>Tratamiento actual:</strong> 
+                      <strong>Tratamiento actual:</strong>
                       <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
                         {selectedExpediente.tratamiento_actual || 'Sin tratamiento registrado'}
                       </div>
                     </div>
                     <div className="detail-row">
-                      <strong>Medicamentos:</strong> 
+                      <strong>Medicamentos:</strong>
                       <div style={{ marginTop: '5px' }}>
                         {selectedExpediente.medicamentos ? (
-                          typeof selectedExpediente.medicamentos === 'string' 
-                            ? selectedExpediente.medicamentos 
+                          typeof selectedExpediente.medicamentos === 'string'
+                            ? selectedExpediente.medicamentos
                             : JSON.stringify(selectedExpediente.medicamentos, null, 2)
                         ) : 'Sin medicamentos registrados'}
                       </div>
@@ -397,7 +402,7 @@ const PsicologoExpedientes = () => {
                       <strong>Alergias:</strong> {selectedExpediente.alergias || 'No registradas'}
                     </div>
                   </div>
-                  
+
                   <div className="mt-20">
                     <h4>Evolución y Seguimiento</h4>
                     <div className="detail-row">
@@ -407,25 +412,25 @@ const PsicologoExpedientes = () => {
                       <strong>Última sesión:</strong> {selectedExpediente.ultima_evaluacion ? new Date(selectedExpediente.ultima_evaluacion).toLocaleDateString() : 'Sin registro'}
                     </div>
                     <div className="detail-row">
-                      <strong>Historia personal:</strong> 
+                      <strong>Historia personal:</strong>
                       <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
                         {selectedExpediente.historia_personal || 'No registrada'}
                       </div>
                     </div>
                     <div className="detail-row">
-                      <strong>Historia familiar:</strong> 
+                      <strong>Historia familiar:</strong>
                       <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
                         {selectedExpediente.historia_familiar || 'No registrada'}
                       </div>
                     </div>
                     <div className="detail-row">
-                      <strong>Redes de apoyo:</strong> 
+                      <strong>Redes de apoyo:</strong>
                       <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
                         {selectedExpediente.redes_apoyo || 'No registradas'}
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="mt-20">
                     <h4>Expedientes por Sesión</h4>
                     {sesionesPaciente.length > 0 ? (
@@ -466,7 +471,7 @@ const PsicologoExpedientes = () => {
                     <label>Tratamiento actual</label>
                     <textarea
                       value={editFormData.tratamiento_actual}
-                      onChange={(e) => setEditFormData({...editFormData, tratamiento_actual: e.target.value})}
+                      onChange={(e) => setEditFormData({ ...editFormData, tratamiento_actual: e.target.value })}
                       className="textarea-field"
                       rows="3"
                       placeholder="Descripción del tratamiento actual..."
@@ -477,7 +482,7 @@ const PsicologoExpedientes = () => {
                     <label>Medicamentos</label>
                     <textarea
                       value={editFormData.medicamentos}
-                      onChange={(e) => setEditFormData({...editFormData, medicamentos: e.target.value})}
+                      onChange={(e) => setEditFormData({ ...editFormData, medicamentos: e.target.value })}
                       className="textarea-field"
                       rows="3"
                       placeholder="Medicamentos y dosis (JSON o texto plano)"
@@ -488,7 +493,7 @@ const PsicologoExpedientes = () => {
                     <label>Alergias</label>
                     <textarea
                       value={editFormData.alergias}
-                      onChange={(e) => setEditFormData({...editFormData, alergias: e.target.value})}
+                      onChange={(e) => setEditFormData({ ...editFormData, alergias: e.target.value })}
                       className="textarea-field"
                       rows="2"
                       placeholder="Alergias registradas..."
@@ -499,7 +504,7 @@ const PsicologoExpedientes = () => {
                     <label>Historia personal</label>
                     <textarea
                       value={editFormData.historia_personal}
-                      onChange={(e) => setEditFormData({...editFormData, historia_personal: e.target.value})}
+                      onChange={(e) => setEditFormData({ ...editFormData, historia_personal: e.target.value })}
                       className="textarea-field"
                       rows="3"
                       placeholder="Historia personal del paciente..."
@@ -510,7 +515,7 @@ const PsicologoExpedientes = () => {
                     <label>Historia familiar</label>
                     <textarea
                       value={editFormData.historia_familiar}
-                      onChange={(e) => setEditFormData({...editFormData, historia_familiar: e.target.value})}
+                      onChange={(e) => setEditFormData({ ...editFormData, historia_familiar: e.target.value })}
                       className="textarea-field"
                       rows="3"
                       placeholder="Historia familiar relevante..."
@@ -521,7 +526,7 @@ const PsicologoExpedientes = () => {
                     <label>Antecedentes médicos</label>
                     <textarea
                       value={editFormData.antecedentes_medicos}
-                      onChange={(e) => setEditFormData({...editFormData, antecedentes_medicos: e.target.value})}
+                      onChange={(e) => setEditFormData({ ...editFormData, antecedentes_medicos: e.target.value })}
                       className="textarea-field"
                       rows="3"
                       placeholder="Antecedentes médicos relevantes..."
@@ -532,7 +537,7 @@ const PsicologoExpedientes = () => {
                     <label>Antecedentes psiquiátricos</label>
                     <textarea
                       value={editFormData.antecedentes_psiquiatricos}
-                      onChange={(e) => setEditFormData({...editFormData, antecedentes_psiquiatricos: e.target.value})}
+                      onChange={(e) => setEditFormData({ ...editFormData, antecedentes_psiquiatricos: e.target.value })}
                       className="textarea-field"
                       rows="3"
                       placeholder="Antecedentes psiquiátricos..."
@@ -543,7 +548,7 @@ const PsicologoExpedientes = () => {
                     <label>Redes de apoyo</label>
                     <textarea
                       value={editFormData.redes_apoyo}
-                      onChange={(e) => setEditFormData({...editFormData, redes_apoyo: e.target.value})}
+                      onChange={(e) => setEditFormData({ ...editFormData, redes_apoyo: e.target.value })}
                       className="textarea-field"
                       rows="2"
                       placeholder="Redes de apoyo disponibles para el paciente..."
@@ -552,7 +557,7 @@ const PsicologoExpedientes = () => {
                 </div>
               )}
             </div>
-            
+
             <div className="modal-footer">
               {!editMode ? (
                 <>
@@ -592,10 +597,10 @@ const PsicologoExpedientes = () => {
               <h3>Proponer Alta para {selectedExpediente.paciente_nombre}</h3>
               <button className="modal-close" onClick={() => setShowModalPropuesta(false)}>×</button>
             </div>
-            
+
             <div className="modal-content">
               <div className="alert-message info mb-20">
-                <strong>Nota:</strong> Al proponer este paciente para alta, el coordinador revisará 
+                <strong>Nota:</strong> Al proponer este paciente para alta, el coordinador revisará
                 tu evaluación y tomará la decisión final.
               </div>
 
@@ -603,7 +608,7 @@ const PsicologoExpedientes = () => {
                 <label>Evaluación Final *</label>
                 <select
                   value={propuestaData.evaluacion_final}
-                  onChange={(e) => setPropuestaData({...propuestaData, evaluacion_final: e.target.value})}
+                  onChange={(e) => setPropuestaData({ ...propuestaData, evaluacion_final: e.target.value })}
                   className="select-field"
                   required
                 >
@@ -619,22 +624,22 @@ const PsicologoExpedientes = () => {
                 <label>Recomendaciones para el seguimiento</label>
                 <textarea
                   value={propuestaData.recomendaciones}
-                  onChange={(e) => setPropuestaData({...propuestaData, recomendaciones: e.target.value})}
+                  onChange={(e) => setPropuestaData({ ...propuestaData, recomendaciones: e.target.value })}
                   className="textarea-field"
                   rows="5"
                   placeholder="Escribe tus recomendaciones, observaciones o seguimiento sugerido..."
                 />
               </div>
             </div>
-            
+
             <div className="modal-footer">
-              <button 
+              <button
                 className="btn-secondary"
                 onClick={() => setShowModalPropuesta(false)}
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 className="btn-primary"
                 onClick={enviarPropuestaAlta}
                 disabled={!propuestaData.evaluacion_final}

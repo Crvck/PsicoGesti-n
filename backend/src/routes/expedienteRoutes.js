@@ -8,8 +8,8 @@ const { requireRole } = require('../middlewares/roleMiddleware');
 router.use(verifyToken);
 
 // Obtener expedientes
-router.get('/paciente/:paciente_id/completo', requireRole(['terapeuta', 'coterapeuta', 'coordinador']), ExpedienteController.obtenerExpedienteCompleto);
-router.get('/paciente/:paciente_id/resumen', requireRole(['terapeuta', 'coterapeuta', 'coordinador']), ExpedienteController.obtenerResumenExpediente);
+router.get('/paciente/:paciente_id/completo', requireRole(['terapeuta', 'coterapeuta', 'psicopedagogico', 'coordinador']), ExpedienteController.obtenerExpedienteCompleto);
+router.get('/paciente/:paciente_id/resumen', requireRole(['terapeuta', 'coterapeuta', 'psicopedagogico', 'coordinador']), ExpedienteController.obtenerResumenExpediente);
 
 // Crear y actualizar expedientes
 router.post('/paciente/:paciente_id', requireRole(['terapeuta', 'coordinador']), ExpedienteController.crearExpediente);

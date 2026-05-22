@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
+import {
   FiClock, FiUser,
   FiChevronLeft, FiChevronRight, FiRefreshCw
 } from 'react-icons/fi';
@@ -8,6 +8,7 @@ import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } f
 import { es } from 'date-fns/locale';
 import notifications from '../../utils/notifications';
 import ConfiguracionService from '../../services/configuracionService';
+import { createTherapistTour } from '../../utils/therapistTour';
 import '../coordinador/coordinador.css';
 
 const PsicologoCitas = () => {
@@ -26,6 +27,7 @@ const PsicologoCitas = () => {
   const [pendingCancelCita, setPendingCancelCita] = useState(null);
   const [pendingCancelMotivo, setPendingCancelMotivo] = useState('');
   const [configCitas, setConfigCitas] = useState({ horarioInicio: '09:00', horarioFin: '20:00' });
+  const tour = createTherapistTour('citas');
 
   // Opciones predefinidas de motivos de cancelación
   const motivosCancelacionOpciones = [
@@ -50,9 +52,9 @@ const PsicologoCitas = () => {
         const payload = token?.split('.')[1];
         const json = payload ? JSON.parse(atob(payload)) : null;
         decodedUserId = json?.id || json?.userId || null;
-        
+
       } catch (_) {
-        
+
       }
 
       const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -66,9 +68,9 @@ const PsicologoCitas = () => {
         psicologo_id: decodedUserId || ''
       });
 
-        const apiUrl = process.env.REACT_APP_API_URL;
-        if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
-        const res = await fetch(`${apiUrl}/api/agenda/global?${query.toString()}`, { headers });
+      const apiUrl = process.env.REACT_APP_API_URL;
+      if (!apiUrl) throw new Error('REACT_APP_API_URL no definida');
+      const res = await fetch(`${apiUrl}/api/agenda/global?${query.toString()}`, { headers });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: 'Error en servidor' }));
@@ -396,6 +398,9 @@ const PsicologoCitas = () => {
           <p>Agenda de sesiones y supervisiones</p>
         </div>
         <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
           <button className="btn-secondary" onClick={fetchData}>
             <FiRefreshCw /> Actualizar
           </button>
@@ -407,14 +412,14 @@ const PsicologoCitas = () => {
           <button className="btn-header" onClick={goToPreviousWeek}>
             <FiChevronLeft /> Semana anterior
           </button>
-          
+
           <div className="current-date">
             <h3>{getWeekRange()}</h3>
             <div className="text-small">
               Total: <span style={{ fontWeight: 'bold' }}>{filteredCitas.length}</span>
             </div>
           </div>
-          
+
           <button className="btn-header" onClick={goToNextWeek}>
             Semana siguiente <FiChevronRight />
           </button>
@@ -432,8 +437,8 @@ const PsicologoCitas = () => {
         <div className="grid-2 gap-20">
           <div className="form-group">
             <label className="form-label">Filtrar por becario</label>
-            <select 
-              value={filterBecario} 
+            <select
+              value={filterBecario}
               onChange={(e) => setFilterBecario(e.target.value)}
               className="select-field"
             >
@@ -446,11 +451,11 @@ const PsicologoCitas = () => {
               <option value="sin_becario">Sin becario</option>
             </select>
           </div>
-          
+
           <div className="form-group">
             <label className="form-label">Filtrar por estado</label>
-            <select 
-              value={filterEstado} 
+            <select
+              value={filterEstado}
               onChange={(e) => setFilterEstado(e.target.value)}
               className="select-field"
             >
@@ -556,27 +561,26 @@ const PsicologoCitas = () => {
                   <div className="cita-time">
                     <FiClock /> {cita.hora} ({cita.duracion} min)
                   </div>
-                  <div 
-                    className={`cita-status badge ${
-                      cita.estado === 'confirmada' ? 'badge-success' :
-                      cita.estado === 'completada' ? 'badge-success' :
-                      cita.estado === 'programada' ? 'badge-warning' :
-                      'badge-danger'
-                    }`}
+                  <div
+                    className={`cita-status badge ${cita.estado === 'confirmada' ? 'badge-success' :
+                        cita.estado === 'completada' ? 'badge-success' :
+                          cita.estado === 'programada' ? 'badge-warning' :
+                            'badge-danger'
+                      }`}
                     style={
-                      (cita.estado === 'confirmada' || cita.estado === 'completada') 
-                        ? { backgroundColor: '#5b8666', color: '#28a745' } 
+                      (cita.estado === 'confirmada' || cita.estado === 'completada')
+                        ? { backgroundColor: '#5b8666', color: '#28a745' }
                         : cita.estado === 'cancelada'
-                        ? { backgroundColor: '#8a545a', color: '#dc3545' }
-                        : {}
+                          ? { backgroundColor: '#8a545a', color: '#dc3545' }
+                          : {}
                     }
                   >
-                    <span style={{ 
-                      color: (cita.estado === 'confirmada' || cita.estado === 'completada') 
-                        ? '#28a745' 
-                        : cita.estado === 'cancelada' 
-                        ? '#dc3545' 
-                        : 'inherit' 
+                    <span style={{
+                      color: (cita.estado === 'confirmada' || cita.estado === 'completada')
+                        ? '#28a745'
+                        : cita.estado === 'cancelada'
+                          ? '#dc3545'
+                          : 'inherit'
                     }}>
                       {cita.estado}
                     </span>
@@ -620,12 +624,12 @@ const PsicologoCitas = () => {
 
                 <div className="cita-card-footer">
                   {(cita.estado === 'confirmada' || cita.estado === 'completada') && (
-                    <div 
+                    <div
                       className="cita-status badge"
                       onClick={() => irARegistroSesion(cita)}
-                      style={{ 
-                        backgroundColor: '#1b87cfff', 
-                        color: '#fff', 
+                      style={{
+                        backgroundColor: '#1b87cfff',
+                        color: '#fff',
                         cursor: 'pointer',
                         border: 'none'
                       }}
@@ -656,7 +660,7 @@ const PsicologoCitas = () => {
             <p>Con becario: {citas.filter(c => c.becario_nombre).length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Tipos de Consulta</h4>``
           <div className="mt-10">
@@ -664,7 +668,7 @@ const PsicologoCitas = () => {
             <p>Virtual: {citas.filter(c => c.tipo_consulta === 'virtual').length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Notas</h4>
           <div className="mt-10">
@@ -715,7 +719,7 @@ const PsicologoCitas = () => {
                   className="select-field"
                   value={cancelMotivo}
                   onChange={(e) => setCancelMotivo(e.target.value)}
-                  style={{ 
+                  style={{
                     marginTop: '8px',
                     padding: '10px',
                     fontSize: '14px',
@@ -742,15 +746,15 @@ const PsicologoCitas = () => {
               )}
               {selectedCita?.estado === 'programada' ? (
                 <>
-                  <button 
-                    className="btn-danger" 
+                  <button
+                    className="btn-danger"
                     onClick={() => handleCancelarCita(selectedCita)}
                     style={{ backgroundColor: '#dc3545', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}
                   >
                     Cancelar cita
                   </button>
-                  <button 
-                    className="btn-success" 
+                  <button
+                    className="btn-success"
                     onClick={() => handleConfirmarCita(selectedCita)}
                     style={{ backgroundColor: '#28a745', color: '#fff', border: 'none', marginLeft: 'auto', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}
                   >

@@ -9,174 +9,174 @@ const sequelize = require('../config/db'); // AÑADE ESTA IMPORTACIÓN
 
 // Listar pacientes (solo coordinadores)
 router.get('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
-  try {
-    const query = `
+    try {
+        const query = `
       SELECT p.*, COALESCE(e.motivo_consulta, '') as motivo_consulta
       FROM pacientes p
       LEFT JOIN expedientes e ON p.id = e.paciente_id
       ORDER BY p.apellido, p.nombre
     `;
 
-    const pacientes = await sequelize.query(query, { type: QueryTypes.SELECT });
+        const pacientes = await sequelize.query(query, { type: QueryTypes.SELECT });
 
-    // DEBUG: mostrar cantidad y algunas muestras
-    try {
-      console.log(`GET /api/pacientes -> encontrados ${pacientes.length} pacientes`);
-      if (pacientes.length > 0) {
-        const muestras = pacientes.slice(0, 5).map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}`, motivo: p.motivo_consulta }));
-        console.log('Muestras pacientes:', muestras);
-      }
-    } catch (logErr) {
-      console.warn('No fue posible loggear pacientes:', logErr.message);
+        // DEBUG: mostrar cantidad y algunas muestras
+        try {
+            console.log(`GET /api/pacientes -> encontrados ${pacientes.length} pacientes`);
+            if (pacientes.length > 0) {
+                const muestras = pacientes.slice(0, 5).map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}`, motivo: p.motivo_consulta }));
+                console.log('Muestras pacientes:', muestras);
+            }
+        } catch (logErr) {
+            console.warn('No fue posible loggear pacientes:', logErr.message);
+        }
+
+        const mapped = pacientes.map(p => ({
+            id: p.id,
+            nombre: p.nombre,
+            apellido: p.apellido,
+            email: p.email,
+            telefono: p.telefono,
+            fecha_nacimiento: p.fecha_nacimiento,
+            genero: p.genero,
+            direccion: p.direccion,
+            estado: p.estado,
+            activo: p.activo,
+            notas: p.notas,
+            motivo_consulta: p.motivo_consulta || null,
+            fundacion_id: p.fundacion_id,
+            fecha_ingreso: p.created_at,
+            fecha_alta: p.deleted_at || null
+        }));
+
+        res.json(mapped);
+    } catch (error) {
+        console.error('Error al listar pacientes:', error);
+        res.status(500).json({ message: 'Error al obtener pacientes' });
     }
-
-    const mapped = pacientes.map(p => ({
-      id: p.id,
-      nombre: p.nombre,
-      apellido: p.apellido,
-      email: p.email,
-      telefono: p.telefono,
-      fecha_nacimiento: p.fecha_nacimiento,
-      genero: p.genero,
-      direccion: p.direccion,
-      estado: p.estado,
-      activo: p.activo,
-      notas: p.notas,
-      motivo_consulta: p.motivo_consulta || null,
-      fundacion_id: p.fundacion_id,
-      fecha_ingreso: p.created_at,
-      fecha_alta: p.deleted_at || null
-    }));
-
-    res.json(mapped);
-  } catch (error) {
-    console.error('Error al listar pacientes:', error);
-    res.status(500).json({ message: 'Error al obtener pacientes' });
-  }
 });
 
 // Crear paciente (solo coordinadores)
 router.post('/', verifyToken, requireRole(['coordinador']), async (req, res) => {
-  try {
-    const data = req.body;
-    if (!data.nombre || !data.apellido || !data.motivo_consulta) {
-      return res.status(400).json({ message: 'Faltan datos requeridos' });
-    }
+    try {
+        const data = req.body;
+        if (!data.nombre || !data.apellido || !data.motivo_consulta) {
+            return res.status(400).json({ message: 'Faltan datos requeridos' });
+        }
 
-    const paciente = await Paciente.create({
-      nombre: data.nombre,
-      apellido: data.apellido,
-      email: data.email || null,
-      telefono: data.telefono || null,
-      fecha_nacimiento: data.fecha_nacimiento || null,
-      genero: data.genero || null,
-      direccion: data.direccion || null,
-      estado: data.estado || 'activo',
-      activo: typeof data.activo === 'boolean' ? data.activo : true,
-      notas: data.antecedentes || null,
-      fundacion_id: data.fundacion_id || null
-    });
-
-    // Crear expediente inicial si se proporcionó motivo_consulta
-    if (data.motivo_consulta) {
-      try {
-        const expediente = await Expediente.create({
-          paciente_id: paciente.id,
-          motivo_consulta: data.motivo_consulta,
-          psicologo_id: data.psicologo_id || null
+        const paciente = await Paciente.create({
+            nombre: data.nombre,
+            apellido: data.apellido,
+            email: data.email || null,
+            telefono: data.telefono || null,
+            fecha_nacimiento: data.fecha_nacimiento || null,
+            genero: data.genero || null,
+            direccion: data.direccion || null,
+            estado: data.estado || 'activo',
+            activo: typeof data.activo === 'boolean' ? data.activo : true,
+            notas: data.antecedentes || null,
+            fundacion_id: data.fundacion_id || null
         });
-        console.log(`Se creó expediente inicial (paciente_id=${paciente.id}, expediente_id=${expediente.id})`);
-      } catch (err) {
-        // No bloquear la creación del paciente por error al crear expediente
-        console.warn('No se pudo crear expediente inicial:', err.message);
-      }
-    }
 
-    res.status(201).json({
-      id: paciente.id,
-      nombre: paciente.nombre,
-      apellido: paciente.apellido,
-      email: paciente.email,
-      telefono: paciente.telefono,
-      fecha_nacimiento: paciente.fecha_nacimiento,
-      genero: paciente.genero,
-      direccion: paciente.direccion,
-      estado: paciente.estado,
-      activo: paciente.activo,
-      fecha_ingreso: paciente.created_at,
-      sesiones_completadas: 0,
-      motivo_consulta: data.motivo_consulta || null
-    });
-  } catch (error) {
-    console.error('Error al crear paciente:', error);
-    res.status(500).json({ message: 'Error al crear paciente' });
-  }
+        // Crear expediente inicial si se proporcionó motivo_consulta
+        if (data.motivo_consulta) {
+            try {
+                const expediente = await Expediente.create({
+                    paciente_id: paciente.id,
+                    motivo_consulta: data.motivo_consulta,
+                    psicologo_id: data.psicologo_id || null
+                });
+                console.log(`Se creó expediente inicial (paciente_id=${paciente.id}, expediente_id=${expediente.id})`);
+            } catch (err) {
+                // No bloquear la creación del paciente por error al crear expediente
+                console.warn('No se pudo crear expediente inicial:', err.message);
+            }
+        }
+
+        res.status(201).json({
+            id: paciente.id,
+            nombre: paciente.nombre,
+            apellido: paciente.apellido,
+            email: paciente.email,
+            telefono: paciente.telefono,
+            fecha_nacimiento: paciente.fecha_nacimiento,
+            genero: paciente.genero,
+            direccion: paciente.direccion,
+            estado: paciente.estado,
+            activo: paciente.activo,
+            fecha_ingreso: paciente.created_at,
+            sesiones_completadas: 0,
+            motivo_consulta: data.motivo_consulta || null
+        });
+    } catch (error) {
+        console.error('Error al crear paciente:', error);
+        res.status(500).json({ message: 'Error al crear paciente' });
+    }
 });
 
 // Actualizar paciente (solo coordinadores)
 router.put('/:id', verifyToken, requireRole(['coordinador']), async (req, res) => {
-  try {
-    const id = req.params.id;
-    const paciente = await Paciente.findByPk(id);
-    if (!paciente) return res.status(404).json({ message: 'Paciente no encontrado' });
+    try {
+        const id = req.params.id;
+        const paciente = await Paciente.findByPk(id);
+        if (!paciente) return res.status(404).json({ message: 'Paciente no encontrado' });
 
-    const data = req.body;
-    const updated = await paciente.update({
-      nombre: data.nombre ?? paciente.nombre,
-      apellido: data.apellido ?? paciente.apellido,
-      email: data.email ?? paciente.email,
-      telefono: data.telefono ?? paciente.telefono,
-      fecha_nacimiento: data.fecha_nacimiento ?? paciente.fecha_nacimiento,
-      genero: data.genero ?? paciente.genero,
-      direccion: data.direccion ?? paciente.direccion,
-      estado: data.estado ?? paciente.estado,
-      activo: typeof data.activo === 'boolean' ? data.activo : paciente.activo,
-      notas: data.antecedentes ?? paciente.notas,
-      fundacion_id: data.fundacion_id ?? paciente.fundacion_id
-    });
+        const data = req.body;
+        const updated = await paciente.update({
+            nombre: data.nombre ?? paciente.nombre,
+            apellido: data.apellido ?? paciente.apellido,
+            email: data.email ?? paciente.email,
+            telefono: data.telefono ?? paciente.telefono,
+            fecha_nacimiento: data.fecha_nacimiento ?? paciente.fecha_nacimiento,
+            genero: data.genero ?? paciente.genero,
+            direccion: data.direccion ?? paciente.direccion,
+            estado: data.estado ?? paciente.estado,
+            activo: typeof data.activo === 'boolean' ? data.activo : paciente.activo,
+            notas: data.antecedentes ?? paciente.notas,
+            fundacion_id: data.fundacion_id ?? paciente.fundacion_id
+        });
 
-    res.json({
-      id: updated.id,
-      nombre: updated.nombre,
-      apellido: updated.apellido,
-      email: updated.email,
-      telefono: updated.telefono,
-      fecha_nacimiento: updated.fecha_nacimiento,
-      genero: updated.genero,
-      direccion: updated.direccion,
-      estado: updated.estado,
-      activo: updated.activo,
-      fecha_ingreso: updated.created_at
-    });
-  } catch (error) {
-    console.error('Error al actualizar paciente:', error);
-    res.status(500).json({ message: 'Error al actualizar paciente' });
-  }
+        res.json({
+            id: updated.id,
+            nombre: updated.nombre,
+            apellido: updated.apellido,
+            email: updated.email,
+            telefono: updated.telefono,
+            fecha_nacimiento: updated.fecha_nacimiento,
+            genero: updated.genero,
+            direccion: updated.direccion,
+            estado: updated.estado,
+            activo: updated.activo,
+            fecha_ingreso: updated.created_at
+        });
+    } catch (error) {
+        console.error('Error al actualizar paciente:', error);
+        res.status(500).json({ message: 'Error al actualizar paciente' });
+    }
 });
 
 // Eliminar paciente (soft-delete) (solo coordinadores)
 router.delete('/:id', verifyToken, requireRole(['coordinador']), async (req, res) => {
-  try {
-    const id = req.params.id;
-    const paciente = await Paciente.findByPk(id);
-    if (!paciente) return res.status(404).json({ message: 'Paciente no encontrado' });
+    try {
+        const id = req.params.id;
+        const paciente = await Paciente.findByPk(id);
+        if (!paciente) return res.status(404).json({ message: 'Paciente no encontrado' });
 
-    await paciente.update({ activo: false, estado: 'alta_terapeutica' });
+        await paciente.update({ activo: false, estado: 'alta_terapeutica' });
 
-    res.json({ message: 'Paciente inactivado correctamente', id: paciente.id });
-  } catch (error) {
-    console.error('Error al eliminar paciente:', error);
-    res.status(500).json({ message: 'Error al eliminar paciente' });
-  }
+        res.json({ message: 'Paciente inactivado correctamente', id: paciente.id });
+    } catch (error) {
+        console.error('Error al eliminar paciente:', error);
+        res.status(500).json({ message: 'Error al eliminar paciente' });
+    }
 });
 
-// Obtener pacientes activos (coordinador -> todos, terapeuta/coterapeuta -> solo asignados a él/ella)
-router.get('/activos', verifyToken, requireRole(['coordinador', 'terapeuta', 'coterapeuta']), async (req, res) => {
+// Obtener pacientes activos (coordinador -> todos, terapeuta/coterapeuta/psicopedagogico -> solo asignados a él/ella)
+router.get('/activos', verifyToken, requireRole(['coordinador', 'terapeuta', 'coterapeuta', 'psicopedagogico']), async (req, res) => {
     try {
         const userId = req.user.id;
         const [userRow] = await sequelize.query('SELECT rol FROM users WHERE id = ?', { replacements: [userId], type: QueryTypes.SELECT });
         const role = userRow && userRow.rol;
-        const isAssignedRole = role === 'terapeuta' || role === 'coterapeuta';
+        const isAssignedRole = role === 'terapeuta' || role === 'coterapeuta' || role === 'psicopedagogico';
 
         let whereAdditional = '';
         const replacements = {};
@@ -207,17 +207,17 @@ router.get('/activos', verifyToken, requireRole(['coordinador', 'terapeuta', 'co
             GROUP BY p.id, e.id, u_psi.id, u_bec.id, a.id
             ORDER BY p.apellido, p.nombre
         `;
-        
+
         const pacientes = await sequelize.query(query, {
             type: QueryTypes.SELECT,
             replacements
         });
-        
+
         res.json({
             success: true,
             data: pacientes
         });
-        
+
     } catch (error) {
         console.error('Error al obtener pacientes activos:', error);
         res.status(500).json({
@@ -230,8 +230,8 @@ router.get('/activos', verifyToken, requireRole(['coordinador', 'terapeuta', 'co
 
 // Obtener pacientes sin asignar (solo coordinador)
 router.get('/sin-asignar', verifyToken, requireRole(['coordinador']), async (req, res) => {
-  try {
-    const query = `
+    try {
+        const query = `
       SELECT p.id, p.nombre, p.apellido, COALESCE(e.motivo_consulta, '') as motivo_consulta, p.created_at as fecha_ingreso
       FROM pacientes p
       LEFT JOIN expedientes e ON p.id = e.paciente_id
@@ -241,30 +241,30 @@ router.get('/sin-asignar', verifyToken, requireRole(['coordinador']), async (req
       ORDER BY p.apellido, p.nombre
     `;
 
-    const pacientes = await sequelize.query(query, { type: QueryTypes.SELECT });
+        const pacientes = await sequelize.query(query, { type: QueryTypes.SELECT });
 
-    // DEBUG: mostrar algunos valores devueltos para verificar motivo_consulta
-    try {
-      console.log(`GET /api/pacientes/sin-asignar -> encontrados ${pacientes.length} pacientes`);
-      if (pacientes.length > 0) {
-        const muestras = pacientes.slice(0, 5).map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}`, motivo: p.motivo_consulta }));
-        console.log('Muestras:', muestras);
-      }
-    } catch (logErr) {
-      console.warn('No fue posible loggear pacientes sin asignar:', logErr.message);
+        // DEBUG: mostrar algunos valores devueltos para verificar motivo_consulta
+        try {
+            console.log(`GET /api/pacientes/sin-asignar -> encontrados ${pacientes.length} pacientes`);
+            if (pacientes.length > 0) {
+                const muestras = pacientes.slice(0, 5).map(p => ({ id: p.id, nombre: `${p.nombre} ${p.apellido}`, motivo: p.motivo_consulta }));
+                console.log('Muestras:', muestras);
+            }
+        } catch (logErr) {
+            console.warn('No fue posible loggear pacientes sin asignar:', logErr.message);
+        }
+
+        res.json({ success: true, data: pacientes });
+    } catch (error) {
+        console.error('Error al obtener pacientes sin asignar:', error);
+        res.status(500).json({ success: false, message: 'Error al obtener pacientes sin asignar', error: error.message });
     }
-
-    res.json({ success: true, data: pacientes });
-  } catch (error) {
-    console.error('Error al obtener pacientes sin asignar:', error);
-    res.status(500).json({ success: false, message: 'Error al obtener pacientes sin asignar', error: error.message });
-  }
 });
 
 router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeuta']), async (req, res) => {
     try {
         console.log('🔍 Solicitando candidatos a alta...');
-        
+
         // Query sin filtro por ultimo_no_aprobado (columna eliminada)
         const query = `
           SELECT 
@@ -289,14 +289,14 @@ router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeu
              AND SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) = COUNT(DISTINCT c.id)
           ORDER BY COUNT(DISTINCT c.id) DESC, paciente_nombre ASC
         `;
-        
+
         console.log('📊 Ejecutando query de candidatos a alta...');
         const candidatos = await sequelize.query(query, {
             type: QueryTypes.SELECT
         });
-        
+
         console.log(`✅ Candidatos encontrados: ${candidatos.length}`);
-        
+
         // Para debugging: mostrar qué pacientes se encontraron
         if (candidatos.length > 0) {
             console.log('📋 Lista de candidatos encontrados:');
@@ -304,17 +304,17 @@ router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeu
                 console.log(`${i + 1}. ${c.paciente_nombre} - ${c.sesiones_completadas} sesiones`);
             });
         }
-        
+
         res.json({
             success: true,
             data: candidatos
         });
-        
+
     } catch (error) {
         console.error('❌ Error CRÍTICO al obtener candidatos a alta:', error);
         console.error('📌 Mensaje de error:', error.message);
         console.error('📌 Stack trace:', error.stack);
-        
+
         // Para debugging: probar una query más simple
         try {
             console.log('🔄 Probando query alternativa...');
@@ -329,7 +329,7 @@ router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeu
         } catch (err) {
             console.error('❌ Error en query de prueba:', err.message);
         }
-        
+
         res.status(500).json({
             success: false,
             message: 'Error al obtener candidatos a alta: ' + error.message,
@@ -345,7 +345,7 @@ router.get('/candidatos-alta', verifyToken, requireRole(['coordinador', 'terapeu
 router.get('/:id', verifyToken, requireRole(['coordinador', 'terapeuta']), async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         const query = `
             SELECT 
                 p.*,
@@ -368,24 +368,24 @@ router.get('/:id', verifyToken, requireRole(['coordinador', 'terapeuta']), async
             WHERE p.id = ?
             GROUP BY p.id, e.id, u_psi.id, u_bec.id, a.id
         `;
-        
+
         const [paciente] = await sequelize.query(query, {
             replacements: [id],
             type: QueryTypes.SELECT
         });
-        
+
         if (!paciente) {
             return res.status(404).json({
                 success: false,
                 message: 'Paciente no encontrado'
             });
         }
-        
+
         res.json({
             success: true,
             data: paciente
         });
-        
+
     } catch (error) {
         console.error('Error al obtener paciente:', error);
         res.status(500).json({
@@ -400,7 +400,7 @@ router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 
     try {
         const { id } = req.params;
         const { motivo } = req.body;
-        
+
         // Registrar en logs o en una tabla específica
         await sequelize.query(`
             INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
@@ -408,7 +408,7 @@ router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 
         `, {
             replacements: [req.user.id, `Paciente ${id} no aprobado para alta - Motivo: ${motivo || 'Sin motivo especificado'}`]
         });
-        
+
         // También podrías crear una notificación para el psicólogo
         const [pacienteInfo] = await sequelize.query(`
             SELECT CONCAT(p.nombre, ' ', p.apellido) as paciente_nombre,
@@ -420,7 +420,7 @@ router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 
             replacements: [id],
             type: QueryTypes.SELECT
         });
-        
+
         if (pacienteInfo && pacienteInfo.psicologo_id) {
             await sequelize.query(`
                 INSERT INTO notificaciones (usuario_id, tipo, titulo, mensaje, created_at)
@@ -430,12 +430,12 @@ router.post('/:id/marcar-no-aprobado', verifyToken, requireRole(['coordinador', 
                 replacements: [pacienteInfo.psicologo_id, pacienteInfo.paciente_nombre]
             });
         }
-        
+
         res.json({
             success: true,
             message: 'Paciente marcado como no aprobado para alta'
         });
-        
+
     } catch (error) {
         console.error('Error al marcar paciente como no aprobado:', error);
         res.status(500).json({
@@ -449,19 +449,19 @@ router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'te
     try {
         const { id } = req.params;
         const { motivo } = req.body || {}; // Agregar campo para motivo
-        
+
         console.log(`📝 Marcando paciente ${id} como no aprobado...`);
-        
+
         // Verificar que el paciente existe y está activo
         const paciente = await Paciente.findByPk(id);
-        
+
         if (!paciente || !paciente.activo) {
             return res.status(404).json({
                 success: false,
                 message: 'Paciente no encontrado o ya inactivo'
             });
         }
-        
+
         // 1. Obtener estadísticas del paciente
         const [estadisticas] = await sequelize.query(`
             SELECT 
@@ -474,7 +474,7 @@ router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'te
             replacements: [id],
             type: QueryTypes.SELECT
         });
-        
+
         // 2. Crear registro en la tabla altas con tipo 'no_aprobado'
         await sequelize.query(`
             INSERT INTO altas (
@@ -495,9 +495,9 @@ router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'te
                 estadisticas?.sesiones_completadas || 0
             ]
         });
-        
+
         // 3. (Eliminado) No se actualiza columna ultimo_no_aprobado porque no existe
-        
+
         // 4. Registrar en logs
         await sequelize.query(`
             INSERT INTO logs_sistema (usuario_id, tipo_log, modulo, accion, descripcion, created_at)
@@ -505,7 +505,7 @@ router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'te
         `, {
             replacements: [req.user.id, `Paciente ${id} (${paciente.nombre} ${paciente.apellido}) NO APROBADO para alta`]
         });
-        
+
         // 5. Obtener el ID del registro de alta creado
         const [altaCreada] = await sequelize.query(`
             SELECT * FROM altas 
@@ -517,9 +517,9 @@ router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'te
             replacements: [id],
             type: QueryTypes.SELECT
         });
-        
+
         console.log(`✅ Paciente ${id} registrado como NO APROBADO en tabla altas`);
-        
+
         res.json({
             success: true,
             message: 'Paciente registrado como no aprobado para alta',
@@ -531,7 +531,7 @@ router.post('/:id/no-aprobar-alta', verifyToken, requireRole(['coordinador', 'te
                 tipo_alta: 'no_aprobado'
             }
         });
-        
+
     } catch (error) {
         console.error('❌ Error al marcar paciente como no aprobado:', error);
         console.error('📌 Detalles del error:', error.message);

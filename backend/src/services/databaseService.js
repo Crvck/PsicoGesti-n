@@ -3,11 +3,11 @@ const { randomUUID } = require('crypto');
 const { QueryTypes } = require('sequelize');
 
 class DatabaseService {
-    
+
     static async obtenerCitaPorId(citaId) {
         try {
             console.log('🔍 obtenerCitaPorId - citaId recibido:', citaId, 'tipo:', typeof citaId);
-            
+
             const query = `
                 SELECT 
                     c.id,
@@ -36,56 +36,56 @@ class DatabaseService {
                 LEFT JOIN users u_coter ON c.coterapeuta_id = u_coter.id
                 WHERE c.id = :citaId
             `;
-            
+
             const [result] = await sequelize.query(query, {
                 replacements: { citaId },
                 type: QueryTypes.SELECT
             });
-            
+
             console.log('✅ Cita encontrada:', result ? 'Sí' : 'No');
-            
+
             return result || null;
-            
+
         } catch (error) {
             console.error('Error en obtenerCitaPorId:', error);
             throw error;
         }
     }
-    
+
     static async obtenerCitasPorPaciente(pacienteId) {
         try {
             console.log('🔍 obtenerCitasPorPaciente - pacienteId recibido:', pacienteId, 'tipo:', typeof pacienteId);
-            
+
             // Primero obtener el paciente
             const [paciente] = await sequelize.query(
                 'SELECT id, nombre, apellido FROM pacientes WHERE id = :pacienteId',
                 { replacements: { pacienteId }, type: QueryTypes.SELECT }
             );
-            
+
             if (!paciente) {
                 console.log('❌ Paciente no encontrado');
                 return [];
             }
-            
+
             console.log('👤 Paciente encontrado:', paciente);
-            
+
             // Buscar todos los IDs de pacientes duplicados (mismo nombre y apellido)
             const duplicados = await sequelize.query(
                 `SELECT id FROM pacientes 
                  WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(:nombre)) 
                  AND LOWER(TRIM(apellido)) = LOWER(TRIM(:apellido))`,
-                { 
-                    replacements: { 
-                        nombre: paciente.nombre, 
-                        apellido: paciente.apellido 
-                    }, 
-                    type: QueryTypes.SELECT 
+                {
+                    replacements: {
+                        nombre: paciente.nombre,
+                        apellido: paciente.apellido
+                    },
+                    type: QueryTypes.SELECT
                 }
             );
-            
+
             const pacienteIds = duplicados.map(p => p.id);
             console.log('🔄 IDs de pacientes duplicados:', pacienteIds);
-            
+
             // Buscar citas de cualquiera de los pacientes duplicados
             const query = `
                 SELECT 
@@ -107,27 +107,27 @@ class DatabaseService {
                 WHERE c.paciente_id IN (:pacienteIds)
                 ORDER BY c.fecha DESC, c.hora DESC
             `;
-            
+
             console.log('📝 Ejecutando query con pacienteIds:', pacienteIds);
-            
+
             const results = await sequelize.query(query, {
                 replacements: { pacienteIds },
                 type: QueryTypes.SELECT
             });
-            
+
             console.log('✅ Resultados obtenidos:', results.length);
             if (results.length > 0) {
                 console.log('📋 Primera cita encontrada:', results[0]);
             }
-            
+
             return results;
-            
+
         } catch (error) {
             console.error('Error en obtenerCitasPorPaciente:', error);
             throw error;
         }
     }
-    
+
     static async obtenerCitasPorFechaBecario(fecha, becarioId = null) {
         try {
             let query = `
@@ -147,21 +147,21 @@ class DatabaseService {
                 LEFT JOIN users u_bec ON c.becario_id = u_bec.id
                 WHERE DATE(c.fecha) = :fecha
             `;
-            
+
             const params = { fecha };
-            
+
             if (becarioId !== null && becarioId !== undefined) {
                 query += ` AND c.becario_id = :becarioId`;
                 params.becarioId = becarioId;
             }
-            
+
             query += ` ORDER BY c.hora`;
-            
+
             const results = await sequelize.query(query, {
                 replacements: params,
                 type: QueryTypes.SELECT
             });
-            
+
             // Mapea los resultados para usar los nombres correctos
             return results.map(row => {
                 return {
@@ -171,7 +171,7 @@ class DatabaseService {
                     notas: row.notas || ''
                 };
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerCitasPorFechaBecario:', error);
             throw error;
@@ -180,13 +180,13 @@ class DatabaseService {
     // En /src/services/databaseService.js
     static async crearNuevaCita(datosCita) {
         const transaction = await sequelize.transaction();
-        
+
         try {
             console.log('🔧 Creando nueva cita con datos:', datosCita);
-            
+
             // 1. Buscar o crear el paciente
             let paciente;
-            
+
             // Primero intentar buscar por nombre y apellido con TRIM
             const [pacienteExistente] = await sequelize.query(`
                 SELECT id FROM pacientes 
@@ -200,7 +200,7 @@ class DatabaseService {
                 },
                 transaction
             });
-            
+
             if (pacienteExistente && pacienteExistente.length > 0) {
                 // Usar paciente existente
                 paciente = pacienteExistente[0];
@@ -210,9 +210,9 @@ class DatabaseService {
                 console.log('📋 Creando nuevo paciente');
                 const [resultadoPaciente] = await sequelize.query(`
                     INSERT INTO pacientes (
-                        nombre, apellido, email, telefono, estado, activo, created_at
+                        nombre, apellido, email, telefono, estado, activo, created_at, updated_at
                     ) VALUES (
-                        :nombre, :apellido, :email, :telefono, 'activo', TRUE, NOW()
+                        :nombre, :apellido, :email, :telefono, 'activo', TRUE, NOW(), NOW()
                     )
                     `, {
                     replacements: {
@@ -222,32 +222,32 @@ class DatabaseService {
                         telefono: datosCita.paciente.telefono || null
                     },
                     transaction
-                    });
+                });
 
-                    const [[pacienteInsertado]] = await sequelize.query(
+                const [[pacienteInsertado]] = await sequelize.query(
                     'SELECT LAST_INSERT_ID() AS id',
                     { transaction }
-                    );
+                );
 
-                    paciente = { id: pacienteInsertado.id };
+                paciente = { id: pacienteInsertado.id };
 
                 console.log('✅ Nuevo paciente creado con ID:', paciente.id);
             }
-            
-            // 2. Verificar que el becario existe si se especificó
+
+            // 2. Verificar que el profesional de apoyo existe si se especificó
             if (datosCita.becario_id) {
                 const [becario] = await sequelize.query(`
-                    SELECT id FROM users WHERE id = :becario_id AND rol IN ('becario', 'coterapeuta')
+                    SELECT id FROM users WHERE id = :becario_id AND rol IN ('becario', 'coterapeuta', 'psicopedagogico')
                 `, {
                     replacements: { becario_id: datosCita.becario_id },
                     transaction
                 });
-                
+
                 if (!becario || becario.length === 0) {
-                    throw new Error('El coterapeuta/becario especificado no existe');
+                    throw new Error('El profesional de apoyo especificado no existe');
                 }
             }
-            
+
             const totalSesiones = Math.max(1, Number(datosCita.total_sesiones || 1));
             const repetirSemanal = totalSesiones > 1;
             const serieId = totalSesiones > 1 ? (datosCita.serie_id || randomUUID()) : null;
@@ -373,7 +373,7 @@ class DatabaseService {
 
                 citasCreadas.push(citaCreada[0]);
             }
-            
+
             // 6. Registrar en logs
             await sequelize.query(`
                 INSERT INTO logs_sistema (
@@ -382,19 +382,19 @@ class DatabaseService {
                     :usuarioId, 'creacion', 'citas', 'nueva_cita', :descripcion, JSON_OBJECT('paciente_id', :pacienteId), NOW()
                 )
             `, {
-                replacements: { 
+                replacements: {
                     usuarioId: datosCita.usuarioId,
                     pacienteId: paciente.id,
-                    descripcion: `Nueva cita creada para ${datosCita.fecha} ${datosCita.hora} (sesiones: ${totalSesiones})` 
+                    descripcion: `Nueva cita creada para ${datosCita.fecha} ${datosCita.hora} (sesiones: ${totalSesiones})`
                 },
                 transaction
             });
-            
+
             await transaction.commit();
             console.log('✅ Cita creada exitosamente');
-            
+
             return citasCreadas.length === 1 ? citasCreadas[0] : citasCreadas;
-            
+
         } catch (error) {
             await transaction.rollback();
             console.error('❌ Error en crearNuevaCita:', error);
@@ -402,7 +402,7 @@ class DatabaseService {
             throw error;
         }
     }
-    
+
 
     /**
      * Reemplaza: sp_generar_reporte_mensual
@@ -424,40 +424,40 @@ class DatabaseService {
                     AND MONTH(c.fecha) = :mes 
                     AND YEAR(c.fecha) = :anio
             `;
-            
+
             const params = { mes, anio };
-            
+
             if (psicologoId !== null && psicologoId !== undefined) {
                 query += ` AND c.psicologo_id = :psicologoId`;
                 params.psicologoId = psicologoId;
             }
-            
+
             query += `
                 WHERE p.activo = TRUE
                 GROUP BY p.id, p.nombre, p.apellido
                 ORDER BY p.apellido, p.nombre
             `;
-            
+
             const [results] = await sequelize.query(query, {
                 replacements: params,
                 type: sequelize.QueryTypes.SELECT
             });
-            
+
             return results;
-            
+
         } catch (error) {
             console.error('Error en generarReporteMensual:', error);
             throw error;
         }
     }
-    
+
     /**
      * Reemplaza: tr_after_insert_alta
      * Realiza transacción atómica para dar de alta paciente
      */
     static async darAltaPaciente(pacienteId, tipoAlta, usuarioId, notas = null) {
         const transaction = await sequelize.transaction();
-        
+
         try {
             // 1. Insertar en altas
             await sequelize.query(`
@@ -467,7 +467,7 @@ class DatabaseService {
                 replacements: { pacienteId, tipoAlta, usuarioId, notas },
                 transaction
             });
-            
+
             // 2. Actualizar paciente
             await sequelize.query(`
                 UPDATE pacientes 
@@ -479,7 +479,7 @@ class DatabaseService {
                 replacements: { tipoAlta, pacienteId },
                 transaction
             });
-            
+
             // 3. Cancelar citas futuras
             await sequelize.query(`
                 UPDATE citas 
@@ -493,7 +493,7 @@ class DatabaseService {
                 replacements: { pacienteId },
                 transaction
             });
-            
+
             // 4. Registrar en logs
             await sequelize.query(`
                 INSERT INTO logs_sistema (
@@ -502,19 +502,19 @@ class DatabaseService {
                     :usuarioId, 'modificacion', 'pacientes', 'alta_paciente', :descripcion, JSON_OBJECT('paciente_id', :pacienteId), NOW()
                 )
             `, {
-                replacements: { 
-                    usuarioId, 
+                replacements: {
+                    usuarioId,
                     pacienteId,
-                    descripcion: `Alta tipo: ${tipoAlta}` 
+                    descripcion: `Alta tipo: ${tipoAlta}`
                 },
                 transaction
             });
-            
+
             // Commit de la transacción
             await transaction.commit();
-            
+
             return true;
-            
+
         } catch (error) {
             // Rollback en caso de error
             await transaction.rollback();
@@ -567,14 +567,14 @@ class DatabaseService {
             throw error;
         }
     }
-    
+
     /**
      * Reemplaza: tr_after_update_cita
      * Actualiza cita y maneja notificaciones
      */
     static async actualizarCita(citaId, updates, usuarioId) {
         const transaction = await sequelize.transaction();
-        
+
         try {
             // 1. Obtener datos actuales
             const [citaActual] = await sequelize.query(`
@@ -584,7 +584,7 @@ class DatabaseService {
                 type: sequelize.QueryTypes.SELECT,
                 transaction
             });
-            
+
             if (!citaActual) {
                 throw new Error('Cita no encontrada');
             }
@@ -611,34 +611,34 @@ class DatabaseService {
                     updates.numero_sesion = numeroSesionNuevo;
                 }
             }
-            
+
             // 2. Construir query de actualización
             const setClauses = [];
             const params = { citaId };
-            
+
             for (const [key, value] of Object.entries(updates)) {
                 setClauses.push(`${key} = :${key}`);
                 params[key] = value;
             }
-            
+
             const updateQuery = `
                 UPDATE citas 
                 SET ${setClauses.join(', ')}, updated_at = NOW()
                 WHERE id = :citaId
             `;
-            
+
             // 3. Actualizar cita
             await sequelize.query(updateQuery, {
                 replacements: params,
                 transaction
             });
-            
+
             // 4. Verificar cambios importantes para notificaciones
-            const cambiosImportantes = 
+            const cambiosImportantes =
                 (updates.fecha && updates.fecha !== citaActual.fecha) ||
                 (updates.hora && updates.hora !== citaActual.hora) ||
                 (updates.tipo_consulta && updates.tipo_consulta !== citaActual.tipo_consulta);
-            
+
             // 5. Crear notificaciones si hay cambios importantes
             if (cambiosImportantes) {
                 // Obtener paciente email si existe
@@ -649,17 +649,17 @@ class DatabaseService {
                     type: sequelize.QueryTypes.SELECT,
                     transaction
                 });
-                
+
                 if (paciente && paciente.email) {
                     // Crear notificación para el paciente (si tuvieras tabla notificaciones)
                     // await sequelize.query(...)
                 }
-                
+
                 // Notificar al psicólogo y becario si están asignados
                 const usuariosNotificar = [];
                 if (citaActual.psicologo_id) usuariosNotificar.push(citaActual.psicologo_id);
                 if (citaActual.becario_id) usuariosNotificar.push(citaActual.becario_id);
-                
+
                 for (const userId of usuariosNotificar) {
                     await sequelize.query(`
                         INSERT INTO notificaciones (
@@ -680,7 +680,7 @@ class DatabaseService {
                     });
                 }
             }
-            
+
             // 6. Obtener la cita actualizada para devolverla y usar en logs
             const [citaActualizadaArray] = await sequelize.query(`
                 SELECT 
@@ -721,14 +721,14 @@ class DatabaseService {
 
             await transaction.commit();
             return citaActualizada;
-            
+
         } catch (error) {
             await transaction.rollback();
             console.error('Error en actualizarCita:', error);
             throw error;
         }
     }
-    
+
     /**
      * Obtener estadísticas generales
      */
@@ -745,21 +745,21 @@ class DatabaseService {
                 FROM citas
                 WHERE fecha BETWEEN :fechaInicio AND :fechaFin
             `;
-            
+
             const params = { fechaInicio, fechaFin };
-            
+
             if (psicologoId !== null && psicologoId !== undefined) {
                 query += ` AND psicologo_id = :psicologoId`;
                 params.psicologoId = psicologoId;
             }
-            
+
             const [result] = await sequelize.query(query, {
                 replacements: params,
                 type: sequelize.QueryTypes.SELECT
             });
-            
+
             return result;
-            
+
         } catch (error) {
             console.error('Error en obtenerEstadisticas:', error);
             throw error;

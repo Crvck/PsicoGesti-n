@@ -8,7 +8,7 @@ class DashboardService {
       const response = await ApiService.getDashboardCoordinador();
       console.log('Respuesta recibida:', response);
       // Ajuste: A veces axios devuelve la data en response.data, a veces directo.
-      return response.data || response; 
+      return response.data || response;
     } catch (error) {
       console.error('Error obteniendo dashboard coordinador:', error);
       throw error;
@@ -40,9 +40,9 @@ class DashboardService {
   static async aprobarSolicitud(id, rol) {
     try {
       console.log('DashboardService.aprobarSolicitud called with:', { id, rol });
-      const response = await ApiService.post('/dashboard/aprobar-solicitud', { 
-        solicitudId: id, 
-        rolAsignado: rol 
+      const response = await ApiService.post('/dashboard/aprobar-solicitud', {
+        solicitudId: id,
+        rolAsignado: rol
       });
       console.log('DashboardService response:', response);
       return response.data;
@@ -56,8 +56,8 @@ class DashboardService {
   static async denegarSolicitud(id) {
     try {
       console.log('DashboardService.denegarSolicitud called with:', { id });
-      const response = await ApiService.post('/dashboard/denegar-solicitud', { 
-        solicitudId: id 
+      const response = await ApiService.post('/dashboard/denegar-solicitud', {
+        solicitudId: id
       });
       console.log('DashboardService denegar response:', response);
       return response.data;
@@ -73,22 +73,22 @@ class DashboardService {
     if (!datosBackend) {
       throw new Error('No se recibieron datos del backend');
     }
-    
+
     console.log('transformarDatosCoordinador recibió:', datosBackend);
-    
+
     // 1. EXTRAEMOS LOS DATOS (Incluyendo 'solicitudes')
-    const { 
-      estadisticas = {}, 
-      top_terapeutas = [], 
+    const {
+      estadisticas = {},
+      top_terapeutas = [],
       coterapeutas_con_carga = [],
       actividad_reciente = [],
-      alertas = [], 
-      evolucion_mensual = [], 
+      alertas = [],
+      evolucion_mensual = [],
       citas_por_dia = [],
       solicitudes_pendientes = [],
       solicitudes = [] // <--- Correcto
     } = datosBackend;
-    
+
     // Transformar estadísticas principales
     const estadisticasTransformadas = {
       coterapeutasActivos: estadisticas.coterapeutas_activos || 0,
@@ -100,15 +100,15 @@ class DashboardService {
     };
 
     // Transformar actividad reciente
-    const actividadRecienteTr = actividad_reciente.length > 0 
+    const actividadRecienteTr = Array.isArray(actividad_reciente)
       ? actividad_reciente.map(act => ({
-          id: act.id,
-          tipo: act.tipo_evento,
-          descripcion: `${act.tipo_evento} de ${act.paciente_nombre}`,
-          fecha: act.fecha_evento,
-          usuario: act.nombre_usuario || 'Sistema'
-        }))
-      : this.generarActividadReciente(datosBackend);
+        id: act.id,
+        tipo: act.tipo_evento,
+        descripcion: `${act.tipo_evento} de ${act.paciente_nombre}`,
+        fecha: act.fecha_evento,
+        usuario: act.nombre_usuario || ''
+      }))
+      : [];
 
     // Transformar distribución de citas por terapeuta
     const terapeutasData = top_terapeutas;
@@ -139,11 +139,11 @@ class DashboardService {
     // 2. RETORNAMOS EL OBJETO COMPLETO (Incluyendo solicitudes)
     const solicitudesTransformadas = (solicitudes_pendientes.length > 0 ? solicitudes_pendientes : solicitudes).map(sol => ({
       id: sol.id,
-      nombre: sol.nombre_completo || sol.nombre || 'Sin nombre',
+      nombre: sol.nombre_completo || sol.nombre || '',
       email: sol.email || '',
       telefono: sol.telefono || '',
-      rol: sol.rol_solicitado || sol.rol || 'No especificado',
-      fecha: sol.fecha_solicitud || sol.fecha || new Date().toISOString(),
+      rol: sol.rol_solicitado || sol.rol || '',
+      fecha: sol.fecha_solicitud || sol.fecha || '',
       estado: sol.estado || 'PENDIENTE',
       matricula: sol.matricula || '',
       institucion: sol.institucion_procedencia || sol.institucion || '',
@@ -153,7 +153,7 @@ class DashboardService {
     }));
     const solicitudesFinales = solicitudesTransformadas;
     console.log('Solicitudes finales:', solicitudesFinales);
-    
+
     return {
       estadisticas: estadisticasTransformadas,
       actividadReciente: actividadRecienteTr,
@@ -179,64 +179,6 @@ class DashboardService {
     return colores[id % colores.length];
   }
 
-  static generarActividadReciente(datosBackend) {
-    const actividades = [];
-    const ahora = new Date().toISOString();
-    
-    if (datosBackend.estadisticas) {
-      if (datosBackend.estadisticas.altas_hoy > 0) {
-        actividades.push({
-          id: 1,
-          tipo: 'alta_paciente',
-          descripcion: `${datosBackend.estadisticas.altas_hoy} paciente(s) dado(s) de alta hoy`,
-          fecha: ahora,
-          usuario: 'Sistema'
-        });
-      }
-
-      if (datosBackend.estadisticas.pacientes_nuevos_hoy > 0) {
-        actividades.push({
-          id: 2,
-          tipo: 'nuevo_paciente',
-          descripcion: `${datosBackend.estadisticas.pacientes_nuevos_hoy} nuevo(s) paciente(s) registrado(s) hoy`,
-          fecha: ahora,
-          usuario: 'Sistema'
-        });
-      }
-
-      if (datosBackend.estadisticas.citas_hoy > 0) {
-        actividades.push({
-          id: 3,
-          tipo: 'citas_hoy',
-          descripcion: `${datosBackend.estadisticas.citas_hoy} cita(s) programada(s) para hoy`,
-          fecha: ahora,
-          usuario: 'Sistema'
-        });
-      }
-
-      if (datosBackend.estadisticas.citas_completadas_hoy > 0) {
-        actividades.push({
-          id: 4,
-          tipo: 'citas_completadas',
-          descripcion: `${datosBackend.estadisticas.citas_completadas_hoy} cita(s) completada(s) hoy`,
-          fecha: ahora,
-          usuario: 'Sistema'
-        });
-      }
-    }
-
-    if (actividades.length === 0) {
-      actividades.push({
-        id: 1,
-        tipo: 'sistema',
-        descripcion: 'Sistema sincronizado con el backend',
-        fecha: ahora,
-        usuario: 'Sistema'
-      });
-    }
-
-    return actividades;
-  }
 }
 
 export default DashboardService;

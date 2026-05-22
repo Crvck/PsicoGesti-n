@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FiSettings, FiSave, FiUpload, FiDownload, 
+import {
+  FiSettings, FiSave, FiUpload, FiDownload,
   FiDatabase, FiBell, FiCalendar, FiUsers,
   FiShield, FiGlobe, FiMail, FiLock
 } from 'react-icons/fi';
@@ -8,6 +8,7 @@ import './coordinador.css';
 import notifications from '../../utils/notifications';
 import confirmations from '../../utils/confirmations';
 import ConfiguracionService from '../../services/configuracionService';
+import { createCoordinatorTour } from '../../utils/coordinatorTour';
 
 const DEFAULT_CONFIG = {
   general: {
@@ -74,6 +75,7 @@ const CoordinadorConfiguracion = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [tour] = useState(() => createCoordinatorTour('configuracion'));
 
   const tabs = [
     { id: 'general', label: 'General', icon: <FiSettings /> },
@@ -137,18 +139,18 @@ const CoordinadorConfiguracion = () => {
       const payload = configuraciones[categoria] || {};
       const payloadClinica = categoria === 'clinica'
         ? {
-            ...payload,
-            maxPacientesPsicologo: payload.maxPacientesTerapeuta ?? payload.maxPacientesPsicologo,
-            maxPacientesBecario: payload.maxPacientesCoterapeuta ?? payload.maxPacientesBecario
-          }
+          ...payload,
+          maxPacientesPsicologo: payload.maxPacientesTerapeuta ?? payload.maxPacientesPsicologo,
+          maxPacientesBecario: payload.maxPacientesCoterapeuta ?? payload.maxPacientesBecario
+        }
         : payload;
 
       const response = await ConfiguracionService.guardarCategoria(categoria, payloadClinica);
       const valoresActualizados = response?.data || payload;
       setConfiguraciones(prev => ({ ...prev, [categoria]: valoresActualizados }));
-      setMessage({ 
-        type: 'success', 
-        text: response?.message || `Configuración ${categoria} guardada exitosamente` 
+      setMessage({
+        type: 'success',
+        text: response?.message || `Configuración ${categoria} guardada exitosamente`
       });
     } catch (error) {
       console.error('Error al guardar la configuración:', error);
@@ -163,14 +165,14 @@ const CoordinadorConfiguracion = () => {
 
   const exportarConfiguracion = () => {
     const dataStr = JSON.stringify(configuraciones, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
     const exportFileDefaultName = `configuracion-psicogestion-${new Date().toISOString().split('T')[0]}.json`;
-    
+
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
     linkElement.click();
-    
+
     setMessage({ type: 'success', text: 'Configuración exportada exitosamente' });
     setTimeout(() => setMessage({ type: '', text: '' }), 3000);
   };
@@ -178,7 +180,7 @@ const CoordinadorConfiguracion = () => {
   const importarConfiguracion = (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    
+
     setSaving(true);
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -202,7 +204,7 @@ const CoordinadorConfiguracion = () => {
 
   const restaurarValoresPredeterminados = async (categoria) => {
     const confirmado = await confirmations.warning('¿Estás seguro de restaurar los valores predeterminados?');
-    
+
     if (confirmado) {
       const valores = DEFAULT_CONFIG[categoria];
       setSaving(true);
@@ -222,7 +224,7 @@ const CoordinadorConfiguracion = () => {
   const toggleModoMantenimiento = async () => {
     const nuevoValor = !configuraciones.avanzada?.modoMantenimiento;
     const confirmado = await confirmations.danger(`¿${nuevoValor ? 'Activar' : 'Desactivar'} modo mantenimiento? Esto afectará a todos los usuarios.`);
-    
+
     if (confirmado) {
       setSaving(true);
       const valores = { ...configuraciones.avanzada, modoMantenimiento: nuevoValor };
@@ -256,6 +258,9 @@ const CoordinadorConfiguracion = () => {
           <p>Configuración avanzada del sistema de gestión</p>
         </div>
         <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
           <button className="btn-secondary" onClick={exportarConfiguracion}>
             <FiDownload /> Exportar
           </button>
@@ -300,13 +305,13 @@ const CoordinadorConfiguracion = () => {
                   <FiSettings /> Configuración General
                 </h3>
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-text"
                     onClick={() => restaurarValoresPredeterminados('general')}
                   >
                     Restaurar valores
                   </button>
-                  <button 
+                  <button
                     className="btn-primary"
                     onClick={() => guardarConfiguracion('general')}
                     disabled={saving}
@@ -315,7 +320,7 @@ const CoordinadorConfiguracion = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="form-grid">
                 <div className="form-group">
                   <label>Nombre del Consultorio</label>
@@ -327,7 +332,7 @@ const CoordinadorConfiguracion = () => {
                     placeholder="Nombre del consultorio"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Dirección</label>
                   <input
@@ -338,7 +343,7 @@ const CoordinadorConfiguracion = () => {
                     placeholder="Dirección completa"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Teléfono</label>
                   <input
@@ -349,7 +354,7 @@ const CoordinadorConfiguracion = () => {
                     placeholder="Número de teléfono"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Email de contacto</label>
                   <input
@@ -360,7 +365,7 @@ const CoordinadorConfiguracion = () => {
                     placeholder="correo@ejemplo.com"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Sitio web</label>
                   <input
@@ -371,8 +376,8 @@ const CoordinadorConfiguracion = () => {
                     placeholder="https://ejemplo.com"
                   />
                 </div>
-          
-                
+
+
                 <div className="form-group">
                   <label>Zona horaria</label>
                   <select
@@ -386,8 +391,8 @@ const CoordinadorConfiguracion = () => {
                     <option value="Europe/Madrid">Madrid (UTC+1)</option>
                   </select>
                 </div>
-                
-                
+
+
               </div>
             </div>
           )}
@@ -400,13 +405,13 @@ const CoordinadorConfiguracion = () => {
                   <FiUsers /> Configuración Clínica
                 </h3>
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-text"
                     onClick={() => restaurarValoresPredeterminados('clinica')}
                   >
                     Restaurar valores
                   </button>
-                  <button 
+                  <button
                     className="btn-primary"
                     onClick={() => guardarConfiguracion('clinica')}
                     disabled={saving}
@@ -415,7 +420,7 @@ const CoordinadorConfiguracion = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="form-grid">
                 <div className="form-group">
                   <label>Duración de sesión predeterminada (minutos)</label>
@@ -429,7 +434,7 @@ const CoordinadorConfiguracion = () => {
                     step="5"
                   />
                 </div>
-                
+
                 {/* <div className="form-group">
                   <label>Sesiones gratuitas iniciales</label>
                   <input
@@ -441,7 +446,7 @@ const CoordinadorConfiguracion = () => {
                     max="10"
                   />
                 </div> */}
-                
+
                 {/* <div className="form-group">
                   <label>Edad mínima para atención</label>
                   <input
@@ -453,7 +458,7 @@ const CoordinadorConfiguracion = () => {
                     max="100"
                   />
                 </div> */}
-                
+
                 <div className="form-group">
                   <label>Máx. pacientes por terapeuta</label>
                   <input
@@ -465,7 +470,7 @@ const CoordinadorConfiguracion = () => {
                     max="30"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Máx. pacientes por coterapeuta</label>
                   <input
@@ -477,7 +482,7 @@ const CoordinadorConfiguracion = () => {
                     max="10"
                   />
                 </div>
-                
+
                 {/* <div className="form-group">
                   <label>Frecuencia de supervisión</label>
                   <select
@@ -490,7 +495,7 @@ const CoordinadorConfiguracion = () => {
                     <option value="mensual">Mensual</option>
                   </select>
                 </div> */}
-                
+
                 <div className="form-group" style={{ gridColumn: 'span 2' }}>
                   <label className="flex-row align-center gap-10">
                     <input
@@ -502,7 +507,7 @@ const CoordinadorConfiguracion = () => {
                   </label>
                 </div>
               </div>
-              
+
               <div className="security-info mt-30">
                 <h4>Notas importantes:</h4>
                 <ul>
@@ -522,13 +527,13 @@ const CoordinadorConfiguracion = () => {
                   <FiCalendar /> Configuración de Citas
                 </h3>
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-text"
                     onClick={() => restaurarValoresPredeterminados('citas')}
                   >
                     Restaurar valores
                   </button>
-                  <button 
+                  <button
                     className="btn-primary"
                     onClick={() => guardarConfiguracion('citas')}
                     disabled={saving}
@@ -537,7 +542,7 @@ const CoordinadorConfiguracion = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="form-grid">
                 <div className="form-group">
                   <label>Horario de inicio</label>
@@ -548,7 +553,7 @@ const CoordinadorConfiguracion = () => {
                     className="input-field"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Horario de fin</label>
                   <input
@@ -558,11 +563,11 @@ const CoordinadorConfiguracion = () => {
                     className="input-field"
                   />
                 </div>
-                
-                
-                
-                
-                
+
+
+
+
+
                 <div className="form-group">
                   <label>Máximo de citas por día</label>
                   <input
@@ -574,7 +579,7 @@ const CoordinadorConfiguracion = () => {
                     max="20"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Margen para cancelación (horas)</label>
                   <input
@@ -586,7 +591,7 @@ const CoordinadorConfiguracion = () => {
                     max="72"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -597,7 +602,7 @@ const CoordinadorConfiguracion = () => {
                     <span>Recordatorio 24 horas antes</span>
                   </label>
                 </div>
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -620,13 +625,13 @@ const CoordinadorConfiguracion = () => {
                   <FiBell /> Configuración de Notificaciones
                 </h3>
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-text"
                     onClick={() => restaurarValoresPredeterminados('notificaciones')}
                   >
                     Restaurar valores
                   </button>
-                  <button 
+                  <button
                     className="btn-primary"
                     onClick={() => guardarConfiguracion('notificaciones')}
                     disabled={saving}
@@ -635,7 +640,7 @@ const CoordinadorConfiguracion = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="notifications-list">
                 <div className="notification-item">
                   <div>
@@ -651,7 +656,7 @@ const CoordinadorConfiguracion = () => {
                     <span className="slider"></span>
                   </label>
                 </div>
-                
+
                 <div className="notification-item">
                   <div>
                     <h4>Email por cancelación</h4>
@@ -666,7 +671,7 @@ const CoordinadorConfiguracion = () => {
                     <span className="slider"></span>
                   </label>
                 </div>
-                
+
                 <div className="notification-item">
                   <div>
                     <h4>Email de recordatorio</h4>
@@ -681,7 +686,7 @@ const CoordinadorConfiguracion = () => {
                     <span className="slider"></span>
                   </label>
                 </div>
-                
+
                 <div className="notification-item">
                   <div>
                     <h4>Email de reportes</h4>
@@ -696,7 +701,7 @@ const CoordinadorConfiguracion = () => {
                     <span className="slider"></span>
                   </label>
                 </div>
-                
+
                 <div className="notification-item">
                   <div>
                     <h4>SMS de recordatorio</h4>
@@ -711,7 +716,7 @@ const CoordinadorConfiguracion = () => {
                     <span className="slider"></span>
                   </label>
                 </div>
-                
+
                 <div className="notification-item">
                   <div>
                     <h4>Notificaciones push</h4>
@@ -726,7 +731,7 @@ const CoordinadorConfiguracion = () => {
                     <span className="slider"></span>
                   </label>
                 </div>
-                
+
                 <div className="form-group mt-20">
                   <label>Email del coordinador</label>
                   <input
@@ -749,13 +754,13 @@ const CoordinadorConfiguracion = () => {
                   <FiShield /> Configuración de Seguridad
                 </h3>
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-text"
                     onClick={() => restaurarValoresPredeterminados('seguridad')}
                   >
                     Restaurar valores
                   </button>
-                  <button 
+                  <button
                     className="btn-primary"
                     onClick={() => guardarConfiguracion('seguridad')}
                     disabled={saving}
@@ -764,7 +769,7 @@ const CoordinadorConfiguracion = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="form-grid">
                 <div className="form-group">
                   <label>Intentos de login fallidos</label>
@@ -777,7 +782,7 @@ const CoordinadorConfiguracion = () => {
                     max="10"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Bloqueo temporal (minutos)</label>
                   <input
@@ -789,7 +794,7 @@ const CoordinadorConfiguracion = () => {
                     max="1440"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Expiración de sesión (minutos)</label>
                   <input
@@ -801,7 +806,7 @@ const CoordinadorConfiguracion = () => {
                     max="480"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -812,7 +817,7 @@ const CoordinadorConfiguracion = () => {
                     <span>Requerir verificación de email</span>
                   </label>
                 </div>
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -823,7 +828,7 @@ const CoordinadorConfiguracion = () => {
                     <span>Requerir autenticación de dos factores</span>
                   </label>
                 </div>
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -834,7 +839,7 @@ const CoordinadorConfiguracion = () => {
                     <span>Registrar direcciones IP</span>
                   </label>
                 </div>
-                
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -846,7 +851,7 @@ const CoordinadorConfiguracion = () => {
                   </label>
                 </div>
               </div>
-              
+
               <div className="security-info mt-30">
                 <h4>
                   <FiLock /> Recomendaciones de Seguridad
@@ -869,13 +874,13 @@ const CoordinadorConfiguracion = () => {
                   <FiDatabase /> Configuración Avanzada
                 </h3>
                 <div className="flex-row gap-10">
-                  <button 
+                  <button
                     className="btn-text text-danger"
                     onClick={toggleModoMantenimiento}
                   >
                     {configuraciones.avanzada?.modoMantenimiento ? 'Desactivar' : 'Activar'} Mantenimiento
                   </button>
-                  <button 
+                  <button
                     className="btn-primary"
                     onClick={() => guardarConfiguracion('avanzada')}
                     disabled={saving}
@@ -884,7 +889,7 @@ const CoordinadorConfiguracion = () => {
                   </button>
                 </div>
               </div>
-              
+
               <div className="form-grid">
                 <div className="form-group">
                   <label>Backup automático</label>
@@ -897,7 +902,7 @@ const CoordinadorConfiguracion = () => {
                     <option value="no">No</option>
                   </select>
                 </div>
-                
+
                 <div className="form-group">
                   <label>Frecuencia de backup</label>
                   <select
@@ -910,7 +915,7 @@ const CoordinadorConfiguracion = () => {
                     <option value="mensual">Mensual</option>
                   </select>
                 </div>
-                
+
                 <div className="form-group">
                   <label>Retención de backups (días)</label>
                   <input
@@ -922,7 +927,7 @@ const CoordinadorConfiguracion = () => {
                     max="365"
                   />
                 </div>
-                
+
                 <div className="form-group">
                   <label>Versión de API</label>
                   <input
@@ -933,9 +938,9 @@ const CoordinadorConfiguracion = () => {
                     readOnly
                   />
                 </div>
-                
-                
-                
+
+
+
                 <div className="form-group">
                   <label className="flex-row align-center gap-10">
                     <input
@@ -946,10 +951,10 @@ const CoordinadorConfiguracion = () => {
                     <span>Modo debug</span>
                   </label>
                 </div>
-                
-                
+
+
               </div>
-              
+
               <div className="advanced-actions mt-30">
                 <h4>Acciones Avanzadas</h4>
                 <div className="grid-2 gap-15 mt-15">
@@ -962,10 +967,10 @@ const CoordinadorConfiguracion = () => {
                   <button className="btn-danger">
                     Vaciar logs antiguos
                   </button>
-                  
+
                 </div>
               </div>
-              
+
               <div className="security-info mt-30">
                 <h4>⚠️ Advertencias</h4>
                 <ul>
@@ -985,7 +990,7 @@ const CoordinadorConfiguracion = () => {
         <div className="section-header">
           <h3>Información del Sistema</h3>
         </div>
-        
+
         <div className="grid-4">
           <div>
             <div className="text-small">Versión</div>

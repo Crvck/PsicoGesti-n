@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   FiClock, FiUser,
   FiChevronLeft, FiChevronRight,
   FiRefreshCw
 } from 'react-icons/fi';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import ConfiguracionService from '../../services/configuracionService';
 import notifications from '../../utils/notifications';
+import { createCoterapeutaTour } from '../../utils/coterapeutaTour';
 import '../coordinador/coordinador.css';
 
 const BecarioCitas = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [citas, setCitas] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
@@ -24,6 +28,7 @@ const BecarioCitas = () => {
   const [showCancelarFuturasModal, setShowCancelarFuturasModal] = useState(false);
   const [pendingCancelCita, setPendingCancelCita] = useState(null);
   const [pendingCancelMotivo, setPendingCancelMotivo] = useState('');
+  const tour = createCoterapeutaTour('citas');
 
   // Opciones predefinidas de motivos de cancelación
   const motivosCancelacionOpciones = [
@@ -215,13 +220,18 @@ const BecarioCitas = () => {
   const irARegistroSesion = (cita) => {
     if (!cita) return;
     const params = new URLSearchParams({
+      openRegistro: '1',
       paciente_id: cita.paciente_id ? String(cita.paciente_id) : '',
+      paciente_nombre: cita.paciente_nombre || '',
       cita_id: cita.id ? String(cita.id) : '',
       fecha: cita.fecha || '',
       hora: cita.hora || '',
       motivo: cita.notas || cita.tipo_consulta || ''
     });
-    navigate(`/caterapeuta/sesiones?${params.toString()}`);
+    const targetPath = location.pathname.startsWith('/psicopedagogico')
+      ? '/psicopedagogico/pacientes'
+      : '/coterapeuta/pacientes';
+    navigate(`${targetPath}?${params.toString()}`);
   };
 
   const getMotivoFinal = () => {
@@ -351,6 +361,9 @@ const BecarioCitas = () => {
           <p>Gestión de citas asignadas</p>
         </div>
         <div className="flex-row gap-10">
+          <button className="btn-secondary" onClick={() => tour.drive()}>
+            Tour
+          </button>
           <button className="btn-secondary" onClick={fetchCitas}>
             <FiRefreshCw /> Actualizar
           </button>
@@ -362,14 +375,14 @@ const BecarioCitas = () => {
           <button className="btn-header" onClick={goToPreviousWeek}>
             <FiChevronLeft /> Semana anterior
           </button>
-          
+
           <div className="current-date">
             <h3>{getWeekRange()}</h3>
             <div className="text-small">
               Total: <span style={{ fontWeight: 'bold' }}>{citas.length}</span>
             </div>
           </div>
-          
+
           <button className="btn-header" onClick={goToNextWeek}>
             Semana siguiente <FiChevronRight />
           </button>
@@ -380,8 +393,8 @@ const BecarioCitas = () => {
             Hoy
           </button>
           <div className="filter-select">
-            <select 
-              value={filterEstado} 
+            <select
+              value={filterEstado}
               onChange={(e) => setFilterEstado(e.target.value)}
               className="select-field"
               style={{ width: '170px' }}
@@ -474,7 +487,7 @@ const BecarioCitas = () => {
       {/* Lista de Citas */}
       <div className="day-citas-list">
         <h3>Citas para {getWeekRange()} ({citas.length})</h3>
-        
+
         {citas.length > 0 ? (
           <div className="citas-cards">
             {citas.map((cita) => (
@@ -488,32 +501,31 @@ const BecarioCitas = () => {
                   <div className="cita-time">
                     <FiClock /> {cita.hora} ({cita.duracion || 50} min)
                   </div>
-                  <div className={`cita-status badge ${
-                    cita.estado === 'confirmada' ? 'badge-success' :
+                  <div className={`cita-status badge ${cita.estado === 'confirmada' ? 'badge-success' :
                     cita.estado === 'completada' ? 'badge-primary' :
-                    cita.estado === 'programada' ? 'badge-warning' :
-                    'badge-danger'
-                  }`}>
+                      cita.estado === 'programada' ? 'badge-warning' :
+                        'badge-danger'
+                    }`}>
                     {cita.estado}
                   </div>
                 </div>
-                
+
                 <div className="cita-card-body">
                   <div className="cita-paciente">
                     <FiUser /> {cita.paciente_nombre || 'Paciente'}
                   </div>
-                  
+
                   <div className="cita-info">
                     <div className="cita-tipo">
                       {cita.tipo_consulta === 'presencial' ? '📋 Presencial' : '💻 Virtual'}
                     </div>
-                    
+
                     {cita.psicologo_nombre && (
                       <div className="cita-psicologo">
                         👨‍⚕️ {cita.psicologo_nombre}
                       </div>
                     )}
-                    
+
                     {cita.notas && (
                       <div className="cita-notas">
                         <strong>Notas:</strong> {cita.notas}
@@ -521,18 +533,18 @@ const BecarioCitas = () => {
                     )}
                   </div>
                 </div>
-                
+
                 <div className="cita-card-footer">
                   {(cita.estado === 'confirmada' || cita.estado === 'completada') && (
-                    <div 
+                    <div
                       className="cita-status badge"
                       onClick={(e) => {
                         e.stopPropagation();
                         irARegistroSesion(cita);
                       }}
-                      style={{ 
-                        backgroundColor: '#1b87cfff', 
-                        color: '#fff', 
+                      style={{
+                        backgroundColor: '#1b87cfff',
+                        color: '#fff',
                         cursor: 'pointer',
                         border: 'none'
                       }}
@@ -597,7 +609,7 @@ const BecarioCitas = () => {
                     className="select-field"
                     value={cancelMotivo}
                     onChange={(e) => setCancelMotivo(e.target.value)}
-                    style={{ 
+                    style={{
                       marginTop: '8px',
                       padding: '10px',
                       fontSize: '14px',
@@ -620,15 +632,15 @@ const BecarioCitas = () => {
             <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {(selectedCita?.estado === 'programada' || selectedCita?.estado === 'confirmada') ? (
                 <>
-                  <button 
-                    className="btn-danger" 
+                  <button
+                    className="btn-danger"
                     onClick={() => handleCancelarCita(selectedCita)}
                     style={{ backgroundColor: '#dc3545', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}
                   >
                     Cancelar cita
                   </button>
-                  <button 
-                    className="btn-success" 
+                  <button
+                    className="btn-success"
                     onClick={() => handleConfirmarCita(selectedCita)}
                     style={{ backgroundColor: '#28a745', color: '#fff', border: 'none', marginLeft: 'auto', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}
                   >
@@ -688,7 +700,7 @@ const BecarioCitas = () => {
             <p>Completadas: {citas.filter(c => c.estado === 'completada').length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Tipos de Consulta</h4>
           <div className="mt-10">
@@ -696,7 +708,7 @@ const BecarioCitas = () => {
             <p>Virtual: {citas.filter(c => c.tipo_consulta === 'virtual').length}</p>
           </div>
         </div>
-        
+
         <div className="card">
           <h4>Acciones</h4>
           <div className="mt-10 flex-col gap-10">

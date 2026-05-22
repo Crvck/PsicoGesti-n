@@ -10,63 +10,64 @@ const LogSistema = require('../models/logSistemaModel');
 const sequelize = require('../config/db');
 
 class SesionController {
-    
+
     static async registrarSesion(req, res) {
         try {
-            const { cita_id, desarrollo, conclusion, tareas_asignadas, 
-                    emocion_predominante, riesgo_suicida, escalas_aplicadas, 
-                    siguiente_cita, privado, dificultades, logros, preguntas_supervisor } = req.body;
+            const { cita_id, desarrollo, conclusion, tareas_asignadas,
+                emocion_predominante, riesgo_suicida, escalas_aplicadas,
+                siguiente_cita, privado, dificultades, logros, preguntas_supervisor } = req.body;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
 
-            console.log('RegistrarSesion: usuarioId=', usuarioId, 'usuarioRol=', usuarioRol, 'body=', {cita_id, desarrollo, conclusion, tareas_asignadas, emocion_predominante, riesgo_suicida, escalas_aplicadas, siguiente_cita, privado});
-            
+            console.log('RegistrarSesion: usuarioId=', usuarioId, 'usuarioRol=', usuarioRol, 'body=', { cita_id, desarrollo, conclusion, tareas_asignadas, emocion_predominante, riesgo_suicida, escalas_aplicadas, siguiente_cita, privado });
+
             // Verificar que la cita existe y está completada
             const cita = await Cita.findByPk(cita_id);
 
             // Si no vino el rol en el token, recuperarlo por seguridad
             const effectiveRol = usuarioRol || (await User.findByPk(usuarioId)).rol;
-            
+
             if (!cita) {
                 return res.status(404).json({
                     success: false,
                     message: 'Cita no encontrada'
                 });
             }
-            
+
             if (cita.estado !== 'completada') {
                 return res.status(400).json({
                     success: false,
                     message: 'La cita debe estar en estado "completada" para registrar sesión'
                 });
             }
-            
+
             // Verificar que el usuario tiene permisos para registrar esta sesión
-            const puedeRegistrar = 
+            const puedeRegistrar =
                 cita.psicologo_id === usuarioId || // Es el psicólogo asignado
                 cita.becario_id === usuarioId || // Es el becario asignado
                 effectiveRol === 'coordinador' || // Es coordinador
-                effectiveRol === 'becario'; // Becarios pueden registrar sesiones
-            
+                effectiveRol === 'becario' || // Becarios pueden registrar sesiones
+                effectiveRol === 'psicopedagogico'; // Psicopedagógico puede registrar sesiones de sus citas
+
             if (!puedeRegistrar) {
                 return res.status(403).json({
                     success: false,
                     message: 'No tiene permisos para registrar esta sesión'
                 });
             }
-            
+
             // Verificar que no exista ya una sesión para esta cita
             const sesionExistente = await Sesion.findOne({
                 where: { cita_id }
             });
-            
+
             if (sesionExistente) {
                 return res.status(400).json({
                     success: false,
                     message: 'Ya existe una sesión registrada para esta cita'
                 });
             }
-            
+
             // Normalizar riesgo_suicida y escalas antes de crear
             let riesgoValue = 'ninguno';
             const allowedRiesgos = ['ninguno', 'bajo', 'moderado', 'alto'];
@@ -83,7 +84,7 @@ class SesionController {
             let escalas = null;
             if (escalas_aplicadas) {
                 if (typeof escalas_aplicadas === 'string') {
-                    try { escalas = JSON.parse(escalas_aplicadas); } catch(e) { escalas = null; }
+                    try { escalas = JSON.parse(escalas_aplicadas); } catch (e) { escalas = null; }
                 } else if (typeof escalas_aplicadas === 'object') {
                     escalas = escalas_aplicadas;
                 }
@@ -133,7 +134,7 @@ class SesionController {
             console.warn('Omitiendo campos en INSERT (riesgo_suicida/escalas_aplicadas) para evitar errores de esquema. Campos finales:', Object.keys(insertData));
 
             const sesion = await Sesion.create(insertData, { fields: Object.keys(insertData) });
-            
+
             // Actualizar expediente del paciente (normalizamos y atrapamos errores)
             try {
                 await SesionController.actualizarExpediente(cita.paciente_id, {
@@ -145,7 +146,7 @@ class SesionController {
                 console.error('Error actualizando expediente tras registrar sesión:', err);
                 // No abortamos la creación de la sesión, pero informamos en logs
             }
-            
+
             // Notificar al becario si está asignado
             if (cita.becario_id) {
                 const paciente = await Paciente.findByPk(cita.paciente_id, {
@@ -158,7 +159,7 @@ class SesionController {
                     mensaje: `Se ha registrado la sesión del paciente: ${paciente ? `${paciente.nombre} ${paciente.apellido}` : 'Paciente'}`
                 });
             }
-            
+
             // Log
             await LogSistema.create({
                 usuario_id: usuarioId,
@@ -167,13 +168,13 @@ class SesionController {
                 accion: 'Registrar sesión',
                 descripcion: `Sesión registrada para cita ${cita_id}`
             });
-            
+
             res.json({
                 success: true,
                 message: 'Sesión registrada exitosamente',
                 data: sesion
             });
-            
+
         } catch (error) {
             console.error('Error en registrarSesion:', error);
             res.status(500).json({
@@ -183,23 +184,23 @@ class SesionController {
             });
         }
     }
-    
+
     static async obtenerSesionesPaciente(req, res) {
         try {
             const { paciente_id } = req.params;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
+
             // Verificar permisos
             const tieneAcceso = await SesionController.verificarAccesoSesiones(usuarioId, usuarioRol, paciente_id);
-            
+
             if (!tieneAcceso) {
                 return res.status(403).json({
                     success: false,
                     message: 'No tiene permisos para ver las sesiones de este paciente'
                 });
             }
-            
+
             const sesionesRaw = await Sesion.findAll({
                 include: [
                     {
@@ -228,7 +229,7 @@ class SesionController {
                 becario_nombre: s.Cita?.Becario?.nombre,
                 becario_apellido: s.Cita?.Becario?.apellido
             }));
-            
+
             // Filtrar sesiones privadas si no es el psicólogo
             const sesionesFiltradas = sesiones.filter(sesion => {
                 if (sesion.privado && sesion.psicologo_id !== usuarioId && usuarioRol !== 'coordinador') {
@@ -236,13 +237,13 @@ class SesionController {
                 }
                 return true;
             });
-            
+
             res.json({
                 success: true,
                 data: sesionesFiltradas,
                 count: sesionesFiltradas.length
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerSesionesPaciente:', error);
             res.status(500).json({
@@ -268,7 +269,7 @@ class SesionController {
                 ]
             };
 
-            if (usuarioRol === 'becario') {
+            if (['becario', 'coterapeuta', 'psicopedagogico'].includes(usuarioRol)) {
                 includeCita.where = { becario_id: usuarioId };
                 includeCita.required = true;
             }
@@ -308,13 +309,13 @@ class SesionController {
             res.status(500).json({ success: false, message: 'Error al obtener sesiones recientes' });
         }
     }
-    
+
     static async obtenerSesionDetalle(req, res) {
         try {
             const { id } = req.params;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
+
             const sesionRaw = await Sesion.findByPk(id, {
                 include: [
                     {
@@ -343,14 +344,14 @@ class SesionController {
                     becario_apellido: sesionRaw.Cita?.Becario?.apellido
                 }
                 : null;
-            
+
             if (!sesion) {
                 return res.status(404).json({
                     success: false,
                     message: 'Sesión no encontrada'
                 });
             }
-            
+
             // Verificar acceso a sesión privada
             if (sesion.privado && sesion.psicologo_id !== usuarioId && usuarioRol !== 'coordinador') {
                 return res.status(403).json({
@@ -358,22 +359,22 @@ class SesionController {
                     message: 'No tiene permisos para ver esta sesión privada'
                 });
             }
-            
+
             // Verificar acceso general al paciente
             const tieneAcceso = await this.verificarAccesoSesiones(usuarioId, usuarioRol, sesion.paciente_id);
-            
+
             if (!tieneAcceso) {
                 return res.status(403).json({
                     success: false,
                     message: 'No tiene permisos para ver esta sesión'
                 });
             }
-            
+
             res.json({
                 success: true,
                 data: sesion
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerSesionDetalle:', error);
             res.status(500).json({
@@ -382,23 +383,23 @@ class SesionController {
             });
         }
     }
-    
+
     static async actualizarSesion(req, res) {
         try {
             const { id } = req.params;
             const updates = req.body;
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
+
             const sesion = await Sesion.findByPk(id);
-            
+
             if (!sesion) {
                 return res.status(404).json({
                     success: false,
                     message: 'Sesión no encontrada'
                 });
             }
-            
+
             // Verificar permisos (solo psicólogo asignado o coordinador)
             if (sesion.psicologo_id !== usuarioId && usuarioRol !== 'coordinador') {
                 return res.status(403).json({
@@ -406,7 +407,7 @@ class SesionController {
                     message: 'No tiene permisos para actualizar esta sesión'
                 });
             }
-            
+
             // Campos que no se pueden modificar
             const camposBloqueados = ['cita_id', 'psicologo_id', 'fecha', 'hora_inicio', 'hora_fin'];
             for (const campo of camposBloqueados) {
@@ -414,19 +415,19 @@ class SesionController {
                     delete updates[campo];
                 }
             }
-            
+
             if (Object.keys(updates).length === 0) {
                 return res.status(400).json({
                     success: false,
                     message: 'No se proporcionaron campos válidos para actualizar'
                 });
             }
-            
+
             // Obtener datos antes para log
             const datosAntes = { ...sesion.toJSON() };
-            
+
             await sesion.update(updates);
-            
+
             // Log
             await LogSistema.create({
                 usuario_id: usuarioId,
@@ -437,13 +438,13 @@ class SesionController {
                 datos_antes: datosAntes,
                 datos_despues: sesion.toJSON()
             });
-            
+
             res.json({
                 success: true,
                 message: 'Sesión actualizada exitosamente',
                 data: sesion
             });
-            
+
         } catch (error) {
             console.error('Error en actualizarSesion:', error);
             res.status(500).json({
@@ -452,7 +453,7 @@ class SesionController {
             });
         }
     }
-    
+
     // Métodos auxiliares
     static calcularHoraFin(horaInicio, duracionMinutos) {
         const [horas, minutos] = horaInicio.split(':').map(Number);
@@ -460,10 +461,10 @@ class SesionController {
         fecha.setHours(horas, minutos + duracionMinutos, 0, 0);
         return fecha.toTimeString().slice(0, 8);
     }
-    
+
     static async verificarAccesoSesiones(usuarioId, usuarioRol, pacienteId) {
         if (usuarioRol === 'coordinador') return true;
-        
+
         const result = await Asignacion.findOne({
             where: {
                 paciente_id: pacienteId,
@@ -478,7 +479,7 @@ class SesionController {
 
         return Boolean(result);
     }
-    
+
     static async actualizarExpediente(pacienteId, datos) {
         // Normalizar riesgo_suicida a 0/1/null para evitar errores de truncamiento en la base
         const riesgo = (typeof datos.riesgo_suicida === 'boolean')

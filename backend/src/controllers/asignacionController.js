@@ -7,7 +7,7 @@ const LogSistema = require('../models/logSistemaModel');
 const BecarioHoras = require('../models/becarioHorasModel');
 
 class AsignacionController {
-    
+
     static async crearAsignacion(req, res) {
         try {
             const { paciente_id, psicologo_id, becario_id, notas, terapeuta_id, coterapeuta_id } = req.body;
@@ -21,7 +21,7 @@ class AsignacionController {
                     message: 'Falta terapeuta_id para asignar'
                 });
             }
-            
+
             // Validar que el paciente existe y está activo
             const paciente = await Paciente.findByPk(paciente_id);
             if (!paciente || !paciente.activo) {
@@ -30,25 +30,25 @@ class AsignacionController {
                     message: 'Paciente no encontrado o inactivo'
                 });
             }
-            
+
             // Validar que el terapeuta existe y es terapeuta
             const psicologo = await User.findOne({
                 where: { id: finalPsicologoId, rol: { [Op.in]: ['terapeuta', 'psicologo'] }, activo: true }
             });
-            
+
             if (!psicologo) {
                 return res.status(404).json({
                     success: false,
                     message: 'Terapeuta no encontrado o inactivo'
                 });
             }
-            
+
             // Validar que el coterapeuta existe si se especifica
             if (finalBecarioId) {
                 const becario = await User.findOne({
-                    where: { id: finalBecarioId, rol: { [Op.in]: ['coterapeuta', 'becario'] }, activo: true }
+                    where: { id: finalBecarioId, rol: { [Op.in]: ['coterapeuta', 'becario', 'psicopedagogico'] }, activo: true }
                 });
-                
+
                 if (!becario) {
                     return res.status(404).json({
                         success: false,
@@ -56,7 +56,7 @@ class AsignacionController {
                     });
                 }
             }
-            
+
             // Verificar que no haya asignación activa
             const asignacionExistente = await Asignacion.findOne({
                 where: {
@@ -64,7 +64,7 @@ class AsignacionController {
                     estado: 'activa'
                 }
             });
-            
+
             if (asignacionExistente) {
                 // Finalizar asignación anterior
                 await asignacionExistente.update({
@@ -73,7 +73,7 @@ class AsignacionController {
                     motivo_fin: 'Reasignación'
                 });
             }
-            
+
             // Crear nueva asignación
             const asignacion = await Asignacion.create({
                 paciente_id,
@@ -82,10 +82,10 @@ class AsignacionController {
                 notas,
                 fecha_inicio: new Date().toISOString().split('T')[0]
             });
-            
+
             // Actualizar paciente con terapeuta asignado
             await paciente.update({ fundacion_id: psicologo.fundacion_id });
-            
+
             // Crear notificaciones
             await Notificacion.bulkCreate([
                 {
@@ -101,7 +101,7 @@ class AsignacionController {
                     mensaje: `Ha sido asignado como supervisor del paciente: ${paciente.nombre} ${paciente.apellido}`
                 }
             ]);
-            
+
             if (finalBecarioId) {
                 await Notificacion.create({
                     usuario_id: finalBecarioId,
@@ -110,7 +110,7 @@ class AsignacionController {
                     mensaje: `Se le ha asignado el paciente: ${paciente.nombre} ${paciente.apellido}`
                 });
             }
-            
+
             // Log
             await LogSistema.create({
                 usuario_id: usuarioId,
@@ -119,7 +119,7 @@ class AsignacionController {
                 accion: 'Crear asignación',
                 descripcion: `Asignación creada: Paciente ${paciente.id} → Terapeuta ${finalPsicologoId}${finalBecarioId ? ` + Coterapeuta ${finalBecarioId}` : ''}`
             });
-            
+
             // Recuperar asignación creada con asociaciones para devolver datos completos al cliente
             const asignacionCompleta = await Asignacion.findOne({
                 where: { id: asignacion.id },
@@ -137,7 +137,7 @@ class AsignacionController {
                 message: 'Asignación creada exitosamente',
                 data: asignacionCompleta
             });
-            
+
         } catch (error) {
             console.error('Error en crearAsignacion:', error);
             res.status(500).json({
@@ -147,18 +147,18 @@ class AsignacionController {
             });
         }
     }
-    
+
     static async obtenerAsignacionesActivas(req, res) {
         try {
             const { psicologo_id, becario_id, paciente_id } = req.query;
             const usuarioId = req.user.id;
-            
+
             const whereClause = { estado: 'activa' };
-            
+
             if (psicologo_id) whereClause.psicologo_id = psicologo_id;
             if (becario_id) whereClause.becario_id = becario_id;
             if (paciente_id) whereClause.paciente_id = paciente_id;
-            
+
             const asignaciones = await Asignacion.findAll({
                 where: whereClause,
                 include: [
@@ -179,13 +179,13 @@ class AsignacionController {
                 ],
                 order: [['fecha_inicio', 'DESC']]
             });
-            
+
             res.json({
                 success: true,
                 data: asignaciones,
                 count: asignaciones.length
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerAsignacionesActivas:', error);
             res.status(500).json({
@@ -194,12 +194,12 @@ class AsignacionController {
             });
         }
     }
-    
+
     static async obtenerMisPacientes(req, res) {
         try {
             const usuarioId = req.user.id;
             const usuarioRol = req.user.rol;
-            
+
             const today = new Date().toISOString().slice(0, 10);
 
             if (usuarioRol === 'terapeuta') {
@@ -253,7 +253,7 @@ class AsignacionController {
                 return;
             }
 
-            if (usuarioRol === 'coterapeuta') {
+            if (usuarioRol === 'coterapeuta' || usuarioRol === 'psicopedagogico' || usuarioRol === 'becario') {
                 const asignaciones = await Asignacion.findAll({
                     where: {
                         becario_id: usuarioId,
@@ -308,18 +308,18 @@ class AsignacionController {
                 success: false,
                 message: 'Acceso no permitido para este rol'
             });
-            
+
             console.log('Pacientes encontrados:', pacientes.length);
             if (pacientes.length > 0) {
                 console.log('Primer paciente:', pacientes[0]);
             }
-            
+
             res.json({
                 success: true,
                 data: pacientes,
                 count: pacientes.length
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerMisPacientes:', error);
             res.status(500).json({
@@ -328,32 +328,32 @@ class AsignacionController {
             });
         }
     }
-    
+
     static async finalizarAsignacion(req, res) {
         try {
             const { id } = req.params;
             const { motivo_fin, notas } = req.body;
             const usuarioId = req.user.id;
-            
+
             const asignacion = await Asignacion.findByPk(id);
-            
+
             if (!asignacion || asignacion.estado !== 'activa') {
                 return res.status(404).json({
                     success: false,
                     message: 'Asignación activa no encontrada'
                 });
             }
-            
+
             // Obtener datos antes para log
             const datosAntes = { ...asignacion.toJSON() };
-            
+
             await asignacion.update({
                 estado: 'finalizada',
                 fecha_fin: new Date().toISOString().split('T')[0],
                 motivo_fin: motivo_fin || 'Finalización manual',
                 notas: notas ? `${asignacion.notas || ''}\n--- Finalización ---\n${notas}` : asignacion.notas
             });
-            
+
             // Log
             await LogSistema.create({
                 usuario_id: usuarioId,
@@ -364,12 +364,12 @@ class AsignacionController {
                 datos_antes: datosAntes,
                 datos_despues: asignacion.toJSON()
             });
-            
+
             res.json({
                 success: true,
                 message: 'Asignación finalizada exitosamente'
             });
-            
+
         } catch (error) {
             console.error('Error en finalizarAsignacion:', error);
             res.status(500).json({
@@ -378,11 +378,11 @@ class AsignacionController {
             });
         }
     }
-    
+
     static async obtenerHistorialAsignaciones(req, res) {
         try {
             const { paciente_id } = req.params;
-            
+
             const asignaciones = await Asignacion.findAll({
                 where: { paciente_id },
                 include: [
@@ -399,13 +399,13 @@ class AsignacionController {
                 ],
                 order: [['fecha_inicio', 'DESC']]
             });
-            
+
             res.json({
                 success: true,
                 data: asignaciones,
                 count: asignaciones.length
             });
-            
+
         } catch (error) {
             console.error('Error en obtenerHistorialAsignaciones:', error);
             res.status(500).json({

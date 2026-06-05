@@ -42,17 +42,19 @@ const recordatorioRoutes = require('./src/routes/recordatorioRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- CONFIGURACIÓN DE CORS ---
-const allowedOrigins = ['http://localhost:3001', 'https://psico-gesti-n-backend.vercel.app'];
+// --- CONFIGURACIÓN DE CORS ESTRICTA ---
+const allowedOrigins = ['https://psico-gesti-n-backend.vercel.app'];
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Validación de máxima seguridad: Solo permite la URL de Vercel. Bloquea Postman y localhost.
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('Not allowed by CORS'));
+    return callback(new Error('Bloqueado por CORS: Origen no autorizado'));
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
 }));
 

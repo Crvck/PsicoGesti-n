@@ -43,7 +43,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- CONFIGURACIÓN DE CORS ---
-const allowedOrigins = ['http://localhost:3001', 'http://localhost:3002'];
+const allowedOrigins = ['http://localhost:3001', 'https://psico-gesti-n-backend-yfhm.vercel.app'];
 
 app.use(cors({
   origin: (origin, callback) => {

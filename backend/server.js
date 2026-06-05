@@ -49,7 +49,8 @@ const allowedOrigins = [
   'http://localhost:3002',
   'https://cesun-frontend-8urdssr0u-crvcks-projects.vercel.app',
   'https://cesun-frontend-pfroqiith-crvcks-projects.vercel.app',
-  'https://cesun-frontend.vercel.app'
+  'https://cesun-frontend.vercel.app',
+  'https://cesun-frontend.vercel.app/login'
 ];
 
 app.use(cors({

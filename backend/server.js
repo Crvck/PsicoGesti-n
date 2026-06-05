@@ -42,19 +42,22 @@ const recordatorioRoutes = require('./src/routes/recordatorioRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- CONFIGURACIÓN DE CORS ESTRICTA ---
-const allowedOrigins = ['https://psico-gesti-n-backend.vercel.app'];
+// --- CONFIGURACIÓN DE CORS ---
+// Se agrega la URL de producción en Vercel (sin el path /login)
+const allowedOrigins = [
+  'http://localhost:3001', 
+  'http://localhost:3002',
+  'https://cesun-frontend-pfroqiith-crvcks-projects.vercel.app'
+];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Validación de máxima seguridad: Solo permite la URL de Vercel. Bloquea Postman y localhost.
-    if (allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('Bloqueado por CORS: Origen no autorizado'));
+    return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true,
 }));
 
@@ -91,8 +94,6 @@ app.use('/api/psicopedagogico', psicopedagogicoRoutes);
 app.use('/api/recordatorios', recordatorioRoutes);
 
 // --- ENDPOINT DASHBOARD ---
-// Esto conecta las rutas que definimos arriba.
-// Las rutas dentro serán: /api/dashboard/coordinador, /api/dashboard/aprobar-solicitud, etc.
 app.use('/api/dashboard', dashboardRoutes); 
 
 module.exports = app;

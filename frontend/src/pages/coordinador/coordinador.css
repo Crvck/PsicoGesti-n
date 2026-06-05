@@ -583,6 +583,119 @@
   animation: modalFadeIn 0.3s ease;
 }
 
+.agenda-asignar-modal-overlay {
+  justify-content: flex-start;
+  padding: 24px 24px 24px 5vw;
+}
+
+.agenda-asignar-modal-layout {
+  width: min(1400px, 100%);
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(620px, 760px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.card-secondary-coord {
+  background: linear-gradient(180deg, var(--blud) 0%, var(--blub) 100%);
+  border: 2px solid var(--blu);
+  border-radius: 10px;
+  color: var(--white);
+}
+
+.agenda-asignar-sidecard {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 540px;
+}
+
+.agenda-asignar-sidecard-header h4 {
+  margin: 0;
+}
+
+.agenda-asignar-sidecard-header p {
+  margin: 6px 0 0;
+  color: var(--gray);
+}
+
+.agenda-asignar-sidecard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agenda-asignar-sidecard-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--blub);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.agenda-asignar-sidecard-item span {
+  color: var(--gray);
+  font-size: 12px;
+}
+
+.agenda-asignar-sidecard-item strong {
+  color: var(--white);
+  font-size: 13px;
+}
+
+.agenda-asignar-sidecard-disponibilidad-head .input-field {
+  width: 170px;
+  font-size: 12px;
+  padding: 6px 8px;
+  min-height: 32px;
+}
+
+.agenda-asignar-sidecard-disponibilidad-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  padding-right: 4px;
+}
+
+.agenda-asignar-sidecard-disponibilidad-list .dia-disponibilidad-card {
+  padding: 10px;
+}
+
+.agenda-asignar-sidecard-disponibilidad-list .usuario-disponibilidad-item {
+  padding: 6px;
+}
+
+.agenda-asignar-main-modal {
+  margin: 0;
+  width: 100%;
+  max-width: none;
+}
+
+@media (max-width: 1200px) {
+  .agenda-asignar-modal-overlay {
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .agenda-asignar-modal-layout {
+    grid-template-columns: 1fr;
+    max-width: 760px;
+  }
+
+  .agenda-asignar-sidecard {
+    min-height: auto;
+  }
+
+  .agenda-asignar-sidecard-disponibilidad-list {
+    max-height: 260px;
+  }
+}
+
 /* Estilos para switches personalizados */
 .switch {
   position: relative;

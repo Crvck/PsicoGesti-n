@@ -47,6 +47,9 @@ const CoordinadorAgenda = () => {
   const [showPacienteCitaList, setShowPacienteCitaList] = useState(false);
   const [showTerapeutaCitaList, setShowTerapeutaCitaList] = useState(false);
   const [showCoterapeutaCitaList, setShowCoterapeutaCitaList] = useState(false);
+  const [agendaModalDiasDisponibilidad, setAgendaModalDiasDisponibilidad] = useState([]);
+  const [agendaModalDisponibilidad, setAgendaModalDisponibilidad] = useState({});
+  const [agendaModalDisponibilidadLoading, setAgendaModalDisponibilidadLoading] = useState(false);
   const [nuevaCitaForm, setNuevaCitaForm] = useState({
     titulo: '',
     paciente_id: '',
@@ -100,6 +103,7 @@ const CoordinadorAgenda = () => {
   const coloresTerapeutas = ['#29ce9b', '#1F85BA', '#ffa631', '#37B69C', '#fa3144'];
   const coloresCitas = ['#1F85BA', '#29ce9b', '#ffa631', '#fa3144', '#7c4dff', '#00bcd4', '#8bc34a', '#ff7043'];
   const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+  const diasSemanaOpciones = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
   const obtenerDiaSemanaKey = (fechaObj) => diasSemana[fechaObj.getDay()];
 
   useEffect(() => {
@@ -131,6 +135,17 @@ const CoordinadorAgenda = () => {
       fetchDisponibilidadSemanal(diasFiltroDisponibilidad);
     }
   }, [diasFiltroDisponibilidad]);
+
+  useEffect(() => {
+    if (!showAsignarCitaModal || !nuevaCitaForm.fecha) return;
+    const diaSeleccionado = obtenerDiaSemanaKey(new Date(`${nuevaCitaForm.fecha}T00:00:00`));
+    setAgendaModalDiasDisponibilidad((prev) => (prev.includes(diaSeleccionado) ? prev : [diaSeleccionado, ...prev]));
+  }, [showAsignarCitaModal, nuevaCitaForm.fecha]);
+
+  useEffect(() => {
+    if (!showAsignarCitaModal || agendaModalDiasDisponibilidad.length === 0) return;
+    fetchDisponibilidadAgendaModal(agendaModalDiasDisponibilidad);
+  }, [showAsignarCitaModal, agendaModalDiasDisponibilidad]);
 
   // Escuchar cuando se crea una cita desde otras vistas para refrescar la agenda
   useEffect(() => {
@@ -864,6 +879,59 @@ const CoordinadorAgenda = () => {
     }
   };
 
+  const fetchDisponibilidadAgendaModal = async (diasFiltro = null) => {
+    try {
+      setAgendaModalDisponibilidadLoading(true);
+      const dias = Array.isArray(diasFiltro)
+        ? diasFiltro
+        : (diasFiltro ? [diasFiltro] : agendaModalDiasDisponibilidad);
+      const params = new URLSearchParams();
+
+      if (dias && dias.length > 0) {
+        params.append('dias_filtro', dias.join(','));
+      }
+
+      const url = `/agenda/disponibilidad-por-dias${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await ApiService.get(url);
+      const data = response?.data || response || {};
+      const disponibilidadPorDia = data.disponibilidad_por_dia || data.data?.disponibilidad_por_dia || {};
+      setAgendaModalDisponibilidad(disponibilidadPorDia);
+    } catch (error) {
+      console.error('Error cargando disponibilidad del panel de apoyo:', error);
+      setAgendaModalDisponibilidad({});
+    } finally {
+      setAgendaModalDisponibilidadLoading(false);
+    }
+  };
+
+  const agregarDiaAgendaModal = (dia) => {
+    if (!dia) return;
+    setAgendaModalDiasDisponibilidad((prev) => (prev.includes(dia) ? prev : [...prev, dia]));
+  };
+
+  const eliminarDiaAgendaModal = (dia) => {
+    const diaSeleccionado = nuevaCitaForm.fecha
+      ? obtenerDiaSemanaKey(new Date(`${nuevaCitaForm.fecha}T00:00:00`))
+      : obtenerDiaSemanaKey(new Date());
+
+    setAgendaModalDiasDisponibilidad((prev) => {
+      const next = prev.filter((item) => item !== dia);
+      return next.length > 0 ? next : [diaSeleccionado];
+    });
+  };
+
+  const obtenerDisponiblesAgendaModalPorDia = (dia) => {
+    const usuariosDia = (agendaModalDisponibilidad && agendaModalDisponibilidad[dia]) || [];
+    const horaSeleccionada = (nuevaCitaForm.hora || '').slice(0, 5);
+
+    return usuariosDia.filter((usuario) => {
+      if (!horaSeleccionada || !usuario.hora_inicio || !usuario.hora_fin) return true;
+      const inicio = String(usuario.hora_inicio).slice(0, 5);
+      const fin = String(usuario.hora_fin).slice(0, 5);
+      return horaSeleccionada >= inicio && horaSeleccionada < fin;
+    });
+  };
+
   const agregarDiaFiltro = (dia) => {
     if (!dia) return;
     setDiasFiltraDisponibilidad((prev) => (prev.includes(dia) ? prev : [...prev, dia]));
@@ -1586,8 +1654,115 @@ const CoordinadorAgenda = () => {
 
       {/* Modal Asignar Cita */}
       {showAsignarCitaModal && (
-        <div className="modal-overlay">
-          <div className="modal-container modal-medium">
+        <div className="modal-overlay agenda-asignar-modal-overlay">
+          <div className="agenda-asignar-modal-layout">
+            <div className="card card-secondary-coord agenda-asignar-sidecard">
+              <div className="agenda-asignar-sidecard-header">
+                <h4>Panel de apoyo</h4>
+                <p className="text-small">Resumen rápido antes de guardar</p>
+              </div>
+              <div className="agenda-asignar-sidecard-body">
+                <div className="agenda-asignar-sidecard-item">
+                  <span>Fecha seleccionada</span>
+                  <strong>{nuevaCitaForm.fecha || format(selectedDate, 'yyyy-MM-dd')}</strong>
+                </div>
+                <div className="agenda-asignar-sidecard-item">
+                  <span>Hora seleccionada</span>
+                  <strong>{nuevaCitaForm.hora || '09:00'}</strong>
+                </div>
+                <div className="agenda-asignar-sidecard-item">
+                  <span>Duración</span>
+                  <strong>{nuevaCitaForm.duracion || 50} min</strong>
+                </div>
+                <div className="agenda-asignar-sidecard-item">
+                  <span>Tipo de consulta</span>
+                  <strong>{nuevaCitaForm.tipo_consulta === 'virtual' ? 'Virtual' : 'Presencial'}</strong>
+                </div>
+                <div className="agenda-asignar-sidecard-item">
+                  <span>Total de sesiones</span>
+                  <strong>{nuevaCitaForm.total_sesiones || 1}</strong>
+                </div>
+
+                <div className="agenda-asignar-sidecard-disponibilidad-head">
+                  <div className="flex-row justify-between align-center mb-10">
+                    <span className="text-small" style={{ color: 'var(--gray)' }}>Disponibilidad por día</span>
+                    <select
+                      className="input-field"
+                      value=""
+                      onChange={(e) => agregarDiaAgendaModal(e.target.value)}
+                    >
+                      <option value="">+ Agregar día</option>
+                      {diasSemanaOpciones.map((dia) => (
+                        <option key={`modal-dia-${dia}`} value={dia} disabled={agendaModalDiasDisponibilidad.includes(dia)}>
+                          {dia.charAt(0).toUpperCase() + dia.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {agendaModalDiasDisponibilidad.length > 0 && (
+                    <div className="filter-pills-container mb-10">
+                      {agendaModalDiasDisponibilidad.map((dia) => (
+                        <div key={`chip-${dia}`} className="filter-pill">
+                          {dia.charAt(0).toUpperCase() + dia.slice(1)}
+                          <button className="filter-pill-remove" onClick={() => eliminarDiaAgendaModal(dia)}>
+                            <FiXCircle size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="agenda-asignar-sidecard-disponibilidad-list scrollable">
+                  {agendaModalDisponibilidadLoading ? (
+                    <div className="text-center p-10">
+                      <div className="loading-spinner"></div>
+                      <div className="text-small mt-10">Cargando disponibilidad...</div>
+                    </div>
+                  ) : (
+                    agendaModalDiasDisponibilidad.map((dia) => {
+                      const usuarios = obtenerDisponiblesAgendaModalPorDia(dia);
+                      return (
+                        <div key={`panel-${dia}`} className="dia-disponibilidad-card">
+                          <div className="dia-disponibilidad-header">
+                            📅 {dia.charAt(0).toUpperCase() + dia.slice(1)}
+                          </div>
+                          {usuarios.length > 0 ? (
+                            usuarios.map((usuario) => (
+                              <div key={`${dia}-${usuario.id}-${usuario.hora_inicio || ''}`} className="usuario-disponibilidad-item">
+                                <div className="avatar-small">
+                                  {(usuario.profesional || '').split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                                </div>
+                                <div className="usuario-detalles">
+                                  <div className="flex-row align-center gap-10">
+                                    <span className="font-bold">{usuario.profesional}</span>
+                                    <span className={`badge ${usuario.rol === 'terapeuta'
+                                      ? 'badge-info'
+                                      : (usuario.rol === 'psicopedagogico' ? 'badge-primary' : 'badge-warning')
+                                      }`}>
+                                      {usuario.rol}
+                                    </span>
+                                  </div>
+                                  <div className="text-small">{usuario.hora_inicio} - {usuario.hora_fin}</div>
+                                  <div className="text-small">Max {usuario.max_citas_dia} citas · {usuario.especialidad}</div>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-small text-muted">
+                              Sin disponibilidad para esta hora ({nuevaCitaForm.hora}) en {dia}.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-container modal-medium agenda-asignar-main-modal">
             <div className="modal-header">
               <h3>Asignar cita</h3>
               <button className="modal-close" onClick={() => setShowAsignarCitaModal(false)}>×</button>
@@ -1814,6 +1989,7 @@ const CoordinadorAgenda = () => {
               <button className="btn-secondary" onClick={() => setShowAsignarCitaModal(false)}>Cancelar</button>
               <button className="btn-primary" onClick={crearCitaDesdeAgenda}>Guardar cita</button>
             </div>
+          </div>
           </div>
         </div>
       )}

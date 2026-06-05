@@ -43,10 +43,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // --- CONFIGURACIÓN DE CORS (ACTUALIZADO) ---
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:3001', 
-  'http://localhost:3002',
+const allowedOrigins = 
+  'https://cesun-frontend-8urdssr0u-crvcks-projects.vercel.app/' 
   'https://cesun-frontend-pfroqiith-crvcks-projects.vercel.app' // <-- Tu nueva URL de Frontend
 ];
 

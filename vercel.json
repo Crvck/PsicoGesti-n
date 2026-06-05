@@ -4,12 +4,8 @@
   "outputDirectory": "frontend/build",
   "installCommand": "npm run vercel:install",
 
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" }
-  ],
-
   "functions": {
-    "backend/server.js": {
+    "api/**/*.js": {
       "maxDuration": 30,
       "includeFiles": "backend/**"
     }
@@ -18,7 +14,10 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "backend/server.js"
+      "dest": "/api/index.js"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",

@@ -93,27 +93,29 @@ app.use('/api/recordatorios', recordatorioRoutes);
 // Las rutas dentro serán: /api/dashboard/coordinador, /api/dashboard/aprobar-solicitud, etc.
 app.use('/api/dashboard', dashboardRoutes); 
 
-// --- SINCRONIZACIÓN Y ARRANQUE ---
-sequelize.sync({ force: false, alter: false })
-    .then(() => {
-        console.log("✅ Tablas sincronizadas (base de datos lista)");
-        app.listen(PORT, () => {
-          console.log(`Backend running on http://localhost:${PORT}`);
-          console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
-          console.log(`CORS permitido para: ${allowedOrigins.join(', ')}`);
-          console.log(`Endpoints disponibles:`);
-          console.log(`  POST /api/dashboard/aprobar-solicitud (Verificado)`);
-          console.log(`  POST /api/dashboard/denegar-solicitud (Verificado)`);
-        });
+module.exports = app;
 
-          // Scheduler simple para recordatorios de citas (cada 60 minutos)
-          const RecordatorioService = require('./src/services/recordatorioService');
-          setInterval(() => {
-            RecordatorioService.enviarRecordatorios().catch(err =>
-              console.error('Error en recordatorio programado:', err)
-            );
-          }, 60 * 60 * 1000);
+if (require.main === module) {
+  sequelize.sync({ force: false, alter: false })
+    .then(() => {
+      console.log("✅ Tablas sincronizadas (base de datos lista)");
+      app.listen(PORT, () => {
+        console.log(`Backend running on http://localhost:${PORT}`);
+        console.log(`Swagger docs: http://localhost:${PORT}/api-docs`);
+        console.log(`CORS permitido para: ${allowedOrigins.join(', ')}`);
+        console.log(`Endpoints disponibles:`);
+        console.log(`  POST /api/dashboard/aprobar-solicitud (Verificado)`);
+        console.log(`  POST /api/dashboard/denegar-solicitud (Verificado)`);
+      });
+
+      const RecordatorioService = require('./src/services/recordatorioService');
+      setInterval(() => {
+        RecordatorioService.enviarRecordatorios().catch(err =>
+          console.error('Error en recordatorio programado:', err)
+        );
+      }, 60 * 60 * 1000);
     })
     .catch((error) => {
-        console.error("❌ Error al sincronizar la base de datos:", error.message);
+      console.error("❌ Error al sincronizar la base de datos:", error.message);
     });
+}

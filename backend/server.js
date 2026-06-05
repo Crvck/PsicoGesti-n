@@ -42,22 +42,23 @@ const recordatorioRoutes = require('./src/routes/recordatorioRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- CONFIGURACIÓN DE CORS ---
-// Se agrega la URL de producción en Vercel (sin el path /login)
+// --- CONFIGURACIÓN DE CORS (ACTUALIZADO) ---
 const allowedOrigins = [
+  'http://localhost:3000',
   'http://localhost:3001', 
   'http://localhost:3002',
-  'https://cesun-frontend-pfroqiith-crvcks-projects.vercel.app'
+  'https://cesun-frontend-pfroqiith-crvcks-projects.vercel.app' // <-- Tu nueva URL de Frontend
 ];
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Permite peticiones sin origen (como Postman) o las que estén en la lista permitida
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 }));
 

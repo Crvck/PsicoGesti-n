@@ -10,6 +10,8 @@
   "scripts": {
     "start": "npm run start:backend",
     "dev": "npm run dev:backend",
+    "vercel:install": "npm install && npm --prefix backend install && npm --prefix frontend install",
+    "vercel:build": "npm run build:frontend",
     "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",

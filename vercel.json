@@ -10,7 +10,6 @@
 
   "functions": {
     "backend/server.js": {
-      "runtime": "nodejs20.x",
       "maxDuration": 30,
       "includeFiles": "backend/**"
     }
